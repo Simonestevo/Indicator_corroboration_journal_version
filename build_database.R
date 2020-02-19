@@ -66,12 +66,11 @@ rbind_all_columns <- function(x, y) {
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
 #' TODO: Consolidate species name mismatches - refer to Stewart's code
 
-
-file_path <- "N:/Quantitative-Ecology/Simone/BHI_data/wildfinder_xlsx"
+file_path <- "N:/Quantitative-Ecology/Simone/BHI_data/wildfinder_csv"
 file_names <- list.files(file_path)
 files <- file.path(file_path, file_names)
-tables <- lapply(files, read_excel) # Disregard warnings
-names(tables) <- str_remove(file_names, ".xlsx")
+tables <- lapply(files, read_csv) # Disregard warnings
+names(tables) <- str_remove(file_names, ".csv")
 
 # Change all the column names to lower case
 
@@ -85,46 +84,27 @@ for (i in seq_along(tables)) {
 
 ecoregions_species <- tables$ecoregion_species
 
-# Add common names
+# Add common names and binomial scientific names 
 
 common_names <- tables$common_names
+scientific_names <- cbind(tables$redlist_species$wwf_species_id, 
+                          tables$redlist_species$genus,
+                          tables$redlist_species$species)
+colnames(scientific_names) <- c("wwf_species_id", "genus", "species")
 
 
 species_by_ecoregion <- ecoregions_species %>%
-                        merge(common_names[c("species_id", "common_name")])
-
-
-redlist_species <- as.data.frame(do.call(cbind,tables$redlist_species))
-ecoregions <- tables$ecoregions
-common_names <- tables$common_names
-species <- tables$species
-wwf_species <- tables$Wwf_species
+                        merge(common_names[c("species_id", "common_name")], all = TRUE) %>%
+                        dplyr::rename(wwf_species_id = species_id) %>%
+                        dplyr::select(c("wwf_species_id", "common_name", 
+                                        "ecoregion_code", "eco_endemic")) %>%
+                        merge(scientific_names, by = "wwf_species_id", all = TRUE) %>%
+                        dplyr::mutate(binomial = paste(genus, species, sep = " ")) %>%
+                        dplyr::mutate(source = "WildFinder")
 
 # Remove un-needed tables
 
 # rm(tables)
-
-# Standardise species ID colnames (BUT - check)
-#' TODO: Check these species IDs are the WWF ones because redlist also have diff
-#' ID numbers
-
-colnames(ecoregions_species)[3] <- "wwf_species_id"
-colnames(common_names)[3] <- "wwf_species_id"
-colnames(wwf_species)[1] <- "wwf_species_id"
-
-# Merge required tables to create a dataframe of species occurring in each ecoregion
-
-#' TODO: Check the ecoregion endemic variable means what I think it does
-
-species_df <- redlist_species %>% 
-              merge(common_names[c("common_name_id", "common_name", "wwf_species_id")], 
-                          by = "wwf_species_id") %>%
-              merge(ecoregions_species[c("ecoregion_code","wwf_species_id",
-                                                     "eco_endemic")], by = "wwf_species_id" ) %>%
-              merge(ecoregions[c("ecoregion_code","ecoregion_name",
-                                             "ecoregion_area")]) %>%
-              dplyr::mutate(binomial = paste(genus, species, sep = " ")) %>%
-              dplyr::mutate(source = "WildFinder")
 
 # Clear memory by removing large objects
 
@@ -139,37 +119,18 @@ cooke_database <- read.csv("N:/Quantitative-Ecology/Simone/BHI_data/cooke_databa
 ## standardise columns to match species_df
 
 cooke_database <- cooke_database %>%
-                  dplyr::mutate(binomial_split = binomial) %>%
-                  tidyr::separate(binomial_split, c("genus","species")) %>%
-                  dplyr::mutate(source = "Cooke et al 2019") %>%
-                  merge(species_df[c("binomial","wwf_species_id")], 
-                  by = "binomial") %>%
-                  distinct(.)
+                  dplyr::mutate(source2 = "Cooke et al 2019") %>%
+                  dplyr::rename(ecoregion_code = eco)
 
-
-names(cooke_database) <- c("binomial", "ecoregion_code", "genus","species", 
-                           "source", "wwf_species_id")
-
-head(cooke_database)
-tail(cooke_database)
-
-## populate missing columns ready to bind with species_df
-
-missing_cols <- setdiff(names(species_df), names(cooke_database))
-
-cooke_wildfinder <- cooke_database %>% 
-                    merge(species_df[c(missing_cols, "wwf_species_id")], 
-                          by = "wwf_species_id")
 
 # TEST - use a subset of cooke
 
 # cooke_database <- cooke_database[1:200,]
                   
-# Add cooke species to wildfinder species list
+# Add cooke species to wildfinder species list then melt in to long form
 
-x <- rbind_all_columns(species_df, cooke_database)
+test <- merge(species_by_ecoregion, cooke_database,  by = "binomial", all = TRUE)
 
-head(x)
 
 
 

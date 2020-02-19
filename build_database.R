@@ -81,14 +81,24 @@ for (i in seq_along(tables)) {
   
 }
 
-# Add ecoregion to species red list
+# Get list of species per ecoregion (doesn't include binomial or common name)
+
+ecoregions_species <- tables$ecoregion_species
+
+# Add common names
+
+common_names <- tables$common_names
+
+
+species_by_ecoregion <- ecoregions_species %>%
+                        merge(common_names[c("species_id", "common_name")])
+
 
 redlist_species <- as.data.frame(do.call(cbind,tables$redlist_species))
-ecoregions_species <- tables$ecoregion_species
 ecoregions <- tables$ecoregions
 common_names <- tables$common_names
-# species <- tables$species
-# wwf_species <- tables$Wwf_species
+species <- tables$species
+wwf_species <- tables$Wwf_species
 
 # Remove un-needed tables
 

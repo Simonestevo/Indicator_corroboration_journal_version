@@ -5,6 +5,7 @@
 library(tidyverse)
 library(readxl)
 library(stringr)
+library(reshape2)
 
 # Set directory
 
@@ -25,6 +26,9 @@ if (Sys.info()['nodename'] == "20FMPC0C6GH9") {
   
   basedir <- 'C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test'
   setwd(basedir)
+  inputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/inputs"
+  outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
+  
 }
 
 ###############################################################################
@@ -65,8 +69,11 @@ rbind_all_columns <- function(x, y) {
 
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
 #' TODO: Consolidate species name mismatches - refer to Stewart's code
+#' TODO: Get scientific name/binomial for species in Wildfinder that only have
+#' common name and/or WWF id
+#' TODO: Make sure wwf id reads in as numeric not character
 
-file_path <- "N:/Quantitative-Ecology/Simone/BHI_data/wildfinder_csv"
+file_path <- file.path(inputs, "wildfinder_csv")
 file_names <- list.files(file_path)
 files <- file.path(file_path, file_names)
 tables <- lapply(files, read_csv) # Disregard warnings
@@ -93,7 +100,7 @@ scientific_names <- cbind(tables$redlist_species$wwf_species_id,
 colnames(scientific_names) <- c("wwf_species_id", "genus", "species")
 
 
-species_by_ecoregion <- ecoregions_species %>%
+wildfinder_database <-  ecoregions_species %>%
                         merge(common_names[c("species_id", "common_name")], all = TRUE) %>%
                         dplyr::rename(wwf_species_id = species_id) %>%
                         dplyr::select(c("wwf_species_id", "common_name", 
@@ -114,34 +121,53 @@ species_by_ecoregion <- ecoregions_species %>%
 
 # Load Cooke database - more species per ecoregion
 
-cooke_database <- read.csv("N:/Quantitative-Ecology/Simone/BHI_data/cooke_database/species_site.csv")
+cooke_database <- read.csv(paste(inputs,"/cooke_database/species_site.csv", sep = ""))
 
 ## standardise columns to match species_df
 
 cooke_database <- cooke_database %>%
-                  dplyr::mutate(source2 = "Cooke et al 2019") %>%
+                  dplyr::mutate(source = "Cooke et al 2019") %>%
                   dplyr::rename(ecoregion_code = eco)
 
 
-# TEST - use a subset of cooke
+# TEST - use a subset of cooke and wildfinder
 
-# cooke_database <- cooke_database[1:200,]
+cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
+
+wildfinder_database <- wildfinder_database[sample(nrow(wildfinder_database), 10000), ]
                   
-# Add cooke species to wildfinder species list then melt in to long form
+# Fill in details so Cooke has the same columns as wildfinder
 
-test <- merge(species_by_ecoregion, cooke_database,  by = "binomial", all = TRUE)
+cooke_database <- cooke_database %>%
+                  merge(wildfinder_database[c("wwf_species_id", "common_name", 
+                                              "eco_endemic", "genus", "species",
+                                              "binomial")], by = "binomial") %>%
+                  dplyr::select("wwf_species_id", "common_name", "ecoregion_code",
+                               "eco_endemic", "genus", "species",
+                               "binomial", "source")
 
+# Commbine the cooke and wildfinder databases
+#' TODO: Work out why we're getting replicates from cooke
 
+merged_databases <- rbind(wildfinder_database, cooke_database)
 
+merged_databases <- distinct(merged_databases)
 
+# To remove later when fix this up top
 
-
-
+merged_databases$wwf_species_id <- as.numeric(merged_databases$wwf_species_id)
 
 
 ###############################################################################
 ########################## GET SUMMARY STATS ###########################
 ###############################################################################
+
+#' TODO: Add ecoregion name above
+
+species_by_ecoregion <- merged_databases %>%
+                        group_by(ecoregion_code) %>%
+                        summarize(n_distinct(binomial))
+
 
 # Not complete
 

@@ -47,19 +47,6 @@ filter_by_pattern <- function(pattern, your_list){
   
 }
 
-# Function to rbind mismatched dataframes and populate columns with NA
-
-rbind_all_columns <- function(x, y) {
-  
-  x_diff <- setdiff(colnames(x), colnames(y))
-  y_diff <- setdiff(colnames(y), colnames(x))
-  
-  x[, c(as.character(y_diff))] <- NA
-  
-  y[, c(as.character(x_diff))] <- NA
-  
-  return(rbind(x, y))
-}
 
 ###############################################################################
 ############################## 1. BUILD DATABASE ##############################
@@ -269,4 +256,10 @@ redlist_by_ecoregion <- long_species_data %>%
 
 library(sf)
 
+
+
 ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+
+biome_map <- ecoregion_map %>% filter(BIOME == 1)
+
+

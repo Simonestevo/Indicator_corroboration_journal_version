@@ -6,6 +6,7 @@ library(tidyverse)
 library(readxl)
 library(stringr)
 library(reshape2)
+library(sf)
 
 # Set directory
 
@@ -67,11 +68,14 @@ rbind_all_columns <- function(x, y) {
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
 # database)
 
+#' TODO: Nearly all extinct species have no ecoregion. Figure out how to fix?
+#' TODO: Make sure wwf id reads in as numeric not character 
+#' TODO: Add ecoregions to species_data
+#' TODO: Find out what year wildfinder RL status is from
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
 #' TODO: Consolidate species name mismatches - refer to Stewart's code
-#' TODO: Get scientific name/binomial for species in Wildfinder that only have
-#' common name and/or WWF id
-#' TODO: Make sure wwf id reads in as numeric not character
+#' TODO: List and work out how to populate missing data (incl. names)
+
 
 file_path <- file.path(inputs, "wildfinder_csv")
 file_names <- list.files(file_path)
@@ -131,9 +135,9 @@ cooke_database <- cooke_database %>%
 
 
 # TEST - use a subset of cooke and wildfinder - delete this later
+#' TODO: Remove the two lines below and run on entire dataset when hpc available
 
 cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
-
 wildfinder_database <- wildfinder_database[sample(nrow(wildfinder_database), 10000), ]
                   
 # Fill in details so Cooke has the same columns as wildfinder
@@ -183,7 +187,7 @@ for (i in seq_along(tables)){
   
 }
 
-# Standardise column names which are all inconsistent
+# Standardise column names etc. which are all inconsistent between groups
 
 amphibians <- group_tables[[1]]
 
@@ -219,32 +223,50 @@ species_redlist <- species_redlist %>%
                                  "2000", "2004", "2008", "2012", "2016")
 
 
-# Add RL status to the merged databases?
+# Add RL status to the merged databases
 
-test <- merged_databases %>%
-        merge(species_redlist, by = "binomial", all = TRUE)
+species_data <- merged_databases %>%
+                merge(species_redlist, by = "binomial", all = TRUE)
+
+# Melt into long format
+
+long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id","common_name",
+                                       "ecoregion_code", "eco_endemic", "genus",
+                                       "species", "source", "group"),
+                     value.name = "redlist_status")
 
 
 ###############################################################################
 ########################## GET SUMMARY STATS ###########################
 ###############################################################################
 
-#' TODO: Add ecoregion name above
+#' TODO: Add ecoregion name above so it is included in the species_data
 
-species_by_ecoregion <- merged_databases %>%
+# Get the number of species in each ecoregion
+
+
+species_by_ecoregion <- long_species_data %>%
                         group_by(ecoregion_code) %>%
                         summarize(n_distinct(binomial))
 
 
-# Not complete
+# Get number of extinct species (can't group by ecoregion yet bc don't have them)
 
-extinct_species <- species_df %>%
-                   filter(rlscrit == "EX")
+extinct_species <- long_species_data %>%
+                   filter(redlist_status == "EX") #%>%
+                   # group_by(ecoregion_code) %>%
+                   # summarise(n())
 
-redlist_by_ecoregion <- species_df %>%
-  group_by(ecoregion_name,ecoregion_code, rlscrit) %>%
-  count(ecoregion_name,ecoregion_code, rlscrit)
+# Get number of each RL status in each ecoregion
 
+redlist_by_ecoregion <- long_species_data %>%
+                        group_by(ecoregion_code, redlist_status) %>%
+                        count(ecoregion_code, redlist_status)
 
-extinctions_by_ecoregion <- redlist_by_ecoregion %>%
-  filter(rlscrit == "EX")
+###############################################################################
+########################## MAP SUMMARY STATS ###########################
+###############################################################################
+
+library(sf)
+
+ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))

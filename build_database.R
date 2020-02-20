@@ -130,7 +130,7 @@ cooke_database <- cooke_database %>%
                   dplyr::rename(ecoregion_code = eco)
 
 
-# TEST - use a subset of cooke and wildfinder
+# TEST - use a subset of cooke and wildfinder - delete this later
 
 cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
 
@@ -144,7 +144,8 @@ cooke_database <- cooke_database %>%
                                               "binomial")], by = "binomial") %>%
                   dplyr::select("wwf_species_id", "common_name", "ecoregion_code",
                                "eco_endemic", "genus", "species",
-                               "binomial", "source")
+                               "binomial", "source") %>%
+                  dplyr::distinct(.) # line not tested yet
 
 # Commbine the cooke and wildfinder databases
 #' TODO: Work out why we're getting replicates from cooke
@@ -156,6 +157,72 @@ merged_databases <- distinct(merged_databases)
 # To remove later when fix this up top
 
 merged_databases$wwf_species_id <- as.numeric(merged_databases$wwf_species_id)
+
+
+###############################################################################
+########################## ADD RED LIST STATUS ###########################
+###############################################################################
+
+# Using Sergio's data
+
+file_path <- file.path(inputs, "redlist_sergio")
+file_names <- list.files(file_path)
+files <- file.path(file_path, file_names)
+tables <- lapply(files, read_csv)
+names(tables) <- str_remove(file_names, ".csv")
+
+# Add a column so we can identify the source of the data
+
+group_tables <- list()
+
+for (i in seq_along(tables)){
+  
+  group_tables[[i]] <- tables[[i]] %>% 
+                       dplyr::mutate(group = names(tables[i]))
+  
+  
+}
+
+# Standardise column names which are all inconsistent
+
+amphibians <- group_tables[[1]]
+
+amphibians <- amphibians %>% 
+              dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
+              dplyr::select(-c(Genus, Species)) %>%
+              set_names(c("2004", "2008", "group", "binomial")) %>%
+              dplyr::select("binomial","group","2004", "2008")
+
+birds <- group_tables[[2]]
+
+birds <- birds %>%
+         set_names(c("binomial", "1988", "1994", "2000", "2004", "2008" , 
+                     "2012" , "2016", "group" )) %>%
+         dplyr::select("binomial", "group", everything())
+
+mammals <- group_tables[[5]]  
+
+mammals <- mammals %>%
+           set_names(c("binomial", "1996", "2008", "group" )) %>%
+           dplyr::select("binomial", "group", everything())
+
+# Combine back into a list then dataframe
+
+group_tables <- list(birds, mammals, amphibians)
+
+species_redlist <- do.call(bind_rows, group_tables)
+
+# Order columns by year
+
+species_redlist <- species_redlist %>%
+                   dplyr::select("binomial", "group", "1988", "1994", "1996", 
+                                 "2000", "2004", "2008", "2012", "2016")
+
+
+# Add RL status to the merged databases?
+
+test <- merged_databases %>%
+        merge(species_redlist, by = "binomial", all = TRUE)
 
 
 ###############################################################################

@@ -27,10 +27,11 @@ if (Sys.info()['nodename'] == "20FMPC0C6GH9") {
   
   basedir <- 'C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test'
   setwd(basedir)
-  inputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/inputs"
-  outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
-  
+
 }
+
+inputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/inputs"
+outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 
 ###############################################################################
 ## Functions ##
@@ -222,6 +223,46 @@ long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id",
                                        "species", "source", "group"),
                      value.name = "redlist_status")
 
+# TEMPORARY CODE
+
+## Save the long_species_data while we are working on it
+
+write_csv(long_species_data, paste(outputs, "draft_long_species_data.csv", sep = "/"))
+saveRDS(long_species_data, paste(outputs, "draft_long_species_data.rds", sep = "/"))
+
+
+###############################################################################
+########################## GET ECOREGIONS FOR EXTINCT SPP #####################
+###############################################################################
+library(spData)
+library(raster)
+
+# Get the ecoregion map & subset to required variables
+
+ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+em_small <- ecoregion_map %>% select(eco_code, ECO_NAME, geometry)
+
+# Get the range maps of extinct species
+
+extinct_ranges <- st_read(paste(inputs,"redlist_extinct_species_range_maps", sep = "/"))
+
+# Get the ecoregions for each extinct species
+
+extinct_ranges_ecoregions <- st_join(extinct_ranges, em_small)
+
+# Add this information to the species data.  We want to fill in the gaps
+# of the missing ecoregion data for the extinct species, but also add any
+# additional extinct species to our species data
+
+extinct_species_w_ecoregions <- as.data.frame(extinct_ranges_ecoregions %>%
+                                dplyr::select(BINOMIAL, eco_code)) %>%
+                                dplyr::select(-geometry) %>%
+                                dplyr::rename(binomial = BINOMIAL) %>%
+                                dplyr::rename(ecoregion_code = eco_code) %>%
+                                dplyr::mutate(source = "iucn_redlist")
+
+
+#' TODO: Work out best way to fill in the missing ecoregion codes
 
 ###############################################################################
 ########################## GET SUMMARY STATS ###########################
@@ -236,13 +277,18 @@ species_by_ecoregion <- long_species_data %>%
                         group_by(ecoregion_code) %>%
                         summarize(n_distinct(binomial))
 
+# Have a look 
 
-# Get number of extinct species (can't group by ecoregion yet bc don't have them)
+hist(species_by_ecoregion$`n_distinct(binomial)`)
+
+
+# Get number of extinct species (grouping by ecoregion doesn't work well yet bc
+# most extinct species haven't been assigned an ecoregion - TBD)
 
 extinct_species <- long_species_data %>%
-                   filter(redlist_status == "EX") #%>%
-                   # group_by(ecoregion_code) %>%
-                   # summarise(n())
+                   filter(redlist_status == "EX") %>%
+                   group_by(ecoregion_code) %>%
+                   summarise(n())
 
 # Get number of each RL status in each ecoregion
 
@@ -254,12 +300,5 @@ redlist_by_ecoregion <- long_species_data %>%
 ########################## MAP SUMMARY STATS ###########################
 ###############################################################################
 
-library(sf)
-
-
-
-ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-
-biome_map <- ecoregion_map %>% filter(BIOME == 1)
 
 

@@ -2,11 +2,13 @@
 
 # https://stackoverflow.com/questions/13070706/how-to-connect-r-with-access-database-in-64-bit-window
 
+library(raster)
 library(tidyverse)
 library(readxl)
 library(stringr)
 library(reshape2)
 library(sf)
+library(spData)
 
 # Set directory
 
@@ -63,6 +65,8 @@ filter_by_pattern <- function(pattern, your_list){
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
 #' TODO: Consolidate species name mismatches - refer to Stewart's code
 #' TODO: List and work out how to populate missing data (incl. names)
+#' TODO: Work out best way to consistently deal with variables where I've had
+#' to merge multiple sources
 
 
 file_path <- file.path(inputs, "wildfinder_csv")
@@ -217,6 +221,7 @@ species_data <- merged_databases %>%
                 merge(species_redlist, by = "binomial", all = TRUE)
 
 # Melt into long format
+#' TODO: Rename 'variable' column to "year" or similar
 
 long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id","common_name",
                                        "ecoregion_code", "eco_endemic", "genus",
@@ -227,20 +232,20 @@ long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id",
 
 ## Save the long_species_data while we are working on it
 
-write_csv(long_species_data, paste(outputs, "draft_long_species_data.csv", sep = "/"))
-saveRDS(long_species_data, paste(outputs, "draft_long_species_data.rds", sep = "/"))
+# write_csv(long_species_data, paste(outputs, "draft_long_species_data.csv", sep = "/"))
+# saveRDS(long_species_data, paste(outputs, "draft_long_species_data.rds", sep = "/"))
 
+long_species_data <- readRDS(file.path(outputs, 'draft_long_species_data.rds'))
 
 ###############################################################################
 ########################## GET ECOREGIONS FOR EXTINCT SPP #####################
 ###############################################################################
-library(spData)
-library(raster)
+
 
 # Get the ecoregion map & subset to required variables
 
 ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-em_small <- ecoregion_map %>% select(eco_code, ECO_NAME, geometry)
+em_small <- ecoregion_map %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
 # Get the range maps of extinct species
 
@@ -259,10 +264,25 @@ extinct_species_w_ecoregions <- as.data.frame(extinct_ranges_ecoregions %>%
                                 dplyr::select(-geometry) %>%
                                 dplyr::rename(binomial = BINOMIAL) %>%
                                 dplyr::rename(ecoregion_code = eco_code) %>%
-                                dplyr::mutate(source = "iucn_redlist")
+                                dplyr::mutate(source = "iucn_redlist") %>%
+                                dplyr::mutate(redlist_status = "EX") %>%
+                                dplyr::mutate(ecoregion_code = as.character(ecoregion_code))
 
 
 #' TODO: Work out best way to fill in the missing ecoregion codes
+
+## Current approach: Merge the two sources and create a new column which is a
+## patchwork of different sources.  If this turns out to be a good approach,
+## will also need to do this with the other patchwork variables as we work through
+## them
+
+long_species_data <- merge(long_species_data, extinct_species_w_ecoregions, 
+                           by = "binomial", all = TRUE)
+
+long_species_data <- long_species_data  %>%
+                     dplyr::mutate(merged_ecoregion_code = 
+                                   ifelse(is.na(ecoregion_code.x), 
+                                   ecoregion_code.y, ecoregion_code.x))
 
 ###############################################################################
 ########################## GET SUMMARY STATS ###########################
@@ -274,31 +294,39 @@ extinct_species_w_ecoregions <- as.data.frame(extinct_ranges_ecoregions %>%
 
 
 species_by_ecoregion <- long_species_data %>%
-                        group_by(ecoregion_code) %>%
+                        group_by(merged_ecoregion_code) %>%
                         summarize(n_distinct(binomial))
 
-# Have a look 
-
-hist(species_by_ecoregion$`n_distinct(binomial)`)
+names(species_by_ecoregion) <- c("merged_ecoregion_code", "number_of_species")
 
 
 # Get number of extinct species (grouping by ecoregion doesn't work well yet bc
 # most extinct species haven't been assigned an ecoregion - TBD)
 
 extinct_species <- long_species_data %>%
-                   filter(redlist_status == "EX") %>%
-                   group_by(ecoregion_code) %>%
-                   summarise(n())
+                   filter(redlist_status.x == "EX")  %>%
+                   group_by(merged_ecoregion_code) %>%
+                   summarise(n_distinct(binomial)) 
 
-# Get number of each RL status in each ecoregion
+names(extinct_species) <- c("merged_ecoregion_code", "number_of_species_extinct")
 
-redlist_by_ecoregion <- long_species_data %>%
-                        group_by(ecoregion_code, redlist_status) %>%
-                        count(ecoregion_code, redlist_status)
+
+proportion_extinct <- species_by_ecoregion %>%
+                      merge(extinct_species, 
+                            by = "merged_ecoregion_code", all = TRUE) %>%
+                      dplyr::mutate(proportion_extinct = number_of_species_extinct/number_of_species) 
 
 ###############################################################################
 ########################## MAP SUMMARY STATS ###########################
 ###############################################################################
 
+extinction_map_data <- inner_join(em_small, proportion_extinct[
+  c("merged_ecoregion_code", "number_of_species_extinct")], 
+                             by = c("eco_code" = "merged_ecoregion_code"))
 
+extinction_map <- ggplot(extinction_map_data) +
+                  geom_sf(aes(fill = number_of_species_extinct)) +
+                  scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+extinction_map
 

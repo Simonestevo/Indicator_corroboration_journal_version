@@ -13,11 +13,11 @@
 
 library(raster)
 library(tidyverse)
-library(readxl)
 library(stringr)
 library(reshape2)
 library(sf)
 library(spData)
+library(taxize)
 
 # Input and output locations ----
 
@@ -32,8 +32,7 @@ outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 # database)
 
 #' TODO: Nearly all extinct species have no ecoregion. Figure out how to fix?
-#' TODO: Make sure wwf id reads in as numeric not character 
-#' TODO: Add ecoregions to species_data
+#' TODO: Add ecoregion names to species_data (NB - this makes object size too large)
 #' TODO: Find out what year wildfinder RL status is from
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
 #' TODO: Consolidate species name mismatches - refer to Stewart's code
@@ -70,13 +69,17 @@ colnames(scientific_names) <- c("wwf_species_id", "genus", "species")
 
 
 wildfinder_database <-  ecoregions_species %>%
-                        merge(common_names[c("species_id", "common_name")], all = TRUE) %>%
-                        dplyr::rename(wwf_species_id = species_id) %>%
+                        merge(common_names[c("species_id", "common_name")], 
+                              all = TRUE) %>%
+                        rename(wwf_species_id = species_id) %>%
                         dplyr::select(c("wwf_species_id", "common_name", 
-                                        "ecoregion_code", "eco_endemic")) %>%
-                        merge(scientific_names, by = "wwf_species_id", all = TRUE) %>%
-                        dplyr::mutate(binomial = paste(genus, species, sep = " ")) %>%
-                        dplyr::mutate(source = "WildFinder")
+                                        "ecoregion_code")) %>%
+                        merge(scientific_names, by = "wwf_species_id", 
+                              all = TRUE) %>%
+                        mutate(binomial = paste(genus, species, sep = " ")) %>%
+                        mutate(source = "WildFinder") %>%
+                        mutate(wwf_species_id = as.numeric(wwf_species_id))
+                        
 
 # Remove un-needed tables
 
@@ -85,8 +88,6 @@ wildfinder_database <-  ecoregions_species %>%
 # Clear memory by removing large objects
 
 # rm(redlist_species, common_names, ecoregions, ecoregions_species)
-
-
 
 # Load Cooke database - more species per ecoregion
 
@@ -103,20 +104,25 @@ cooke_database <- cooke_database %>%
 
 #' TODO: Remove the two lines below and run on entire dataset when hpc available
 
-cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
 wildfinder_database <- wildfinder_database[sample(nrow(wildfinder_database), 10000), ]
+
+cooke_database <- old_cooke_database
+
+cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
+
+species_attributes <- wildfinder_database %>%
+                      dplyr::select("wwf_species_id", "common_name", 
+                                     "genus", "species",
+                                    "binomial") %>%
+                      distinct(.)
                   
 # Fill in details so Cooke has the same columns as wildfinder
 
 cooke_database <- cooke_database %>%
-                  merge(wildfinder_database[c("wwf_species_id", "common_name", 
-                                              "eco_endemic", "genus", "species",
-                                              "binomial")], by = "binomial") %>%
-                  dplyr::select("wwf_species_id", "common_name", "ecoregion_code",
-                               "eco_endemic", "genus", "species",
-                               "binomial", "source") %>%
-                  dplyr::distinct(.) # line not tested yet
-
+                  merge(species_attributes, by = "binomial", all.x = TRUE) %>%
+                  dplyr::select("wwf_species_id", "common_name", "ecoregion_code", # re-order the columns
+                                "genus", "species",
+                               "binomial", "source") 
 
 # Using Sergio's red list data
 

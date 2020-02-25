@@ -132,39 +132,42 @@ files <- file.path(file_path, file_names)
 tables <- lapply(files, read_csv)
 names(tables) <- str_remove(file_names, ".csv")
 
-# Add a column so we can identify the source of the data
+# Add a column so we can identify what taxa each table contains + the source
+# reference
 
 group_tables <- list()
 
-for (i in seq_along(tables)){
+for (i in seq_along(tables)) {
   
   group_tables[[i]] <- tables[[i]] %>% 
-                       dplyr::mutate(group = names(tables[i]))
+                       mutate(group = names(tables[i])) %>%
+                       mutate(redlist_source = "Henriques etal 2020")
   
   
 }
 
-# Standardise column names etc. which are all inconsistent between groups
+# Standardise column names etc. because they are inconsistent between the 
+# different taxa tables
 
 amphibians <- group_tables[[1]]
 
 amphibians <- amphibians %>% 
               dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
               dplyr::select(-c(Genus, Species)) %>%
-              set_names(c("2004", "2008", "group", "binomial")) %>%
-              dplyr::select("binomial","group","2004", "2008")
+              set_names(c("2004", "2008", "group", "redlist_source", "binomial")) %>%
+              dplyr::select("binomial","group","2004", "2008", "redlist_source")
 
 birds <- group_tables[[2]]
 
 birds <- birds %>%
          set_names(c("binomial", "1988", "1994", "2000", "2004", "2008" , 
-                     "2012" , "2016", "group" )) %>%
+                     "2012" , "2016", "group", "redlist_source" )) %>%
          dplyr::select("binomial", "group", everything())
 
 mammals <- group_tables[[5]]  
 
 mammals <- mammals %>%
-           set_names(c("binomial", "1996", "2008", "group" )) %>%
+           set_names(c("binomial", "1996", "2008", "group", "redlist_source" )) %>%
            dplyr::select("binomial", "group", everything())
 
 # Combine back into a list then dataframe
@@ -173,40 +176,36 @@ group_tables <- list(birds, mammals, amphibians)
 
 species_redlist <- do.call(bind_rows, group_tables)
 
-# Order columns by year
+# Order columns, drop group variable and melt in to long format
 
 species_redlist <- species_redlist %>%
-                   dplyr::select("binomial", "group", "1988", "1994", "1996", 
-                                 "2000", "2004", "2008", "2012", "2016")
+                   dplyr::select("binomial", "1988", "1994", "1996", "2000", 
+                                "2004", "2008", "2012", "2016", "redlist_source") %>%
+                   melt(.,id.vars = c("binomial", "redlist_source"),
+                        value.name = "redlist_status") %>%
+                   rename(redlist_assessment_year = variable)
+
+# Add species attributes
+# 
+# test <- species_redlist %>%
+#         merge(species_attributes, by = "binomial", all.x = TRUE) %>%
+#         dplyr::select("wwf_species_id", "common_name", # re-order the columns
+#                       "genus", "species", "binomial", "redlist_assessment_year",
+#                       "redlist_status","source") 
 
 
 # Merge species data ----
 
-
 # Combine Cooke and Wildfinder
-
-#' TODO: Work out why we're getting replicates from cooke
 
 merged_databases <- rbind(wildfinder_database, cooke_database)
 
-merged_databases <- distinct(merged_databases)
-
-# To remove later when fix this up top
-
-merged_databases$wwf_species_id <- as.numeric(merged_databases$wwf_species_id)
-
-# Add red list
+# Add red list status and year to the merged databases.
 
 species_data <- merged_databases %>%
-                merge(species_redlist, by = "binomial", all = TRUE)
+                merge(species_redlist, by = "binomial", all = TRUE) %>%
+                mutate(source = coalesce(source, redlist_source))
 
-# Melt into long format
-#' TODO: Rename 'variable' column to "year" or similar
-
-long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id","common_name",
-                                       "ecoregion_code", "eco_endemic", "genus",
-                                       "species", "source", "group"),
-                     value.name = "redlist_status")
 
 # TEMPORARY CODE - checkpoint - save processed data ----
 

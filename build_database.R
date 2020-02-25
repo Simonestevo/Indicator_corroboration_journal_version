@@ -1,6 +1,15 @@
+# https://stackoverflow.com/questions/13070706/how-to-connect-r-with-access-database-in-64-bit-window
+
+
 # Using R version 3.5.2
 
-# https://stackoverflow.com/questions/13070706/how-to-connect-r-with-access-database-in-64-bit-window
+## This script outputs:
+## 1: A database of the WWF terrestrial ecoregions, species found
+## in each ecoregion (this will not be a comprehensive list of every single species
+## but aims to be as complete as possible), and their red list status, and
+## 2. Summary statistics of number of species and number of extinct species
+
+# Packages ----
 
 library(raster)
 library(tidyverse)
@@ -10,50 +19,14 @@ library(reshape2)
 library(sf)
 library(spData)
 
-# Set directory
-
-if (Sys.info()['nodename'] == "SIMONE-PC") {
-  
-  basedir <- 'C:/Users/Simone/Dropbox/Deakin/Chapter_2_Extinction_test'
-  setwd(basedir)
-  
-}  
-
-if (Sys.info()['nodename'] == "ANALYTIX2") {
-  
-  basedir <- 'C:/Users/ssteven/Desktop/Chapter_2_Extinction_test'
-  setwd(basedir)
-}
-
-if (Sys.info()['nodename'] == "20FMPC0C6GH9") {
-  
-  basedir <- 'C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test'
-  setwd(basedir)
-
-}
+# Input and output locations ----
 
 inputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/inputs"
 outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 
-###############################################################################
-## Functions ##
-###############################################################################
+# Functions ----
 
-## Function to subset list by name
-
-filter_by_pattern <- function(pattern, your_list){
-  
-    require(purrr)
-    names(your_list) %>% 
-    str_detect(pattern) %>%
-    keep(your_list, .)
-  
-}
-
-
-###############################################################################
-############################## 1. BUILD DATABASE ##############################
-###############################################################################
+# Standardise species databases ----
 
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
 # database)
@@ -126,7 +99,8 @@ cooke_database <- cooke_database %>%
                   dplyr::rename(ecoregion_code = eco)
 
 
-# TEST - use a subset of cooke and wildfinder - delete this later
+# TEMPORARY CODE - subset data to make it manageable ----
+
 #' TODO: Remove the two lines below and run on entire dataset when hpc available
 
 cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
@@ -143,23 +117,8 @@ cooke_database <- cooke_database %>%
                                "binomial", "source") %>%
                   dplyr::distinct(.) # line not tested yet
 
-# Commbine the cooke and wildfinder databases
-#' TODO: Work out why we're getting replicates from cooke
 
-merged_databases <- rbind(wildfinder_database, cooke_database)
-
-merged_databases <- distinct(merged_databases)
-
-# To remove later when fix this up top
-
-merged_databases$wwf_species_id <- as.numeric(merged_databases$wwf_species_id)
-
-
-###############################################################################
-########################## ADD RED LIST STATUS ###########################
-###############################################################################
-
-# Using Sergio's data
+# Using Sergio's red list data
 
 file_path <- file.path(inputs, "redlist_sergio")
 file_names <- list.files(file_path)
@@ -215,7 +174,22 @@ species_redlist <- species_redlist %>%
                                  "2000", "2004", "2008", "2012", "2016")
 
 
-# Add RL status to the merged databases
+# Merge species data ----
+
+
+# Combine Cooke and Wildfinder
+
+#' TODO: Work out why we're getting replicates from cooke
+
+merged_databases <- rbind(wildfinder_database, cooke_database)
+
+merged_databases <- distinct(merged_databases)
+
+# To remove later when fix this up top
+
+merged_databases$wwf_species_id <- as.numeric(merged_databases$wwf_species_id)
+
+# Add red list
 
 species_data <- merged_databases %>%
                 merge(species_redlist, by = "binomial", all = TRUE)
@@ -228,19 +202,17 @@ long_species_data <- melt(species_data, id.vars = c("binomial","wwf_species_id",
                                        "species", "source", "group"),
                      value.name = "redlist_status")
 
-# TEMPORARY CODE
+# TEMPORARY CODE - checkpoint - save processed data ----
 
 ## Save the long_species_data while we are working on it
 
 # write_csv(long_species_data, paste(outputs, "draft_long_species_data.csv", sep = "/"))
 # saveRDS(long_species_data, paste(outputs, "draft_long_species_data.rds", sep = "/"))
 
-long_species_data <- readRDS(file.path(outputs, 'draft_long_species_data.rds'))
+# long_species_data <- readRDS(file.path(outputs, 'draft_long_species_data.rds'))
 
-###############################################################################
-########################## GET ECOREGIONS FOR EXTINCT SPP #####################
-###############################################################################
 
+# Get missing ecoregions for extinct species ----
 
 # Get the ecoregion map & subset to required variables
 
@@ -284,9 +256,8 @@ long_species_data <- long_species_data  %>%
                                    ifelse(is.na(ecoregion_code.x), 
                                    ecoregion_code.y, ecoregion_code.x))
 
-###############################################################################
-########################## GET SUMMARY STATS ###########################
-###############################################################################
+
+# Calculate summary statistics ----
 
 #' TODO: Add ecoregion name above so it is included in the species_data
 
@@ -316,9 +287,8 @@ proportion_extinct <- species_by_ecoregion %>%
                             by = "merged_ecoregion_code", all = TRUE) %>%
                       dplyr::mutate(proportion_extinct = number_of_species_extinct/number_of_species) 
 
-###############################################################################
-########################## MAP SUMMARY STATS ###########################
-###############################################################################
+
+# Visualise summary stats ----
 
 extinction_map_data <- inner_join(em_small, proportion_extinct[
   c("merged_ecoregion_code", "number_of_species_extinct")], 

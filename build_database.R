@@ -18,6 +18,7 @@ library(reshape2)
 library(sf)
 library(spData)
 library(taxize)
+library(functionaltraits)
 
 # Input and output locations ----
 
@@ -202,9 +203,35 @@ merged_databases <- rbind(wildfinder_database, cooke_database)
 
 # Add red list status and year to the merged databases.
 
-species_data <- merged_databases %>%
-                merge(species_redlist, by = "binomial", all = TRUE) %>%
-                mutate(source = coalesce(source, redlist_source))
+species_data_with_sources <- merged_databases %>%
+                             merge(species_redlist, by = "binomial", all = TRUE) %>%
+                             mutate(source = coalesce(source, redlist_source))
+
+# Remove instances which are the same except for coming from multiple sources
+
+# species_data <- species_data_with_sources %>%
+#                 dplyr::select(-c("source", "redlist_source")) %>%
+#                 distinct(.)
+
+# Consolidate synonyms ----
+
+species_names <- unique(species_data_with_sources$binomial)
+
+species_names <- species_names[!is.na(species_names)]
+
+databases <- functionaltraits::Databases$new("N:\\Quantitative-Ecology\\Indicators-Project\\functionaltraits_data")
+
+
+if( !databases$ready() ) {
+  print( "Downloading databases to ")
+  databases$initialise()
+} else {
+  print( "Databases already downloaded, in ")
+}
+print( databases$dir )
+
+
+taxonomic_results <- find_species_traits(databases, species_names)
 
 
 # TEMPORARY CODE - checkpoint - save processed data ----

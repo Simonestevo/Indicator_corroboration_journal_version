@@ -15,16 +15,15 @@
 #'                species names, NOT genus or family names. If genus or other taxonomic ranks are given,
 #'                they are ignored.
 #'
-#' @return A dataframe with two columns, 'species' (string) that includes all
+#' @return A dataframe with 12 columns, including 'species' (string) that includes all
 #' synonyms of the binomial scientific name for each species supplied, and 'tsn'
 #' (integer) which is the NCBI taxonomic idientifier (so two synonyms for the
-#' same species will have the same tsn)
-#' their NCBI taxonomiID
+#' same species will have the same single tsn), along with columns of other 
+#' taxonomic info (kingdom, phylum etc)
+
 #' @examples
 #' find_synonyms( "Betta splendens" )
 #' find_synonyms(c("Alectoris chukar", "Alectoris rufa", "Alle alle" , "Allactodipus bobrinskii" ))
-
-#' TODO: Add results as an output
 
 find_synonyms <- function( species ) {
   
@@ -50,7 +49,8 @@ find_synonyms <- function( species ) {
   
   species <- unique( species )
   
-  # create the final results dataframe
+  # create the empty final results dataframe
+  
   results <- data.frame(
     species = species,
     found = rep( FALSE, length( species ) ),
@@ -146,7 +146,13 @@ find_synonyms <- function( species ) {
   
   synonyms$binomial <- as.character(synonyms$binomial)
   
+  synonyms <- synonyms %>%
+          merge(results, by = "tsn") %>%
+          dplyr::select(-species) %>%
+          dplyr::select(binomial, tsn, everything())
+  
+  # return( synonyms )
   return( synonyms )
-
+  
 }
 

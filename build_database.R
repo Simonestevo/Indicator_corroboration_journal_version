@@ -190,14 +190,6 @@ species_redlist <- species_redlist %>%
                         value.name = "redlist_status") %>%
                    rename(redlist_assessment_year = variable)
 
-# Add species attributes
-# 
-# test <- species_redlist %>%
-#         merge(species_attributes, by = "binomial", all.x = TRUE) %>%
-#         dplyr::select("wwf_species_id", "common_name", # re-order the columns
-#                       "genus", "species", "binomial", "redlist_assessment_year",
-#                       "redlist_status","source") 
-
 
 # Merge species data ----
 
@@ -231,12 +223,18 @@ species <- species_names[!is.na(species_names)]
 
 synonyms <- find_synonyms(species)
 
-# Add the tsn to our species dataset
-#' TODO: Add common names etc after change find_synonyms to output results too
+# Add the tsn and accepted names to our species dataset (should increase the 
+# number of rows as we double up)
 
-test <- species_data_with_sources %>%
-        merge(synonyms, by = "binomial", all = TRUE) %>%
-        dplyr::select(binomial, tsn, everything())
+species_data_with_sources_and_synonyms <- species_data_with_sources %>%
+                      merge(synonyms[c("binomial", "tsn", "found", "accepted_name", "common_name")], 
+                            by = "binomial", all = TRUE) %>%
+                      dplyr::select(binomial, tsn, everything()) %>%
+                      mutate(common_names = coalesce(common_name.x, common_name.y)) %>%
+                      dplyr::select(binomial, accepted_name, tsn, wwf_species_id,
+                                    ecoregion_code, common_names, genus, species, source, 
+                                    redlist_status, redlist_assessment_year, redlist_source) %>%
+                      mutate(source = coalesce(source, "NCBI"))
 
 # TEMPORARY CODE - checkpoint - save processed data ----
 

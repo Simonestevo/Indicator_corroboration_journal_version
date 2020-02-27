@@ -37,7 +37,7 @@ find_synonyms <- function( species ) {
       stop("Cannot pass NA into SQL query")
     }
     x <- as.character(x)
-    if (!all(grepl('^[0-9]+$', x, perl = TRUE))){
+    if (!all(grepl('^[0-9]+$', x, perl = TRUE))) {
       stop("Found non-integer where integer required in SQL input")
     }
     paste(x, collapse = ", ")

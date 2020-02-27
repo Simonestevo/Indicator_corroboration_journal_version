@@ -5,22 +5,6 @@
 #' and then searches the databases for the valid scientific names, as well as any 
 #' synonyms that were found. 
 #' 
-#' The main difference between this function, and \code{Databases::search()}, is that 
-#' it also collects taxonomic information, and searches the databases for synonyms.
-#' 
-#' It returns a dataframe with the following columns (TODO: this is outdated):
-#' - species: the species name given in the \code{species} argument
-#' - found: whether or not the species name was recognised by the Catalogue of Life (https://www.catalogueoflife.org/)
-#'          taxonomic database.
-#' - colid: the ID for the taxonomic name in the Catalogue of Life
-#' - synonyms: any synonyms found
-#' - accepted_name: the accepted name for the species (according to Catalogue of Life)
-#' - common_name: the common name(s) of the species
-#' - kingdom, phylum, class, order, family, genus: taxonomic information when available
-#' 
-#' In addition, it includes all the columns selects via the \code{traits} argument. Columns are preprended
-#' with database author's name to ensure that the source of the information can be traced and appropriately
-#' cited.
 #'
 #' @param species A vector of species names in the format "Genus species". Note: if the same name 
 #'                is given more than once, the extra occurances are discarded. Consequently, you
@@ -30,39 +14,33 @@
 #'                Note that it also removes duplicate species names that are given. It only takes
 #'                species names, NOT genus or family names. If genus or other taxonomic ranks are given,
 #'                they are ignored.
-#'                
-#' @param traits=NULL A list of trait databases, with each value being a vector of column names. Eg.
-#'                   \code{list( "fishbase" = c( "Weight" ) )} to search fishbase and include the
-#'                   Weight column in the output. If \code{NULL}, then all databases and all columns
-#'                   will be selected.
-#'                
-#' @param get_common_names=NULL Whether to get common name information as well. This significantly increases the time
-#'                              that this function takes to run.
-#'                   
 #'
-#' @return A \code{list} with \code{list[["results"]]} being a dataframe containing the list of species
-#'         and any matched trait data from the selected columns; and \code{list[["statistics"]]} being
-#'         a dataframe containing the number of matches and number of columns selected from each database.
+#' @return A dataframe with two columns, 'species' (string) that includes all
+#' synonyms of the binomial scientific name for each species supplied, and 'tsn'
+#' (integer) which is the NCBI taxonomic idientifier (so two synonyms for the
+#' same species will have the same tsn)
+#' their NCBI taxonomiID
 #' @examples
-#' find_species_traits( c("Betta splendens"), list( "fishbase" = c( "Weight" ) ))
-#' find_species_traits( c("Betta splendens"), list( "pacifici_generationlength" = c( "GenerationLength_d" ) ))
-#' find_species_traits( c("Betta splendens"))
-#' @export
+#' find_synonyms( "Betta splendens" )
+#' find_synonyms(c("Alectoris chukar", "Alectoris rufa", "Alle alle" , "Allactodipus bobrinskii" ))
 
 
-
-
-find_species_traits <- function( databases, species, traits = NULL ) {
+find_synonyms <- function( species ) {
+  
+  require(taxizedb)
+  
+  # Get taxonomic information ----
   
   sql_integer_list <- function(x){
-    if(any(is.na(x))){
+  
+    if (any(is.na(x))) {
       stop("Cannot pass NA into SQL query")
     }
     x <- as.character(x)
-    if(!all(grepl('^[0-9]+$', x, perl=TRUE))){
+    if (!all(grepl('^[0-9]+$', x, perl = TRUE))){
       stop("Found non-integer where integer required in SQL input")
     }
-    paste(x, collapse=", ")
+    paste(x, collapse = ", ")
   }
   
   taxizedb::db_download_ncbi()
@@ -70,16 +48,6 @@ find_species_traits <- function( databases, species, traits = NULL ) {
   src_ncbi <- taxizedb::src_ncbi()
   
   species <- unique( species )
-  
-  # first check if the databases are ready to be searched
-  if( !databases$ready() ) {
-    stop( "the databases are not ready to be searched. Try running Databases$initialise()")
-  }
-  
-  # check if the selected traits are okay
-  if( !is.null( traits ) ) {
-    databases$check_traits( traits )
-  }
   
   # create the final results dataframe
   results <- data.frame(
@@ -98,11 +66,7 @@ find_species_traits <- function( databases, species, traits = NULL ) {
     stringsAsFactors = FALSE
   )
   
-  
-  
-  ######################################
-  # STEP ONE: get the taxonomic information
-  ######################################
+  # Get the taxonomic IDs ----
   
   # get NCBI IDs where available (NA if not available)
   
@@ -164,10 +128,7 @@ find_species_traits <- function( databases, species, traits = NULL ) {
     results[which(results$tsn == tsn), "common_name" ] <- paste0( common_names$name_txt, collapse = ", " )
   }
 
-  
-  ######################
-  # STEP 3: find synonyms, and make a list of all possible names
-  ######################
+ # Find synonyms ----
   
   # get the list of relevant ids
   relevant_tsns <- na.omit( unique( results$tsn ) )
@@ -182,36 +143,9 @@ find_species_traits <- function( databases, species, traits = NULL ) {
     species = search_names$name_txt
   )
   
-  # 
-  # #######################################################
-  # # STEP 4: search the databases for the synonyms and match back results to the initial list of names that were given
-  # #######################################################
-  # 
-  # # TODO - not sure if this will throw an error if traits is NULL
-  # search_results <- databases$search( search_names$species, traits )
-  # 
-  # 
-  # 
-  # # add a tsn column
-  # trait_data <- merge( search_results$results, search_names, by.x = "taxa", by.y = "species", all.x = TRUE )
-  # 
-  # # there are multiple rows in the search_results for a single species, 
-  # # because a species has multiple synonynms
-  # # so we must compress these into a single row for the species
-  # 
-  # for( tsn in relevant_tsns ) {
-  #   # get a dataframe containing just the information for one species
-  #   single_species <- trait_data[ which(trait_data$tsn == tsn), ]
-  #   for( column in names( single_species ) ) {
-  #     if( column == "species" || column == "tsn" ) next
-  #     # get the single column, remove all the NA values, and then take the first value available
-  #     # if there are multiple values available, then it's an error in the database, because
-  #     # we just searched for synonyms
-  #     
-  #     results[which(results$tsn == tsn), column] <- na.omit( single_species[[column]] )[1]
-  #   }
-  # }
-  # 
+  synonyms$species <- as.character(synonyms$species)
+  
   return( synonyms )
+
 }
 

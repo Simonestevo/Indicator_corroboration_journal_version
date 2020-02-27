@@ -27,6 +27,10 @@ outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 
 # Functions ----
 
+#' TODO: Figure out best way to do this - probably just shift function here?
+
+source("C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test/Extinction_test_code/find_synonyms.R")
+
 # Standardise species databases ----
 
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
@@ -213,26 +217,26 @@ species_data_with_sources <- merged_databases %>%
 #                 dplyr::select(-c("source", "redlist_source")) %>%
 #                 distinct(.)
 
-# Consolidate synonyms ----
+# (SLOW) Consolidate synonyms ----
+
+# Get a vector of species names in our dataset
 
 species_names <- unique(species_data_with_sources$binomial)
 
-species_names <- species_names[!is.na(species_names)]
+species <- species_names[!is.na(species_names)]
 
-databases <- functionaltraits::Databases$new("N:\\Quantitative-Ecology\\Indicators-Project\\functionaltraits_data")
+#species <- species[c(500:550)]
 
+# Get their synonyms and taxonomic identifier (tsn)
 
-if( !databases$ready() ) {
-  print( "Downloading databases to ")
-  databases$initialise()
-} else {
-  print( "Databases already downloaded, in ")
-}
-print( databases$dir )
+synonyms <- find_synonyms(species)
 
+# Add the tsn to our species dataset
+#' TODO: Add common names etc after change find_synonyms to output results too
 
-taxonomic_results <- find_species_traits(databases, species_names)
-
+test <- species_data_with_sources %>%
+        merge(synonyms, by = "binomial", all = TRUE) %>%
+        dplyr::select(binomial, tsn, everything())
 
 # TEMPORARY CODE - checkpoint - save processed data ----
 

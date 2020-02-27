@@ -24,6 +24,7 @@
 #' find_synonyms( "Betta splendens" )
 #' find_synonyms(c("Alectoris chukar", "Alectoris rufa", "Alle alle" , "Allactodipus bobrinskii" ))
 
+#' TODO: Add results as an output
 
 find_synonyms <- function( species ) {
   
@@ -140,10 +141,10 @@ find_synonyms <- function( species ) {
   
   synonyms <- data.frame(
     tsn = search_names$tax_id,
-    species = search_names$name_txt
+    binomial = search_names$name_txt
   )
   
-  synonyms$species <- as.character(synonyms$species)
+  synonyms$binomial <- as.character(synonyms$binomial)
   
   return( synonyms )
 

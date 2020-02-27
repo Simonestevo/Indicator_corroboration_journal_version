@@ -105,10 +105,24 @@ find_species_traits <- function( databases, species, traits = NULL ) {
   ######################################
   
   # get NCBI IDs where available (NA if not available)
-  results$tsn = sapply( species, taxizedb::name2taxid, out_type = "summary" )
+  
+  species <- as.data.frame(species)
+  species$species <- as.character((species$species))
+  species_taxid <- sapply( species, taxizedb::name2taxid, out_type = "summary" )
+  species_taxid <- as.data.frame(do.call(cbind, species_taxid))
+  colnames(species_taxid) <- c("species", "tsn")
+  
+  # Add tsn ID to results dataframe
+  
+  results <- results %>%
+             dplyr::select(-tsn) %>%
+             merge(species_taxid, by = "species", all = TRUE) %>%
+             dplyr::select(species, found, tsn, everything())
   
   # load accepted names into the results dataframe
+  
   for( tsn in na.omit( unique( results$tsn ) ) ) {
+    
     classification <- taxizedb::classification( tsn )[[tsn]]
     relevant_rows <- which( results$tsn == tsn )
     
@@ -163,44 +177,41 @@ find_species_traits <- function( databases, species, traits = NULL ) {
   query <- sprintf(query, sql_integer_list( relevant_tsns ))
   search_names <- taxizedb::sql_collect(src_ncbi, query)
   
-  search_names <- data.frame(
+  synonyms <- data.frame(
     tsn = search_names$tax_id,
     species = search_names$name_txt
   )
   
-  
-  #######################################################
-  # STEP 4: search the databases for the synonyms and match back results to the initial list of names that were given
-  #######################################################
-  
-  # TODO - not sure if this will throw an error if traits is NULL
-  search_results <- databases$search( search_names$species, traits )
-  
-  
-  
-  # add a tsn column
-  trait_data <- merge( search_results$results, search_names, by.x = "taxa", by.y = "species", all.x = TRUE )
-  
-  # there are multiple rows in the search_results for a single species, 
-  # because a species has multiple synonynms
-  # so we must compress these into a single row for the species
-  
-  for( tsn in relevant_tsns ) {
-    # get a dataframe containing just the information for one species
-    single_species <- trait_data[ which(trait_data$tsn == tsn), ]
-    for( column in names( single_species ) ) {
-      if( column == "species" || column == "tsn" ) next
-      # get the single column, remove all the NA values, and then take the first value available
-      # if there are multiple values available, then it's an error in the database, because
-      # we just searched for synonyms
-      
-      results[which(results$tsn == tsn), column] <- na.omit( single_species[[column]] )[1]
-    }
-  }
-  
-  return( list(
-    results = results,
-    statistics = search_results$statistics
-  ))
+  # 
+  # #######################################################
+  # # STEP 4: search the databases for the synonyms and match back results to the initial list of names that were given
+  # #######################################################
+  # 
+  # # TODO - not sure if this will throw an error if traits is NULL
+  # search_results <- databases$search( search_names$species, traits )
+  # 
+  # 
+  # 
+  # # add a tsn column
+  # trait_data <- merge( search_results$results, search_names, by.x = "taxa", by.y = "species", all.x = TRUE )
+  # 
+  # # there are multiple rows in the search_results for a single species, 
+  # # because a species has multiple synonynms
+  # # so we must compress these into a single row for the species
+  # 
+  # for( tsn in relevant_tsns ) {
+  #   # get a dataframe containing just the information for one species
+  #   single_species <- trait_data[ which(trait_data$tsn == tsn), ]
+  #   for( column in names( single_species ) ) {
+  #     if( column == "species" || column == "tsn" ) next
+  #     # get the single column, remove all the NA values, and then take the first value available
+  #     # if there are multiple values available, then it's an error in the database, because
+  #     # we just searched for synonyms
+  #     
+  #     results[which(results$tsn == tsn), column] <- na.omit( single_species[[column]] )[1]
+  #   }
+  # }
+  # 
+  return( synonyms )
 }
 

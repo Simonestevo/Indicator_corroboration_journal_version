@@ -285,32 +285,7 @@ species_data_with_sources <- merged_databases %>%
 #                 dplyr::select(-c("source", "redlist_source")) %>%
 #                 distinct(.)
 
-# (SLOW) Consolidate synonyms ----
 
-# Get a vector of species names in our dataset
-
-species_names <- unique(species_data_with_sources$binomial)
-
-species <- species_names[!is.na(species_names)]
-
-#species <- species[c(500:550)]
-
-# Get their synonyms and taxonomic identifier (tsn)
-
-synonyms <- find_synonyms(species)
-
-# Add the tsn and accepted names to our species dataset (should increase the 
-# number of rows as we double up)
-
-species_data_with_sources_and_synonyms <- species_data_with_sources %>%
-                      merge(synonyms[c("binomial", "tsn", "found", "accepted_name", "common_name")], 
-                            by = "binomial", all = TRUE) %>%
-                      dplyr::select(binomial, tsn, everything()) %>%
-                      mutate(common_names = coalesce(common_name.x, common_name.y)) %>%
-                      dplyr::select(binomial, accepted_name, tsn, wwf_species_id,
-                                    ecoregion_code, common_names, genus, species, source, 
-                                    redlist_status, redlist_assessment_year, redlist_source) %>%
-                      mutate(source = coalesce(source, "NCBI"))
 
 # TEMPORARY CODE - checkpoint - save processed data ----
 

@@ -36,15 +36,14 @@ source("C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test/Extinction_tes
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
 # database)
 
-#' TODO: Nearly all extinct species have no ecoregion. Figure out how to fix?
+#' TODO: Figure out best way to get missing ecoregions & status (pull ranges from RL website?)
 #' TODO: Add ecoregion names to species_data (NB - this makes object size too large)
 #' TODO: Find out what year wildfinder RL status is from
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
-#' TODO: Consolidate species name mismatches - refer to Stewart's code
-#' TODO: List and work out how to populate missing data (incl. names)
-#' TODO: Work out best way to consistently deal with variables where I've had
-#' to merge multiple sources
+#' 
 
+
+# Load the wildfinder data
 
 file_path <- file.path(inputs, "wildfinder_csv")
 file_names <- list.files(file_path)
@@ -82,19 +81,6 @@ wildfinder_species <- wildfinder_species[,1]
 
 wildfinder_species <- find_synonyms( wildfinder_species)
 
-
-# wildfinder_database <-  ecoregions_species %>%
-#                         merge(common_names[c("species_id", "common_name")],
-#                               all = TRUE) %>%
-#                         rename(wwf_species_id = species_id) %>%
-#                         dplyr::select(c("wwf_species_id", "common_name",
-#                                         "ecoregion_code")) %>%
-#                         merge(scientific_names, by = "wwf_species_id",
-#                               all = TRUE) %>%
-#                         mutate(binomial = paste(genus, species, sep = " ")) %>%
-#                         mutate(source = "WildFinder") %>%
-#                         mutate(wwf_species_id = as.numeric(wwf_species_id))
-                        
 
 wildfinder_database <-  ecoregions_species %>%
                         merge(common_names[c("species_id", "common_name")],
@@ -155,25 +141,7 @@ cooke_database <- cooke_database_all[sample(nrow(cooke_database_all), 10000), ]
 
 
 
-# Fill in details so Cooke has the same columns as wildfinder
-
-# species_attributes <- wildfinder_database %>%
-#                       dplyr::select("wwf_species_id", "common_name", 
-#                                     "genus", "species",
-#                                     "binomial") %>%
-#                       distinct(.)
-# 
-# cooke_database <- cooke_database %>%
-#                   merge(species_attributes, by = "binomial", all.x = TRUE) %>%
-#                   dplyr::select("wwf_species_id", "common_name", "ecoregion_code", # re-order the columns
-#                                 "genus", "species",
-#                                "binomial", "source") 
-
-# 
-# temp <- bind_rows(wildfinder_database, cooke_database)
-# cooke_database <- filter(temp, source == "Cooke et al 2019")
-
-# Add missing data?
+# Fill in details so Cooke has the same columns and data as wildfinder
 
 cooke_database <- cooke_database %>%
                   merge(wildfinder_database[c("wwf_species_id","common_name","genus", 
@@ -182,7 +150,7 @@ cooke_database <- cooke_database %>%
                                 "genus", "species", "source", "tsn", "accepted_name" ) %>%
                   distinct(.)
 
-# Using Sergio's red list data
+# Load the red list data from Henriques et al 2020
 
 file_path <- file.path(inputs, "redlist_sergio")
 file_names <- list.files(file_path)
@@ -259,7 +227,7 @@ species_redlist <- species_redlist %>%
                                            "common_name")])
 
 
-# Merge species data ----
+# Merge databases ----
 
 # Combine Cooke and Wildfinder
 
@@ -279,25 +247,66 @@ species_data_with_sources <- merged_databases %>%
                                               accepted_name.x, accepted_name.y, 
                                                common_name.x, common_name.y))
 
-# Remove instances which are the same except for coming from multiple sources
+# Consolidate duplicates ----
 
-# species_data <- species_data_with_sources %>%
-#                 dplyr::select(-c("source", "redlist_source")) %>%
-#                 distinct(.)
+
+species_data <- species_data_with_sources %>%
+                dplyr::select(-c("source", "redlist_source", "binomial")) %>%
+                distinct(.) %>%
+                dplyr::select(tsn, accepted_name, everything()) %>%
+                rename(accepted_binomial = accepted_name)
 
 
 
 # TEMPORARY CODE - checkpoint - save processed data ----
 
-## Save the long_species_data while we are working on it
+## Save the species_data while we are working on it
 
-# write_csv(long_species_data, paste(outputs, "draft_long_species_data.csv", sep = "/"))
-# saveRDS(long_species_data, paste(outputs, "draft_long_species_data.rds", sep = "/"))
+# write_csv(species_data, paste(outputs, "draft_species_data.csv", sep = "/"))
+# saveRDS(species_data, paste(outputs, "draft_species_data.rds", sep = "/"))
 
-# long_species_data <- readRDS(file.path(outputs, 'draft_long_species_data.rds'))
+# species_data <- readRDS(file.path(outputs, 'draft_species_data.rds'))
+
+
+# TEMPORARY CODE - Run diagnostics on gaps in our database
+
+# What species do we not have ecoregions for?
+
+species_without_ecoregions <- species_data %>%
+                              filter(is.na(ecoregion_code)) %>%
+                              dplyr::select(tsn, accepted_binomial) %>%
+                              distinct(.)
+
+# What species do we not have a redlist status in any year for?
+
+species_without_redlist_status <- species_data %>%
+                                  dplyr::select(-redlist_assessment_year, 
+                                                genus, species) %>%
+                                  distinct(.) %>%
+                                  group_by(tsn) %>%
+                                  filter(all(is.na(redlist_status)))
+
+# What species do we have at least one redlist status for?
+
+species_with_redlist_status <- species_data %>%
+                               dplyr::select(-redlist_assessment_year, 
+                                            genus, species) %>%
+                               distinct(.) %>%
+                               group_by(tsn) %>%
+                               filter(!is.na(redlist_status)) %>%
+                               dplyr::select(-redlist_status) %>%
+                               distinct(.)
+
+# Double check we haven't incorrectly detected no redlist status (should be no
+# overlap between the two groups)
+                                
+overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
+any(overlap == TRUE)
 
 
 # Get missing ecoregions for extinct species ----
+
+#' TODO: Add the other species ranges too? Can we feed a list to the IUCN website?
 
 # Get the ecoregion map & subset to required variables
 

@@ -64,27 +64,51 @@ for (i in seq_along(tables)) {
 
 ecoregions_species <- tables$ecoregion_species
 
-# Add common names and binomial scientific names 
+# Add common names, binomial scientific names, synonyms and tsn IDs
 
 common_names <- tables$common_names
-scientific_names <- cbind(tables$redlist_species$wwf_species_id, 
+scientific_names <- as.data.frame(cbind(tables$redlist_species$wwf_species_id, 
                           tables$redlist_species$genus,
-                          tables$redlist_species$species)
+                          tables$redlist_species$species))
 colnames(scientific_names) <- c("wwf_species_id", "genus", "species")
 
+wildfinder_species <- scientific_names %>%
+                      mutate(binomial = paste(genus, species, sep = " ")) %>%
+                      dplyr::select(binomial)
+
+wildfinder_species <- wildfinder_species[,1]
+
+# Get synonyms
+
+wildfinder_species <- find_synonyms( wildfinder_species)
+
+
+# wildfinder_database <-  ecoregions_species %>%
+#                         merge(common_names[c("species_id", "common_name")],
+#                               all = TRUE) %>%
+#                         rename(wwf_species_id = species_id) %>%
+#                         dplyr::select(c("wwf_species_id", "common_name",
+#                                         "ecoregion_code")) %>%
+#                         merge(scientific_names, by = "wwf_species_id",
+#                               all = TRUE) %>%
+#                         mutate(binomial = paste(genus, species, sep = " ")) %>%
+#                         mutate(source = "WildFinder") %>%
+#                         mutate(wwf_species_id = as.numeric(wwf_species_id))
+                        
 
 wildfinder_database <-  ecoregions_species %>%
-                        merge(common_names[c("species_id", "common_name")], 
+                        merge(common_names[c("species_id", "common_name")],
                               all = TRUE) %>%
                         rename(wwf_species_id = species_id) %>%
-                        dplyr::select(c("wwf_species_id", "common_name", 
+                        dplyr::select(c("wwf_species_id", "common_name",
                                         "ecoregion_code")) %>%
-                        merge(scientific_names, by = "wwf_species_id", 
+                        merge(scientific_names, by = "wwf_species_id",
                               all = TRUE) %>%
                         mutate(binomial = paste(genus, species, sep = " ")) %>%
                         mutate(source = "WildFinder") %>%
-                        mutate(wwf_species_id = as.numeric(wwf_species_id))
-                        
+                        mutate(wwf_species_id = as.numeric(wwf_species_id)) %>%
+                        merge(wildfinder_species[c("binomial", "tsn", "accepted_name")])
+
 
 # Remove un-needed tables
 
@@ -98,36 +122,65 @@ wildfinder_database <-  ecoregions_species %>%
 
 cooke_database <- read.csv(paste(inputs,"/cooke_database/species_site.csv", sep = ""))
 
+cooke_species <- cooke_database %>%
+                 dplyr::select(binomial) 
+
+cooke_species$binomial <- as.character(cooke_species$binomial)
+cooke_species <- cooke_species[,1]
+
+cooke_species <- find_synonyms(cooke_species)
+
 ## standardise columns to match species_df
 
 cooke_database <- cooke_database %>%
                   dplyr::mutate(source = "Cooke et al 2019") %>%
-                  dplyr::rename(ecoregion_code = eco)
+                  dplyr::rename(ecoregion_code = eco) %>%
+                  merge(cooke_species[c("binomial", "tsn", "accepted_name")])
 
 
 # TEMPORARY CODE - subset data to make it manageable ----
 
 #' TODO: Remove the two lines below and run on entire dataset when hpc available
+#' 
 
-wildfinder_database <- wildfinder_database[sample(nrow(wildfinder_database), 10000), ]
+## Save full databases
 
-cooke_database <- old_cooke_database
+cooke_database_all <- cooke_database
+wildfinder_database_all <- wildfinder_database
 
-cooke_database <- cooke_database[sample(nrow(cooke_database), 10000), ]
+## Take a random sample subset
 
-species_attributes <- wildfinder_database %>%
-                      dplyr::select("wwf_species_id", "common_name", 
-                                     "genus", "species",
-                                    "binomial") %>%
-                      distinct(.)
-                  
+wildfinder_database <- wildfinder_database_all[sample(nrow(wildfinder_database_all), 10000), ]
+cooke_database <- cooke_database_all[sample(nrow(cooke_database_all), 10000), ]
+
+
+
 # Fill in details so Cooke has the same columns as wildfinder
 
+# species_attributes <- wildfinder_database %>%
+#                       dplyr::select("wwf_species_id", "common_name", 
+#                                     "genus", "species",
+#                                     "binomial") %>%
+#                       distinct(.)
+# 
+# cooke_database <- cooke_database %>%
+#                   merge(species_attributes, by = "binomial", all.x = TRUE) %>%
+#                   dplyr::select("wwf_species_id", "common_name", "ecoregion_code", # re-order the columns
+#                                 "genus", "species",
+#                                "binomial", "source") 
+
+# 
+# temp <- bind_rows(wildfinder_database, cooke_database)
+# cooke_database <- filter(temp, source == "Cooke et al 2019")
+
+# Add missing data?
+
 cooke_database <- cooke_database %>%
-                  merge(species_attributes, by = "binomial", all.x = TRUE) %>%
-                  dplyr::select("wwf_species_id", "common_name", "ecoregion_code", # re-order the columns
-                                "genus", "species",
-                               "binomial", "source") 
+                  merge(wildfinder_database[c("wwf_species_id","common_name","genus", 
+                                              "species", "tsn")], by = "tsn", all.x = TRUE) %>%
+                  dplyr::select("binomial", "wwf_species_id", "common_name", "ecoregion_code",
+                                "genus", "species", "source", "tsn", "accepted_name" ) %>%
+                  distinct(.)
 
 # Using Sergio's red list data
 
@@ -179,7 +232,20 @@ mammals <- mammals %>%
 
 group_tables <- list(birds, mammals, amphibians)
 
+#' TODO: Change name of species_redlist to henrique database?
+
 species_redlist <- do.call(bind_rows, group_tables)
+
+# Get the synonyms and taxonomic ids
+
+redlist_species <- species_redlist %>%
+                   dplyr::select(binomial) 
+
+redlist_species$binomial <- as.character(redlist_species$binomial)
+redlist_species <- unname(unlist(redlist_species[,1]))
+redlist_species <- redlist_species[!is.na(redlist_species)]
+
+redlist_species <- find_synonyms(redlist_species)
 
 # Order columns, drop group variable and melt in to long format
 
@@ -188,7 +254,9 @@ species_redlist <- species_redlist %>%
                                 "2004", "2008", "2012", "2016", "redlist_source") %>%
                    melt(.,id.vars = c("binomial", "redlist_source"),
                         value.name = "redlist_status") %>%
-                   rename(redlist_assessment_year = variable)
+                   rename(redlist_assessment_year = variable) %>% 
+                   merge(redlist_species[c("binomial", "tsn", "accepted_name", 
+                                           "common_name")])
 
 
 # Merge species data ----
@@ -200,8 +268,16 @@ merged_databases <- rbind(wildfinder_database, cooke_database)
 # Add red list status and year to the merged databases.
 
 species_data_with_sources <- merged_databases %>%
-                             merge(species_redlist, by = "binomial", all = TRUE) %>%
-                             mutate(source = coalesce(source, redlist_source))
+                             merge(species_redlist, by = "tsn", all = TRUE) %>%
+                             mutate(source = coalesce(source, redlist_source)) %>%
+                             mutate(binomial = coalesce(binomial.x, binomial.y)) %>%
+                             mutate(accepted_name = coalesce(accepted_name.x, 
+                                                             accepted_name.y)) %>%
+                             mutate(common_name = coalesce(common_name.x, 
+                                                           common_name.y)) %>%
+                             dplyr::select(-c(binomial.x, binomial.y, 
+                                              accepted_name.x, accepted_name.y, 
+                                               common_name.x, common_name.y))
 
 # Remove instances which are the same except for coming from multiple sources
 

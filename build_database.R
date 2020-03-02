@@ -453,7 +453,8 @@ species_data <- species_data_with_sources %>%
 
 # (SLOW CODE) Get ecoregions for species missing them ----
 
-#' TODO: Add the other species ranges too? 
+#' TODO: Check this is working correctly - how does it cope with one species
+#' in multiple ecoregions?
 
 # Get the ecoregion map & subset to required variables
 
@@ -465,6 +466,8 @@ ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometr
 
 species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps", 
                                      ecoregion_map)
+
+species_ecoregions <- list(species_ecoregions)
 
 # Use this code when on server, doesn't work on laptop
 
@@ -480,23 +483,36 @@ species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps",
 #   species_ecoregions[[i]] <- get_ecoregions(range_directories[i], em_small)
 #   
 # }
-
-#' TODO: Add the tsn etc and merge with the species data
-
-## Current approach: Merge the two sources and create a new column which is a
-## patchwork of different sources.  If this turns out to be a good approach,
-## will also need to do this with the other patchwork variables as we work through
-## them
-
-long_species_data <- merge(long_species_data, extinct_species_w_ecoregions, 
-                           by = "binomial", all = TRUE)
-
-long_species_data <- long_species_data  %>%
-                     dplyr::mutate(merged_ecoregion_code = 
-                                   ifelse(is.na(ecoregion_code.x), 
-                                   ecoregion_code.y, ecoregion_code.x))
+#
+# species_ecoregions <- do.call(rbind, species_ecoregions)
 
 
+# Get TSNs for the species
+
+species_ecoregions_names <- species_ecoregions %>%
+                            dplyr::select(binomial) 
+
+species_ecoregions_names$binomial <- as.character(species_ecoregions_names$binomial)
+
+species_ecoregions_names <- unname(unlist(species_ecoregions_names[,1]))
+
+species_ecoregions_names <- species_ecoregions_names[!is.na(species_ecoregions_names)]
+
+species_ecoregions_names <- find_synonyms(species_ecoregions_names)
+
+species_ecoregions <- species_ecoregions %>%
+                      merge(species_ecoregions_names[c("binomial", "tsn", 
+                                                       "found")], 
+                            by = "binomial")
+
+## Add the new ecoregions to our species data
+
+species_data <- species_data %>%
+                merge(species_ecoregions[c( "tsn", "ecoregion_code")], 
+                      by = "tsn", all = TRUE) %>%
+                mutate(ecoregion_code = coalesce(ecoregion_code.x, 
+                                                 ecoregion_code.y)) %>%
+                dplyr::select(-c(ecoregion_code.x, ecoregion_code.y))
 
 # TEMPORARY CODE - Run diagnostics on gaps in our database
 

@@ -27,9 +27,192 @@ outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 
 # Functions ----
 
-#' TODO: Figure out best way to do this - probably just shift function here?
+## get_ecoregions: Function to load species range maps and join with the wwf ecoregion map
+#' @return a dataframe with four columns (species binomial scientific name,
+#' ecoregion, data source and red list status)
+#' @param species directory name - a string that denotes the name of the directory
+#' where the species range maps are saved
+#' @param map sf object - the global wwf_teow map
 
-source("C:/Users/ssteven/Dropbox/Deakin/Chapter_2_Extinction_test/Extinction_test_code/find_synonyms.R")
+get_ecoregions <- function(species_directory_name, map) {
+  
+  range_map <- st_read(paste(inputs,species_directory_name, sep = "/"))
+  
+  # Get the ecoregions for each species
+  
+  ranges_ecoregions <- st_join(range_map, map)
+  
+  # Standardise the data so we can add it to the species data easily
+  
+  species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
+                                          dplyr::select(BINOMIAL, eco_code)) %>%
+    dplyr::select(-geometry) %>%
+    dplyr::rename(binomial = BINOMIAL) %>%
+    dplyr::rename(ecoregion_code = eco_code) %>%
+    dplyr::mutate(source = "iucn_redlist") %>%
+    dplyr::mutate(redlist_status = "TBC") %>%
+    dplyr::mutate(ecoregion_code = as.character(ecoregion_code))
+  
+  return(species_w_ecoregions)
+  
+}
+
+#' Find traits and taxonomic information for a list of species
+#' 
+#' This function takes a list of species, collects taxonomic information for them, 
+#' and then searches the databases for the valid scientific names, as well as any 
+#' synonyms that were found. 
+#' 
+#'
+#' @param species A vector of species names in the format "Genus species". Note: if the same name 
+#'                is given more than once, the extra occurances are discarded. Consequently, you
+#'                cannot be guaranteed that the number of rows in the resulting dataframe has the same
+#'                length as the number of species that were given.
+#'                
+#'                Note that it also removes duplicate species names that are given. It only takes
+#'                species names, NOT genus or family names. If genus or other taxonomic ranks are given,
+#'                they are ignored.
+#'
+#' @return A dataframe with 12 columns, including 'species' (string) that includes all
+#' synonyms of the binomial scientific name for each species supplied, and 'tsn'
+#' (integer) which is the NCBI taxonomic idientifier (so two synonyms for the
+#' same species will have the same single tsn), along with columns of other 
+#' taxonomic info (kingdom, phylum etc)
+
+#' @examples
+#' find_synonyms( "Betta splendens" )
+#' find_synonyms(c("Alectoris chukar", "Alectoris rufa", "Alle alle" , "Allactodipus bobrinskii" ))
+
+find_synonyms <- function( species ) {
+  
+  require(taxizedb)
+  
+  # Get taxonomic information 
+  
+  sql_integer_list <- function(x){
+    
+    if (any(is.na(x))) {
+      stop("Cannot pass NA into SQL query")
+    }
+    x <- as.character(x)
+    if (!all(grepl('^[0-9]+$', x, perl = TRUE))) {
+      stop("Found non-integer where integer required in SQL input")
+    }
+    paste(x, collapse = ", ")
+  }
+  
+  taxizedb::db_download_ncbi()
+  
+  src_ncbi <- taxizedb::src_ncbi()
+  
+  species <- unique( species )
+  
+  # create the empty final results dataframe
+  
+  results <- data.frame(
+    species = species,
+    found = rep( FALSE, length( species ) ),
+    tsn = rep( NA, length( species ) ),
+    accepted_name = rep( NA, length( species) ),
+    synonyms = rep( NA, length( species) ),
+    common_name = rep( NA, length( species ) ),
+    kingdom = rep( NA, length( species) ),
+    phylum = rep( NA, length( species) ),
+    class = rep( NA, length( species) ),
+    order = rep( NA, length( species) ),
+    family = rep( NA, length( species) ),
+    genus = rep( NA, length( species) ),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get the taxonomic IDs 
+  
+  # get NCBI IDs where available (NA if not available)
+  
+  species <- as.data.frame(species)
+  species$species <- as.character((species$species))
+  species_taxid <- sapply( species, taxizedb::name2taxid, out_type = "summary" )
+  species_taxid <- as.data.frame(do.call(cbind, species_taxid))
+  colnames(species_taxid) <- c("species", "tsn")
+  
+  # Add tsn ID to results dataframe
+  
+  results <- results %>%
+    dplyr::select(-tsn) %>%
+    merge(species_taxid, by = "species", all = TRUE) %>%
+    dplyr::select(species, found, tsn, everything())
+  
+  # load accepted names into the results dataframe
+  
+  for( tsn in na.omit( unique( results$tsn ) ) ) {
+    
+    classification <- taxizedb::classification( tsn )[[tsn]]
+    relevant_rows <- which( results$tsn == tsn )
+    
+    # set taxonomic information
+    if( 
+      is.data.frame( classification )
+      && length( relevant_rows ) != 0
+      && length(which(classification$rank == "kingdom")) != 0
+      && length(which(classification$rank == "phylum")) != 0
+      && length(which(classification$rank == "class")) != 0
+      && length(which(classification$rank == "order")) != 0
+      && length(which(classification$rank == "family")) != 0
+      && length(which(classification$rank == "genus")) != 0
+    ) {
+      results[relevant_rows, "kingdom" ] <- classification[[which(classification$rank == "kingdom"), "name"]]
+      results[relevant_rows, "phylum" ] <- classification[[which(classification$rank == "phylum"), "name"]]
+      results[relevant_rows, "class" ] <- classification[[which(classification$rank == "class"), "name"]]
+      results[relevant_rows, "order" ] <- classification[[which(classification$rank == "order"), "name"]]
+      results[relevant_rows, "family" ] <- classification[[which(classification$rank == "family"), "name"]]
+      results[relevant_rows, "genus" ] <- classification[[which(classification$rank == "genus"), "name"]]
+    }
+    
+    # set accepted name
+    if( 
+      is.data.frame( classification )
+      && length( relevant_rows ) != 0
+      && length(which(classification$rank == "species")) != 0
+    ) {
+      results[relevant_rows, "accepted_name" ] <- classification[[which(classification$rank == "species"), "name"]]
+      results[relevant_rows, "found" ] <- TRUE
+    }
+    
+    # set common name
+    common_names <- taxizedb::sql_collect(src_ncbi, paste0("SELECT * FROM names WHERE tax_id=", tsn, " AND name_class='common name'" ) )
+    results[which(results$tsn == tsn), "common_name" ] <- paste0( common_names$name_txt, collapse = ", " )
+    
+    # set synonyms
+    common_names <- taxizedb::sql_collect(src_ncbi, paste0("SELECT * FROM names WHERE tax_id=", tsn, " AND name_class='common name'" ) )
+    results[which(results$tsn == tsn), "common_name" ] <- paste0( common_names$name_txt, collapse = ", " )
+  }
+  
+  # Find synonyms
+  
+  # get the list of relevant ids
+  relevant_tsns <- na.omit( unique( results$tsn ) )
+  
+  # make a list of all the names available and tsns to match
+  query <- "SELECT * FROM names WHERE tax_id IN(%s) AND( name_class='scientific name' OR name_class='synonym')"
+  query <- sprintf(query, sql_integer_list( relevant_tsns ))
+  search_names <- taxizedb::sql_collect(src_ncbi, query)
+  
+  synonyms <- data.frame(
+    tsn = search_names$tax_id,
+    binomial = search_names$name_txt
+  )
+  
+  synonyms$binomial <- as.character(synonyms$binomial)
+  
+  synonyms <- synonyms %>%
+    merge(results, by = "tsn") %>%
+    dplyr::select(-species) %>%
+    dplyr::select(binomial, tsn, everything())
+  
+  # return( synonyms )
+  return( synonyms )
+  
+}
 
 # Standardise species databases ----
 
@@ -268,74 +451,37 @@ species_data <- species_data_with_sources %>%
 # species_data <- readRDS(file.path(outputs, 'draft_species_data.rds'))
 
 
-# TEMPORARY CODE - Run diagnostics on gaps in our database
+# (SLOW CODE) Get ecoregions for species missing them ----
 
-# What species do we not have ecoregions for?
-
-species_without_ecoregions <- species_data %>%
-                              filter(is.na(ecoregion_code)) %>%
-                              dplyr::select(tsn, accepted_binomial) %>%
-                              distinct(.)
-
-# What species do we not have a redlist status in any year for?
-
-species_without_redlist_status <- species_data %>%
-                                  dplyr::select(-redlist_assessment_year, 
-                                                genus, species) %>%
-                                  distinct(.) %>%
-                                  group_by(tsn) %>%
-                                  filter(all(is.na(redlist_status)))
-
-# What species do we have at least one redlist status for?
-
-species_with_redlist_status <- species_data %>%
-                               dplyr::select(-redlist_assessment_year, 
-                                            genus, species) %>%
-                               distinct(.) %>%
-                               group_by(tsn) %>%
-                               filter(!is.na(redlist_status)) %>%
-                               dplyr::select(-redlist_status) %>%
-                               distinct(.)
-
-# Double check we haven't incorrectly detected no redlist status (should be no
-# overlap between the two groups)
-                                
-overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
-any(overlap == TRUE)
-
-
-# Get missing ecoregions for extinct species ----
-
-#' TODO: Add the other species ranges too? Can we feed a list to the IUCN website?
+#' TODO: Add the other species ranges too? 
 
 # Get the ecoregion map & subset to required variables
 
-ecoregion_map <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-em_small <- ecoregion_map %>% dplyr::select(eco_code, ECO_NAME, geometry)
+ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
-# Get the range maps of extinct species
+## TEMPORARY CODE - just using extinct ranges for now as laptop can't manage
+## all species maps yet
 
-extinct_ranges <- st_read(paste(inputs,"redlist_extinct_species_range_maps", sep = "/"))
+species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps", 
+                                     ecoregion_map)
 
-# Get the ecoregions for each extinct species
+# Use this code when on server, doesn't work on laptop
 
-extinct_ranges_ecoregions <- st_join(extinct_ranges, em_small)
+# range_directories <- c("redlist_extinct_species_range_maps",
+#                        "redlist_reptile_range_maps", 
+#                        "redlist_amphibian_range_maps",
+#                        "redlist_mammal_range_maps" )
+# 
+# species_ecoregions <- list()
+# 
+# for (i in seq_along(range_directories)) {
+#   
+#   species_ecoregions[[i]] <- get_ecoregions(range_directories[i], em_small)
+#   
+# }
 
-# Add this information to the species data.  We want to fill in the gaps
-# of the missing ecoregion data for the extinct species, but also add any
-# additional extinct species to our species data
-
-extinct_species_w_ecoregions <- as.data.frame(extinct_ranges_ecoregions %>%
-                                dplyr::select(BINOMIAL, eco_code)) %>%
-                                dplyr::select(-geometry) %>%
-                                dplyr::rename(binomial = BINOMIAL) %>%
-                                dplyr::rename(ecoregion_code = eco_code) %>%
-                                dplyr::mutate(source = "iucn_redlist") %>%
-                                dplyr::mutate(redlist_status = "EX") %>%
-                                dplyr::mutate(ecoregion_code = as.character(ecoregion_code))
-
-
-#' TODO: Work out best way to fill in the missing ecoregion codes
+#' TODO: Add the tsn etc and merge with the species data
 
 ## Current approach: Merge the two sources and create a new column which is a
 ## patchwork of different sources.  If this turns out to be a good approach,
@@ -351,6 +497,41 @@ long_species_data <- long_species_data  %>%
                                    ecoregion_code.y, ecoregion_code.x))
 
 
+
+# TEMPORARY CODE - Run diagnostics on gaps in our database
+
+# What species do we not have ecoregions for?
+
+species_without_ecoregions <- species_data %>%
+  filter(is.na(ecoregion_code)) %>%
+  dplyr::select(tsn, accepted_binomial) %>%
+  distinct(.)
+
+# What species do we not have a redlist status in any year for?
+
+species_without_redlist_status <- species_data %>%
+  dplyr::select(-redlist_assessment_year, 
+                genus, species) %>%
+  distinct(.) %>%
+  group_by(tsn) %>%
+  filter(all(is.na(redlist_status)))
+
+# What species do we have at least one redlist status for?
+
+species_with_redlist_status <- species_data %>%
+  dplyr::select(-redlist_assessment_year, 
+                genus, species) %>%
+  distinct(.) %>%
+  group_by(tsn) %>%
+  filter(!is.na(redlist_status)) %>%
+  dplyr::select(-redlist_status) %>%
+  distinct(.)
+
+# Double check we haven't incorrectly detected no redlist status (should be no
+# overlap between the two groups)
+
+overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
+any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
 # Calculate summary statistics ----
 
 #' TODO: Add ecoregion name above so it is included in the species_data

@@ -9,6 +9,8 @@
 ## but aims to be as complete as possible), and their red list status, and
 ## 2. Summary statistics of number of species and number of extinct species
 
+#' TODO: Remove objects when they are no longer needed
+
 # Packages ----
 
 library(raster)
@@ -219,11 +221,9 @@ find_synonyms <- function( species ) {
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
 # database)
 
-#' TODO: Figure out best way to get missing ecoregions & status (pull ranges from RL website?)
 #' TODO: Add ecoregion names to species_data (NB - this makes object size too large)
 #' TODO: Find out what year wildfinder RL status is from
 #' TODO: Figure out if there's a way to load the tables directly from the .mdb
-#' 
 
 
 # Load the wildfinder data
@@ -548,6 +548,7 @@ species_with_redlist_status <- species_data %>%
 
 overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
 any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
+
 # Calculate summary statistics ----
 
 #' TODO: Add ecoregion name above so it is included in the species_data

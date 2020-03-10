@@ -1,5 +1,6 @@
 # https://stackoverflow.com/questions/13070706/how-to-connect-r-with-access-database-in-64-bit-window
 
+# cd C:\\Users\\ssteven\\Dropbox\\Deakin\\Chapter_2_Extinction_test\\Extinction_test_code
 
 # Using R version 3.5.2
 

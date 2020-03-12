@@ -11,6 +11,7 @@
 ## 2. Summary statistics of number of species and number of extinct species
 
 #' TODO: Remove objects when they are no longer needed
+#' TODO: Important - use packrat or something to save version of taxizedb
 
 # Packages ----
 
@@ -20,13 +21,17 @@ library(stringr)
 library(reshape2)
 library(sf)
 library(spData)
-library(taxize)
+#library(taxize)
+# devtools::install_github("ropensci/taxizedb") # version 0.1.9.9130
+library(taxizedb)
 library(functionaltraits)
 
 # Input and output locations ----
 
-inputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/inputs"
-outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+save_outputs <- "yes"
+date <- Sys.Date()
 
 # Functions ----
 
@@ -36,19 +41,35 @@ outputs <- "N:/Quantitative-Ecology/Simone/Extinction_test/outputs"
 #' @param species directory name - a string that denotes the name of the directory
 #' where the species range maps are saved
 #' @param map sf object - the global wwf_teow map
+#' 
+
+
+map <- ecoregion_map
+species_directory_name <- range_directories[[2]]
+
 
 get_ecoregions <- function(species_directory_name, map) {
   
   range_map <- st_read(paste(inputs,species_directory_name, sep = "/"))
   
+  names(range_map) <- toupper(names(range_map)) # Make column names consistent
+  
+  range_map <- rename(range_map, geometry = GEOMETRY)
+  
   # Get the ecoregions for each species
   
   ranges_ecoregions <- st_join(range_map, map)
   
+  if(!is.null(ranges_ecoregions)) {
+    
+    print(paste("st_join complete for", species_directory_name, sep = " "))
+    
+  }
+  
   # Standardise the data so we can add it to the species data easily
   
   species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
-                                          dplyr::select(BINOMIAL, eco_code)) %>%
+                                        dplyr::select(BINOMIAL, eco_code)) %>%
     dplyr::select(-geometry) %>%
     dplyr::rename(binomial = BINOMIAL) %>%
     dplyr::rename(ecoregion_code = eco_code) %>%
@@ -56,9 +77,18 @@ get_ecoregions <- function(species_directory_name, map) {
     dplyr::mutate(redlist_status = "TBC") %>%
     dplyr::mutate(ecoregion_code = as.character(ecoregion_code))
   
+  if(!is.null(species_w_ecoregions)) {
+    
+    print(paste("finished adding ecoregions to", species_directory_name, sep = " "))
+    
+  }
+  
   return(species_w_ecoregions)
   
+
+  
 }
+
 
 #' Find traits and taxonomic information for a list of species
 #' 
@@ -85,6 +115,7 @@ get_ecoregions <- function(species_directory_name, map) {
 #' @examples
 #' find_synonyms( "Betta splendens" )
 #' find_synonyms(c("Alectoris chukar", "Alectoris rufa", "Alle alle" , "Allactodipus bobrinskii" ))
+#' TODO: Check if need to download other species too
 
 find_synonyms <- function( species ) {
   
@@ -250,6 +281,7 @@ ecoregions_species <- tables$ecoregion_species
 # Add common names, binomial scientific names, synonyms and tsn IDs
 
 common_names <- tables$common_names
+
 scientific_names <- as.data.frame(cbind(tables$redlist_species$wwf_species_id, 
                           tables$redlist_species$genus,
                           tables$redlist_species$species))
@@ -264,7 +296,6 @@ wildfinder_species <- wildfinder_species[,1]
 # Get synonyms
 
 wildfinder_species <- find_synonyms( wildfinder_species)
-
 
 wildfinder_database <-  ecoregions_species %>%
                         merge(common_names[c("species_id", "common_name")],
@@ -282,11 +313,11 @@ wildfinder_database <-  ecoregions_species %>%
 
 # Remove un-needed tables
 
-# rm(tables)
+rm(tables)
 
 # Clear memory by removing large objects
 
-# rm(redlist_species, common_names, ecoregions, ecoregions_species)
+rm(redlist_species, common_names)
 
 # Load Cooke database - more species per ecoregion
 
@@ -315,13 +346,13 @@ cooke_database <- cooke_database %>%
 
 ## Save full databases
 
-cooke_database_all <- cooke_database
-wildfinder_database_all <- wildfinder_database
-
-## Take a random sample subset
-
-wildfinder_database <- wildfinder_database_all[sample(nrow(wildfinder_database_all), 10000), ]
-cooke_database <- cooke_database_all[sample(nrow(cooke_database_all), 10000), ]
+# cooke_database_all <- cooke_database
+# wildfinder_database_all <- wildfinder_database
+# 
+# ## Take a random sample subset
+# 
+# wildfinder_database <- wildfinder_database_all[sample(nrow(wildfinder_database_all), 10000), ]
+# cooke_database <- cooke_database_all[sample(nrow(cooke_database_all), 10000), ]
 
 
 
@@ -446,9 +477,6 @@ species_data <- species_data_with_sources %>%
 
 ## Save the species_data while we are working on it
 
-# write_csv(species_data, paste(outputs, "draft_species_data.csv", sep = "/"))
-# saveRDS(species_data, paste(outputs, "draft_species_data.rds", sep = "/"))
-
 # species_data <- readRDS(file.path(outputs, 'draft_species_data.rds'))
 
 
@@ -472,20 +500,33 @@ species_ecoregions <- list(species_ecoregions)
 
 # Use this code when on server, doesn't work on laptop
 
-# range_directories <- c("redlist_extinct_species_range_maps",
-#                        "redlist_reptile_range_maps", 
-#                        "redlist_amphibian_range_maps",
-#                        "redlist_mammal_range_maps" )
-# 
-# species_ecoregions <- list()
-# 
-# for (i in seq_along(range_directories)) {
-#   
-#   species_ecoregions[[i]] <- get_ecoregions(range_directories[i], em_small)
-#   
-# }
-#
-# species_ecoregions <- do.call(rbind, species_ecoregions)
+
+range_directories <- c("redlist_extinct_species_range_maps",
+                       "redlist_reptile_range_maps",
+                       "redlist_amphibian_range_maps",
+                       "redlist_mammal_range_maps" )
+
+# extinct <- get_ecoregions(range_directories[[1]], ecoregion_map) # works
+# reptiles <- get_ecoregions(range_directories[[2]], ecoregion_map) # works
+# amphibians <- get_ecoregions(range_directories[[3]], ecoregion_map) # works
+# mammals <- get_ecoregions(range_directories[[4]], ecoregion_map) # works
+
+
+
+species_ecoregions <- list()
+
+for (i in seq_along(range_directories)) {
+
+ species_ecoregions[[i]] <- get_ecoregions(range_directories[[i]], 
+                                                     ecoregion_map)
+  
+ print(paste("processed", i, "of" , length(range_directories), 
+             "group range maps", sep = " "))
+
+}
+
+
+species_ecoregions <- do.call(rbind, species_ecoregions)
 
 
 # Get TSNs for the species
@@ -506,6 +547,15 @@ species_ecoregions <- species_ecoregions %>%
                                                        "found")], 
                             by = "binomial")
 
+
+if(save_outputs == "yes") {
+  
+write_csv(species_ecoregions, paste(outputs, "/", date, 
+                                    "_draft_species_ecoregions.csv", sep = ""))
+saveRDS(species_ecoregions, paste(outputs,"/", date, 
+                                  "_draft_species_ecoregions.rds", sep = ""))
+}
+
 ## Add the new ecoregions to our species data
 
 species_data <- species_data %>%
@@ -515,34 +565,59 @@ species_data <- species_data %>%
                                                  ecoregion_code.y)) %>%
                 dplyr::select(-c(ecoregion_code.x, ecoregion_code.y))
 
+if(save_outputs == "yes") {
+  
+  write_csv(species_data, paste(outputs, "/", date, "_draft_species_data.csv", sep = ""))
+  saveRDS(species_data, paste(outputs,"/", date, "_draft_species_data.rds", sep = ""))
+  
+}
+
+
+
+rm(species_ecoregions, species_ecoregions_names)
+
 # TEMPORARY CODE - Run diagnostics on gaps in our database
 
 # What species do we not have ecoregions for?
 
 species_without_ecoregions <- species_data %>%
-  filter(is.na(ecoregion_code)) %>%
-  dplyr::select(tsn, accepted_binomial) %>%
-  distinct(.)
+                              filter(is.na(ecoregion_code)) %>%
+                              dplyr::select(tsn, accepted_binomial) %>%
+                              distinct(.)
+
+if(save_outputs == "yes") {
+  
+  write_csv(species_without_ecoregions, paste(outputs, "/", date, "_species_without_ecoregions.csv", sep = ""))
+  saveRDS(species_without_ecoregions, paste(outputs,"/", date, "_species_without_ecoregions.rds", sep = ""))
+  
+}
 
 # What species do we not have a redlist status in any year for?
 
 species_without_redlist_status <- species_data %>%
-  dplyr::select(-redlist_assessment_year, 
-                genus, species) %>%
-  distinct(.) %>%
-  group_by(tsn) %>%
-  filter(all(is.na(redlist_status)))
+                                  dplyr::select(-redlist_assessment_year, 
+                                                genus, species) %>%
+                                  distinct(.) %>%
+                                  group_by(tsn) %>%
+                                  filter(all(is.na(redlist_status)))
+
+if(save_outputs == "yes") {
+  
+  write_csv(species_without_redlist_status, paste(outputs, "/", date, "_species_without_redlist_status.csv", sep = ""))
+  saveRDS(species_without_redlist_status, paste(outputs,"/", date, "_species_without_redlist_status.rds", sep = ""))
+  
+}
 
 # What species do we have at least one redlist status for?
 
 species_with_redlist_status <- species_data %>%
-  dplyr::select(-redlist_assessment_year, 
-                genus, species) %>%
-  distinct(.) %>%
-  group_by(tsn) %>%
-  filter(!is.na(redlist_status)) %>%
-  dplyr::select(-redlist_status) %>%
-  distinct(.)
+                               dplyr::select(-redlist_assessment_year, 
+                                              genus, species) %>%
+                               distinct(.) %>%
+                               group_by(tsn) %>%
+                               filter(!is.na(redlist_status)) %>%
+                               dplyr::select(-redlist_status) %>%
+                               distinct(.)
 
 # Double check we haven't incorrectly detected no redlist status (should be no
 # overlap between the two groups)
@@ -557,35 +632,52 @@ any(overlap == TRUE) # The correct output to console should be FALSE (no overlap
 # Get the number of species in each ecoregion
 
 
-species_by_ecoregion <- long_species_data %>%
-                        group_by(merged_ecoregion_code) %>%
-                        summarize(n_distinct(binomial))
+species_by_ecoregion <- species_data %>%
+                        group_by(ecoregion_code) %>%
+                        summarize(n_distinct(tsn))
 
-names(species_by_ecoregion) <- c("merged_ecoregion_code", "number_of_species")
+
+names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
+
+
 
 
 # Get number of extinct species (grouping by ecoregion doesn't work well yet bc
 # most extinct species haven't been assigned an ecoregion - TBD)
 
-extinct_species <- long_species_data %>%
-                   filter(redlist_status.x == "EX")  %>%
-                   group_by(merged_ecoregion_code) %>%
-                   summarise(n_distinct(binomial)) 
+extinct_species <- species_data %>%
+                   filter(redlist_status == "EX")  %>%
+                   group_by(ecoregion_code) %>%
+                   summarise(n_distinct(tsn)) 
 
-names(extinct_species) <- c("merged_ecoregion_code", "number_of_species_extinct")
+names(extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
 
+if(save_outputs == "yes") {
+  
+  write_csv(extinct_species, paste(outputs, "/", date, "_extinct_species.csv", sep = ""))
+  saveRDS(extinct_species, paste(outputs,"/", date, "_extinct_species.rds", sep = ""))
+  
+}
 
 proportion_extinct <- species_by_ecoregion %>%
                       merge(extinct_species, 
-                            by = "merged_ecoregion_code", all = TRUE) %>%
-                      dplyr::mutate(proportion_extinct = number_of_species_extinct/number_of_species) 
+                            by = "ecoregion_code", all = TRUE) %>%
+                      dplyr::mutate(proportion_extinct = 
+                                    number_of_species_extinct/number_of_species) 
 
 
 # Visualise summary stats ----
 
-extinction_map_data <- inner_join(em_small, proportion_extinct[
-  c("merged_ecoregion_code", "number_of_species_extinct")], 
-                             by = c("eco_code" = "merged_ecoregion_code"))
+if(save_outputs == "yes") {
+  
+  objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
+  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+  
+}
+
+extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
+                        c("ecoregion_code", "number_of_species_extinct")], 
+                        by = c("eco_code" = "ecoregion_code"))
 
 extinction_map <- ggplot(extinction_map_data) +
                   geom_sf(aes(fill = number_of_species_extinct)) +
@@ -593,3 +685,25 @@ extinction_map <- ggplot(extinction_map_data) +
 
 extinction_map
 
+dev.off()
+
+
+if(save_outputs == "yes"){
+  
+  objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
+  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+  
+}
+
+
+species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
+                    c("ecoregion_code", "number_of_species")], 
+                    by = c("eco_code" = "ecoregion_code"))
+
+species_map <- ggplot(species_map_data) +
+               geom_sf(aes(fill = number_of_species)) +
+               scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+species_map
+
+dev.off()

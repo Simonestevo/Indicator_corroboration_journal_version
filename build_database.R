@@ -30,7 +30,7 @@ library(functionaltraits)
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "yes"
+save_outputs <- "no"
 date <- Sys.Date()
 
 # Functions ----
@@ -479,6 +479,10 @@ species_data <- species_data_with_sources %>%
 
 # species_data <- readRDS(file.path(outputs, 'draft_species_data.rds'))
 
+## load it back up
+
+# species_data <- readRDS('N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-03-12_draft_species_data.rds')
+
 
 # (SLOW CODE) Get ecoregions for species missing them ----
 
@@ -555,6 +559,8 @@ write_csv(species_ecoregions, paste(outputs, "/", date,
 saveRDS(species_ecoregions, paste(outputs,"/", date, 
                                   "_draft_species_ecoregions.rds", sep = ""))
 }
+
+# species_ecoregions <- readRDS('N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-03-12_draft_species_ecoregions.rds')
 
 ## Add the new ecoregions to our species data
 
@@ -639,6 +645,12 @@ species_by_ecoregion <- species_data %>%
 
 names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 
+# Get the number of species with each redlist status
+
+species_by_redlist_status <- species_data %>%
+                             group_by(redlist_status) %>%
+                             summarize(n_distinct(tsn))
+
 
 
 
@@ -651,6 +663,14 @@ extinct_species <- species_data %>%
                    summarise(n_distinct(tsn)) 
 
 names(extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
+
+
+extinct_wild_species <- species_data %>%
+                        filter(redlist_status == "EX" | redlist_status == "EW")  %>%
+                        group_by(ecoregion_code) %>%
+                        summarise(n_distinct(tsn)) 
+
+names(extinct_wild_species) <- c("ecoregion_code", "number_of_species_extinct")
 
 if(save_outputs == "yes") {
   

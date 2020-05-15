@@ -248,6 +248,42 @@ find_synonyms <- function( species ) {
   
 }
 
+# Join ecoregion and country data ----
+
+## This will allow us to subset the data by country for development or analysis
+
+# Get the ecoregion map & subset to required variables
+
+ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
+
+if(!("ecoregion_country_data.rds" %in% list.files(outputs))) {
+
+country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/"))
+
+# Check how it deals with ecoregions not entirely within countries
+
+ecoregion_country_sf <-  st_join(ecoregion_map, country_map)
+
+ecoregion_country_map <- ggplot() +
+                         geom_sf(data = ecoregion_country_sf, aes(fill = ECO_NAME)) +
+                         scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+ggsave("N:/Quantitative-Ecology/Simone/extinction_test/ecoregion_country_map.pdf",
+       ecoregion_country_map, device = "pdf")
+
+ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
+                                      dplyr::select(-geometry) %>%
+                                      arrange(OBJECTID)
+
+saveRDS(ecoregion_country_df, file = paste(outputs, "ecoregion_country_data.rds", sep = "/"))
+
+} else {
+  
+ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", sep = "/"))
+
+}
+
 # Standardise species databases ----
 
 # Load tables from WildFinder database (converted into .xlsx files from .mdb 
@@ -489,10 +525,6 @@ species_data <- species_data_with_sources %>%
 #' TODO: Check this is working correctly - how does it cope with one species
 #' in multiple ecoregions?
 
-# Get the ecoregion map & subset to required variables
-
-ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
 ## TEMPORARY CODE - just using extinct ranges for now as laptop can't manage
 ## all species maps yet

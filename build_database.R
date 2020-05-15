@@ -32,6 +32,7 @@ inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 save_outputs <- "no"
 date <- Sys.Date()
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 
 # Functions ----
 
@@ -44,8 +45,8 @@ date <- Sys.Date()
 #' 
 
 
-map <- ecoregion_map
-species_directory_name <- range_directories[[2]]
+# map <- ecoregion_map
+# species_directory_name <- range_directories[[2]]
 
 
 get_ecoregions <- function(species_directory_name, map) {
@@ -251,6 +252,7 @@ find_synonyms <- function( species ) {
 # Join ecoregion and country data ----
 
 ## This will allow us to subset the data by country for development or analysis
+#' TODO: Figure out why giving duplicates (probably bc same ecoregion occurs in multiple places?)
 
 # Get the ecoregion map & subset to required variables
 
@@ -281,6 +283,16 @@ saveRDS(ecoregion_country_df, file = paste(outputs, "ecoregion_country_data.rds"
 } else {
   
 ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", sep = "/"))
+
+}
+
+# If subsetting by country, get the ecoregion IDs you want to work with ----
+
+if (!is.na(country)) {
+  
+ecoregion_subset <- ecoregion_country_df %>%
+                    filter(CNTRY_NAME == country) %>%
+                    unique(.)
 
 }
 
@@ -344,7 +356,7 @@ wildfinder_database <-  ecoregions_species %>%
                         mutate(binomial = paste(genus, species, sep = " ")) %>%
                         mutate(source = "WildFinder") %>%
                         mutate(wwf_species_id = as.numeric(wwf_species_id)) %>%
-                        merge(wildfinder_species[c("binomial", "tsn", "accepted_name")])
+                        merge(wildfinder_species[c("binomial", "tsn", "accepted_name", "class")])
 
 
 # Remove un-needed tables
@@ -354,6 +366,18 @@ rm(tables)
 # Clear memory by removing large objects
 
 rm(redlist_species, common_names)
+
+# Subset the wildfinder database by country ----
+
+if (!is.na(country)) {
+  
+  full_WF_database <- wildfinder_database
+  
+  country_ecoregions <- ecoregion_subset$eco_code
+  
+  wildfinder_database <- full_WF_database[full_WF_database$ecoregion_code %in% country_ecoregions, ]
+  
+}
 
 # Load Cooke database - more species per ecoregion
 
@@ -372,7 +396,20 @@ cooke_species <- find_synonyms(cooke_species)
 cooke_database <- cooke_database %>%
                   dplyr::mutate(source = "Cooke et al 2019") %>%
                   dplyr::rename(ecoregion_code = eco) %>%
-                  merge(cooke_species[c("binomial", "tsn", "accepted_name")])
+                  merge(cooke_species[c("binomial", "tsn", "accepted_name", "class")])
+
+
+# Subset the cooke database by country ----
+
+if (!is.na(country)) {
+  
+ full_cooke_database <- cooke_database
+  
+ country_ecoregions <- ecoregion_subset$eco_code
+  
+ cooke_database <- full_cooke_database[full_cooke_database$ecoregion_code %in% country_ecoregions, ]
+  
+}
 
 
 # TEMPORARY CODE - subset data to make it manageable ----
@@ -398,8 +435,8 @@ cooke_database <- cooke_database %>%
                   merge(wildfinder_database[c("wwf_species_id","common_name","genus", 
                                               "species", "tsn")], by = "tsn", all.x = TRUE) %>%
                   dplyr::select("binomial", "wwf_species_id", "common_name", "ecoregion_code",
-                                "genus", "species", "source", "tsn", "accepted_name" ) %>%
-                  distinct(.)
+                                "class", "genus", "species", "source", "tsn", "accepted_name" ) %>%
+                  distinct(.) 
 
 # Load the red list data from Henriques et al 2020
 
@@ -432,7 +469,7 @@ amphibians <- amphibians %>%
               dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
               dplyr::select(-c(Genus, Species)) %>%
               set_names(c("2004", "2008", "group", "redlist_source", "binomial")) %>%
-              dplyr::select("binomial","group","2004", "2008", "redlist_source")
+              dplyr::select("binomial","group","2004", "2008", "redlist_source") 
 
 birds <- group_tables[[2]]
 
@@ -475,7 +512,7 @@ species_redlist <- species_redlist %>%
                         value.name = "redlist_status") %>%
                    rename(redlist_assessment_year = variable) %>% 
                    merge(redlist_species[c("binomial", "tsn", "accepted_name", 
-                                           "common_name")])
+                                           "common_name", "class")])
 
 
 # Merge databases ----
@@ -486,8 +523,10 @@ merged_databases <- rbind(wildfinder_database, cooke_database)
 
 # Add red list status and year to the merged databases.
 
+if (!is.na(country)) {
+
 species_data_with_sources <- merged_databases %>%
-                             merge(species_redlist, by = "tsn", all = TRUE) %>%
+                             merge(species_redlist, by = "tsn", all = FALSE) %>% 
                              mutate(source = coalesce(source, redlist_source)) %>%
                              mutate(binomial = coalesce(binomial.x, binomial.y)) %>%
                              mutate(accepted_name = coalesce(accepted_name.x, 
@@ -497,6 +536,22 @@ species_data_with_sources <- merged_databases %>%
                              dplyr::select(-c(binomial.x, binomial.y, 
                                               accepted_name.x, accepted_name.y, 
                                                common_name.x, common_name.y))
+
+} else {
+  
+species_data_with_sources <- merged_databases %>%
+                             merge(species_redlist, by = "tsn", all = TRUE) %>% 
+                             mutate(source = coalesce(source, redlist_source)) %>%
+                             mutate(binomial = coalesce(binomial.x, binomial.y)) %>%
+                             mutate(accepted_name = coalesce(accepted_name.x, 
+                                                                accepted_name.y)) %>%
+                             mutate(common_name = coalesce(common_name.x, 
+                                                              common_name.y)) %>%
+                             dplyr::select(-c(binomial.x, binomial.y, 
+                                                 accepted_name.x, accepted_name.y, 
+                                                 common_name.x, common_name.y))
+  
+}
 
 # Consolidate duplicates ----
 
@@ -759,3 +814,61 @@ species_map <- ggplot(species_map_data) +
 species_map
 
 dev.off()
+
+# Calculate the redlist index ----
+
+species_data_by_ecoregion <- split(species_data, species_data$ecoregion_code)
+
+data <- species_data_by_ecoregion[[1]]
+
+calculate_red_list_index <- function(data, timeframe){
+  
+  require(tidyverse)
+  
+  # Remove data without RL status
+  
+  data$redlist_assessment_year <- as.numeric(as.character(data$redlist_assessment_year))
+  
+  data <- data %>%
+          filter(!is.na(redlist_status)) %>%
+          group_by(tsn) 
+  # %>%
+    #      filter(redlist_assessment_year == max(redlist_assessment_year))
+  
+  # Assign category weights
+  
+  weighted_data <- data %>%
+                   dplyr::mutate(RL_weight = ifelse(redlist_status == "LC", 0,
+                                 ifelse(redlist_status == "NT", 1,
+                                 ifelse(redlist_status == "VU", 2,
+                                 ifelse(redlist_status == "EN", 3,
+                                 ifelse(redlist_status == "CR", 4,
+                                 ifelse(redlist_status == "EX", 5, "NA"))))))) 
+  
+  weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
+  
+  # Filter out rows with NE and DD
+  weighted_data <- filter(weighted_data, RL_weight != "NA" )
+  
+  # Calculate numerical weights for each species based on risk category
+  # weight.data <- calcWeights(filter.data, RL_weight)
+  # weight.data <- drop_na(weight.data, .data[[RL_weight]])
+  
+  # Group data so the index is calculated for each taxa for each year
+  grouped.data <- weighted_data %>% group_by(class, redlist_assessment_year)
+  
+  # Sum category weights for each group, calculate number of species per group
+  summed.weights <- summarise(grouped.data, 
+                              total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
+                              total.count = n()) # calc number of species
+  
+  # Calculate RLI scores for each group, rounded to 3 decimal places
+  index.scores <- mutate(summed.weights, 
+                         RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
+                         Criteria = "risk") 
+  
+  index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
+  
+  return(index.scores)
+  
+}

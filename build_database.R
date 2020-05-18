@@ -33,7 +33,7 @@ inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 save_outputs <- "no"
 date <- Sys.Date()
-country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 
 # Functions ----
 
@@ -686,21 +686,31 @@ if(!("species_ecoregions_synonyms.rds" %in% list.files(outputs))) {
   
 }
 
-species_ecoregions <- species_ecoregions %>%
-                      merge(species_ecoregions_names[c("binomial", "tsn", 
-                                                       "found")], 
-                            by = "binomial")
 
-
-if(save_outputs == "yes") {
+if(!("2020-03-12_draft_species_ecoregions.rds" %in% list.files(outputs))) { 
   
-write_csv(species_ecoregions, paste(outputs, "/", date, 
-                                    "_draft_species_ecoregions.csv", sep = ""))
-saveRDS(species_ecoregions, paste(outputs,"/", date, 
-                                  "_draft_species_ecoregions.rds", sep = ""))
+  species_ecoregions <- species_ecoregions %>%
+                        merge(species_ecoregions_names[c("binomial", "tsn", 
+                                                         "found")], 
+                              by = "binomial")
+  
+  
+  if(save_outputs == "yes") {
+    
+    write_csv(species_ecoregions, paste(outputs, "/", date, 
+                                        "_draft_species_ecoregions.csv", sep = ""))
+    saveRDS(species_ecoregions, paste(outputs,"/", date, 
+                                      "_draft_species_ecoregions.rds", sep = ""))
+  }
+  
+                                            
+} else {
+  
+  
+  species_ecoregions <- readRDS(paste(outputs, "2020-03-12_draft_species_ecoregions.rds", sep = "/"))
+  
+  
 }
-
-# species_ecoregions <- readRDS('N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-03-12_draft_species_ecoregions.rds')
 
 ## Add the new ecoregions to our species data
 
@@ -711,6 +721,8 @@ species_data <- species_data %>%
                                                  ecoregion_code.y)) %>%
                 dplyr::select(-c(ecoregion_code.x, ecoregion_code.y))
 
+save_outputs <- "yes"
+
 if(save_outputs == "yes") {
   
   write_csv(species_data, paste(outputs, "/", date, "_draft_species_data.csv", sep = ""))
@@ -718,7 +730,7 @@ if(save_outputs == "yes") {
   
 }
 
-
+save_outputs <- "no"
 
 rm(species_ecoregions, species_ecoregions_names)
 
@@ -870,6 +882,16 @@ rm(species_ecoregions, species_ecoregions_names)
 
 # Calculate the redlist index ----
 
+test_subset <- species_data[1:100,]
+head(test_subset)
+lapply(test_subset, class)
+
+species_data_full <- species_data
+
+species_data <- species_data_full %>% 
+        filter(class.x == "Aves") %>%
+        filter(redlist_assessment_year == 2016)
+
 species_data_by_ecoregion <- split(species_data, species_data$ecoregion_code)
 
 #data <- species_data_by_ecoregion[[1]]
@@ -935,7 +957,7 @@ calculate_red_list_index <- function(data, timeframe){
 
 rli_by_ecoregion <- list()
 
-for (i in seq_along(species_data)) {
+for (i in seq_along(species_data_by_ecoregion)) {
   
   rli_by_ecoregion[[i]] <- calculate_red_list_index(species_data_by_ecoregion[[i]])
   
@@ -945,32 +967,62 @@ for (i in seq_along(species_data)) {
 
 rli_by_ecoregion_df <- do.call(rbind, rli_by_ecoregion)
 
+birds_rli_by_ecoregion_2016 <- rli_by_ecoregion_df
+
 # Tidy data, remove species without a class assigned and split RLI values by taxa
 
-rli_by_ecoregion_df <- rli_by_ecoregion_df %>%
-                       filter(!is.na(class.x)) %>%
-                       group_by(Ecoregion_code, class.x) 
-
-rli_by_ecoregion_taxa <- split(rli_by_ecoregion_df, rli_by_ecoregion_df$class.x)
-
-# Use birds as example and take most recent timestep
-
-birds_rli_by_ecoregion <- rli_by_ecoregion_taxa[[2]]
-
-birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion %>%
-                               filter(redlist_assessment_year == 2016)
+# rli_by_ecoregion_df <- rli_by_ecoregion_df %>%
+#                        filter(!is.na(class.x)) %>%
+#                        group_by(Ecoregion_code, class.x) 
+# 
+# rli_by_ecoregion_taxa <- split(rli_by_ecoregion_df, rli_by_ecoregion_df$class.x)
+# 
+# # Use birds as example and take most recent timestep
+# 
+# birds_rli_by_ecoregion <- rli_by_ecoregion_taxa[[2]]
+# 
+birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
+                               #filter(redlist_assessment_year == 2016) %>%
+                               #rename(eco_code = Ecoregion_code) %>%
+                               filter( RLI > 0.2)
 
 # Map the Red List Index ----
 
+ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
+all_map_data_temp <- ecoregion_map_data_no_geometry
+
+ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
+                                  select(eco_code, ECO_NAME) %>%
+                                  distinct(.)
+
+birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
+                               merge(ecoregion_map_data_no_geometry[c("eco_code", "ECO_NAME")], 
+                               all = TRUE) %>%
+                               distinct(.)
+      
+
 rli_map_data <- inner_join(ecoregion_map, birds_rli_by_ecoregion_2016[
-                          c("Ecoregion_code", "RLI")], 
-                          by = c("eco_code" = "Ecoregion_code"))
+                          c("eco_code", "RLI")], 
+                          by = "eco_code")
+
+rli_map_data <- rli_map_data %>%
+                      filter(RLI > 0.9)
 
 rli_map <- ggplot(rli_map_data) +
-           geom_sf(aes(fill = RLI)) +
-           scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+           geom_sf(aes(fill = RLI), colour = "black", 
+                   size = 0.05) +
+           #scale_fill_viridis_c(trans = "sqrt", alpha = .4) +
+          scale_fill_viridis_c(alpha = .4) +         
+          theme(axis.line = element_line(),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),
+                #panel.border = element_blank(),
+                panel.background = element_blank()) +
+                labs(fill = "Red List Index (Birds)")
 
 rli_map
+
+ggsave(paste(outputs, "rli_birds_map.png", sep = "/"), rli_map,  device = "png")
 
 # Read in the Human Footprint Index data ----
 
@@ -999,36 +1051,67 @@ hfp_map_data <- inner_join(ecoregion_map, hfp_by_ecoregion_2017[
                 c("ECO_NAME", "ECO_ID", "HFP")], 
                 by = c("ECO_NAME" = "ECO_NAME"))
 
-hfp_map <- ggplot(hfp_map_data) +
-            geom_sf(aes(fill = HFP)) +
-            scale_fill_viridis_c(trans = "sqrt", alpha = .4)
 
-hfp_map
+test <- ggplot(hfp_map_data) +
+        geom_sf(aes(fill = HFP), colour = "black", 
+                size = 0.05) +
+        scale_fill_viridis_c(trans = "sqrt", alpha = .4) +
+ # scale_fill_viridis_c(option = "B", direction = -1, limits = c(10, 50)) +     
+  theme(axis.line = element_line(colour = "black"),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.border = element_blank(),
+              panel.background = element_blank()) +
+        labs(fill = "Human Footprint Index")
+
+
+test
+
+ggsave(paste(outputs, "hfp_map.png", sep = "/"), test,  device = "png")
+
 
 # Check distribution of both indicators ----
 
 hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
 
-ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
+
 
 hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
   dplyr::select(eco_code, ECO_NAME, HFP) %>%
-  rename(Ecoregion_code = eco_code) %>%
+ # rename(Ecoregion_code = eco_code) %>%
   distinct(.)
 
 scale_to_1 <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
 
 indicator_values <- birds_rli_by_ecoregion_2016 %>%
-                    dplyr::select(Ecoregion_code, RLI) %>%
-                    merge(hfp_by_ecoregion_2017_new[c("Ecoregion_code", "HFP")], 
+                    dplyr::select(eco_code, RLI) %>%
+                    merge(hfp_by_ecoregion_2017_new[c("eco_code", "HFP")], 
                           all = TRUE,
-                          by = "Ecoregion_code") %>%
+                          by = "eco_code") %>%
                     mutate(HFP_scaled = scale_to_1(HFP)) 
-                    
+
+objectname <- paste("hfp_rli_scatterplot",".tiff",sep="")
+
+tiff(file = (paste(outputs,objectname, sep = "/")), units="in", 
+     width=10, height=5, res=100)
+
+hfp_rli_plot <- plot(indicator_values$RLI, indicator_values$HFP_scaled,xlab = "Red List Index by ecoregion", 
+     ylab = "Human Footprint Index by ecoregion (scaled)")
+
+hfp_rli_plot
+
+dev.off()
 
 model <- lm(RLI ~ HFP_scaled, data = indicator_values)
 
 model
+
+plot(RLI ~ HFP_scaled, data = indicator_values, pch = 16, cex = 1.3, 
+     col = "blue", xlab = "Red List Index by ecoregion", 
+     ylab = "Human Footprint Index by ecoregion (scaled)")
+abline(model)
+
+
 
 model_diag_metrics <- augment(model)
 

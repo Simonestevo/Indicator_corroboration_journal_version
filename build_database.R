@@ -344,7 +344,19 @@ wildfinder_species <- wildfinder_species[,1]
 
 # Get synonyms
 
+if(!("wildfinder_species_synonyms.rds" %in% list.files(outputs))) { 
+  
 wildfinder_species <- find_synonyms( wildfinder_species)
+
+saveRDS(wildfinder_species, file = paste(outputs, 
+                                         "wildfinder_species_synonyms.rds", sep = "/"))
+
+} else {
+
+
+wildfinder_species <- readRDS(paste(outputs, "wildfinder_species_synonyms.rds", sep = "/"))
+
+}
 
 wildfinder_database <-  ecoregions_species %>%
                         merge(common_names[c("species_id", "common_name")],
@@ -390,7 +402,21 @@ cooke_species <- cooke_database %>%
 cooke_species$binomial <- as.character(cooke_species$binomial)
 cooke_species <- cooke_species[,1]
 
-cooke_species <- find_synonyms(cooke_species)
+if(!("cooke_species_synonyms.rds" %in% list.files(outputs))) { 
+  
+  cooke_species <- find_synonyms(cooke_species)
+  
+  saveRDS(cooke_species, file = paste(outputs, "cooke_species_synonyms.rds", 
+                                      sep = "/"))
+  
+} else {
+  
+  
+  cooke_species <- readRDS(paste(outputs, "cooke_species_synonyms.rds", sep = "/"))
+
+}
+
+
 
 ## standardise columns to match species_df
 
@@ -502,7 +528,21 @@ redlist_species$binomial <- as.character(redlist_species$binomial)
 redlist_species <- unname(unlist(redlist_species[,1]))
 redlist_species <- redlist_species[!is.na(redlist_species)]
 
-redlist_species <- find_synonyms(redlist_species)
+if(!("henrique_species_synonyms.rds" %in% list.files(outputs))) { 
+  
+  redlist_species <- find_synonyms(redlist_species)
+  
+  saveRDS(redlist_species, file = paste(outputs, "henrique_species_synonyms.rds", 
+                                      sep = "/"))
+  
+} else {
+  
+  
+  redlist_species <- readRDS(paste(outputs, "henrique_species_synonyms.rds", sep = "/"))
+  
+}
+
+
 
 # Order columns, drop group variable and melt in to long format
 
@@ -632,7 +672,19 @@ species_ecoregions_names <- unname(unlist(species_ecoregions_names[,1]))
 
 species_ecoregions_names <- species_ecoregions_names[!is.na(species_ecoregions_names)]
 
-species_ecoregions_names <- find_synonyms(species_ecoregions_names)
+if(!("species_ecoregions_synonyms.rds" %in% list.files(outputs))) { 
+  
+  species_ecoregions_names <- find_synonyms((species_ecoregions_names)
+  
+  saveRDS(redlist_species, file = paste(outputs, "species_ecoregions_synonyms.rds", 
+                                        sep = "/"))
+  
+} else {
+  
+  
+  species_ecoregion_names <- readRDS(paste(outputs, "species_ecoregions_synonyms.rds", sep = "/"))
+  
+}
 
 species_ecoregions <- species_ecoregions %>%
                       merge(species_ecoregions_names[c("binomial", "tsn", 

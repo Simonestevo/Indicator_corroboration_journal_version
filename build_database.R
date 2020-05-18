@@ -25,6 +25,7 @@ library(spData)
 # devtools::install_github("ropensci/taxizedb") # version 0.1.9.9130
 library(taxizedb)
 library(functionaltraits)
+library(broom)
 
 # Input and output locations ----
 
@@ -673,153 +674,153 @@ rm(species_ecoregions, species_ecoregions_names)
 
 # What species do we not have ecoregions for?
 
-species_without_ecoregions <- species_data %>%
-                              filter(is.na(ecoregion_code)) %>%
-                              dplyr::select(tsn, accepted_binomial) %>%
-                              distinct(.)
-
-if(save_outputs == "yes") {
-  
-  write_csv(species_without_ecoregions, paste(outputs, "/", date, "_species_without_ecoregions.csv", sep = ""))
-  saveRDS(species_without_ecoregions, paste(outputs,"/", date, "_species_without_ecoregions.rds", sep = ""))
-  
-}
-
-# What species do we not have a redlist status in any year for?
-
-species_without_redlist_status <- species_data %>%
-                                  dplyr::select(-redlist_assessment_year, 
-                                                genus, species) %>%
-                                  distinct(.) %>%
-                                  group_by(tsn) %>%
-                                  filter(all(is.na(redlist_status)))
-
-if(save_outputs == "yes") {
-  
-  write_csv(species_without_redlist_status, paste(outputs, "/", date, "_species_without_redlist_status.csv", sep = ""))
-  saveRDS(species_without_redlist_status, paste(outputs,"/", date, "_species_without_redlist_status.rds", sep = ""))
-  
-}
-
-# What species do we have at least one redlist status for?
-
-species_with_redlist_status <- species_data %>%
-                               dplyr::select(-redlist_assessment_year, 
-                                              genus, species) %>%
-                               distinct(.) %>%
-                               group_by(tsn) %>%
-                               filter(!is.na(redlist_status)) %>%
-                               dplyr::select(-redlist_status) %>%
-                               distinct(.)
-
-# Double check we haven't incorrectly detected no redlist status (should be no
-# overlap between the two groups)
-
-overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
-any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
-
-# Calculate summary statistics ----
-
-#' TODO: Add ecoregion name above so it is included in the species_data
-
-# Get the number of species in each ecoregion
-
-
-species_by_ecoregion <- species_data %>%
-                        group_by(ecoregion_code) %>%
-                        summarize(n_distinct(tsn))
-
-
-names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
-
-# Get the number of species with each redlist status
-
-species_by_redlist_status <- species_data %>%
-                             group_by(redlist_status) %>%
-                             summarize(n_distinct(tsn))
-
-
-
-
-# Get number of extinct species (grouping by ecoregion doesn't work well yet bc
-# most extinct species haven't been assigned an ecoregion - TBD)
-
-extinct_species <- species_data %>%
-                   filter(redlist_status == "EX")  %>%
-                   group_by(ecoregion_code) %>%
-                   summarise(n_distinct(tsn)) 
-
-names(extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
-
-
-extinct_wild_species <- species_data %>%
-                        filter(redlist_status == "EX" | redlist_status == "EW")  %>%
-                        group_by(ecoregion_code) %>%
-                        summarise(n_distinct(tsn)) 
-
-names(extinct_wild_species) <- c("ecoregion_code", "number_of_species_extinct")
-
-if(save_outputs == "yes") {
-  
-  write_csv(extinct_species, paste(outputs, "/", date, "_extinct_species.csv", sep = ""))
-  saveRDS(extinct_species, paste(outputs,"/", date, "_extinct_species.rds", sep = ""))
-  
-}
-
-proportion_extinct <- species_by_ecoregion %>%
-                      merge(extinct_species, 
-                            by = "ecoregion_code", all = TRUE) %>%
-                      dplyr::mutate(proportion_extinct = 
-                                    number_of_species_extinct/number_of_species) 
-
-
-# Visualise summary stats ----
-
-if(save_outputs == "yes") {
-  
-  objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
-  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-  
-}
-
-extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
-                        c("ecoregion_code", "number_of_species_extinct")], 
-                        by = c("eco_code" = "ecoregion_code"))
-
-extinction_map <- ggplot(extinction_map_data) +
-                  geom_sf(aes(fill = number_of_species_extinct)) +
-                  scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-
-extinction_map
-
-dev.off()
-
-
-if(save_outputs == "yes"){
-  
-  objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
-  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-  
-}
-
-
-species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
-                    c("ecoregion_code", "number_of_species")], 
-                    by = c("eco_code" = "ecoregion_code"))
-
-species_map <- ggplot(species_map_data) +
-               geom_sf(aes(fill = number_of_species)) +
-               scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-
-species_map
-
-dev.off()
+#' species_without_ecoregions <- species_data %>%
+#'                               filter(is.na(ecoregion_code)) %>%
+#'                               dplyr::select(tsn, accepted_binomial) %>%
+#'                               distinct(.)
+#' 
+#' if(save_outputs == "yes") {
+#'   
+#'   write_csv(species_without_ecoregions, paste(outputs, "/", date, "_species_without_ecoregions.csv", sep = ""))
+#'   saveRDS(species_without_ecoregions, paste(outputs,"/", date, "_species_without_ecoregions.rds", sep = ""))
+#'   
+#' }
+#' 
+#' # What species do we not have a redlist status in any year for?
+#' 
+#' species_without_redlist_status <- species_data %>%
+#'                                   dplyr::select(-redlist_assessment_year, 
+#'                                                 genus, species) %>%
+#'                                   distinct(.) %>%
+#'                                   group_by(tsn) %>%
+#'                                   filter(all(is.na(redlist_status)))
+#' 
+#' if(save_outputs == "yes") {
+#'   
+#'   write_csv(species_without_redlist_status, paste(outputs, "/", date, "_species_without_redlist_status.csv", sep = ""))
+#'   saveRDS(species_without_redlist_status, paste(outputs,"/", date, "_species_without_redlist_status.rds", sep = ""))
+#'   
+#' }
+#' 
+#' # What species do we have at least one redlist status for?
+#' 
+#' species_with_redlist_status <- species_data %>%
+#'                                dplyr::select(-redlist_assessment_year, 
+#'                                               genus, species) %>%
+#'                                distinct(.) %>%
+#'                                group_by(tsn) %>%
+#'                                filter(!is.na(redlist_status)) %>%
+#'                                dplyr::select(-redlist_status) %>%
+#'                                distinct(.)
+#' 
+#' # Double check we haven't incorrectly detected no redlist status (should be no
+#' # overlap between the two groups)
+#' 
+#' overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
+#' any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
+#' 
+#' # Calculate summary statistics ----
+#' 
+#' #' TODO: Add ecoregion name above so it is included in the species_data
+#' 
+#' # Get the number of species in each ecoregion
+#' 
+#' 
+#' species_by_ecoregion <- species_data %>%
+#'                         group_by(ecoregion_code) %>%
+#'                         summarize(n_distinct(tsn))
+#' 
+#' 
+#' names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
+#' 
+#' # Get the number of species with each redlist status
+#' 
+#' species_by_redlist_status <- species_data %>%
+#'                              group_by(redlist_status) %>%
+#'                              summarize(n_distinct(tsn))
+#' 
+#' 
+#' 
+#' 
+#' # Get number of extinct species (grouping by ecoregion doesn't work well yet bc
+#' # most extinct species haven't been assigned an ecoregion - TBD)
+#' 
+#' extinct_species <- species_data %>%
+#'                    filter(redlist_status == "EX")  %>%
+#'                    group_by(ecoregion_code) %>%
+#'                    summarise(n_distinct(tsn)) 
+#' 
+#' names(extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
+#' 
+#' 
+#' extinct_wild_species <- species_data %>%
+#'                         filter(redlist_status == "EX" | redlist_status == "EW")  %>%
+#'                         group_by(ecoregion_code) %>%
+#'                         summarise(n_distinct(tsn)) 
+#' 
+#' names(extinct_wild_species) <- c("ecoregion_code", "number_of_species_extinct")
+#' 
+#' if(save_outputs == "yes") {
+#'   
+#'   write_csv(extinct_species, paste(outputs, "/", date, "_extinct_species.csv", sep = ""))
+#'   saveRDS(extinct_species, paste(outputs,"/", date, "_extinct_species.rds", sep = ""))
+#'   
+#' }
+#' 
+#' proportion_extinct <- species_by_ecoregion %>%
+#'                       merge(extinct_species, 
+#'                             by = "ecoregion_code", all = TRUE) %>%
+#'                       dplyr::mutate(proportion_extinct = 
+#'                                     number_of_species_extinct/number_of_species) 
+#' 
+#' 
+#' # Visualise summary stats ----
+#' 
+#' if(save_outputs == "yes") {
+#'   
+#'   objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
+#'   tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+#'   
+#' }
+#' 
+#' extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
+#'                         c("ecoregion_code", "number_of_species_extinct")], 
+#'                         by = c("eco_code" = "ecoregion_code"))
+#' 
+#' extinction_map <- ggplot(extinction_map_data) +
+#'                   geom_sf(aes(fill = number_of_species_extinct)) +
+#'                   scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+#' 
+#' extinction_map
+#' 
+#' dev.off()
+#' 
+#' 
+#' if(save_outputs == "yes"){
+#'   
+#'   objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
+#'   tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+#'   
+#' }
+#' 
+#' 
+#' species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
+#'                     c("ecoregion_code", "number_of_species")], 
+#'                     by = c("eco_code" = "ecoregion_code"))
+#' 
+#' species_map <- ggplot(species_map_data) +
+#'                geom_sf(aes(fill = number_of_species)) +
+#'                scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+#' 
+#' species_map
+#' 
+#' dev.off()
 
 # Calculate the redlist index ----
 
 species_data_by_ecoregion <- split(species_data, species_data$ecoregion_code)
 
-data <- species_data_by_ecoregion[[1]]
+#data <- species_data_by_ecoregion[[1]]
 
 calculate_red_list_index <- function(data, timeframe){
   
@@ -832,8 +833,8 @@ calculate_red_list_index <- function(data, timeframe){
   data <- data %>%
           filter(!is.na(redlist_status)) %>%
           group_by(tsn) 
-  # %>%
-    #      filter(redlist_assessment_year == max(redlist_assessment_year))
+  
+  ecoregion <- as.factor(data$ecoregion_code[1])
   
   # Assign category weights
   
@@ -843,9 +844,9 @@ calculate_red_list_index <- function(data, timeframe){
                                  ifelse(redlist_status == "VU", 2,
                                  ifelse(redlist_status == "EN", 3,
                                  ifelse(redlist_status == "CR", 4,
-                                 ifelse(redlist_status == "EX", 5, "NA"))))))) 
+                                 ifelse(redlist_status == "EX", 5, NA))))))) 
   
-  weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
+ #weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
   
   # Filter out rows with NE and DD
   weighted_data <- filter(weighted_data, RL_weight != "NA" )
@@ -855,7 +856,7 @@ calculate_red_list_index <- function(data, timeframe){
   # weight.data <- drop_na(weight.data, .data[[RL_weight]])
   
   # Group data so the index is calculated for each taxa for each year
-  grouped.data <- weighted_data %>% group_by(class, redlist_assessment_year)
+  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
   
   # Sum category weights for each group, calculate number of species per group
   summed.weights <- summarise(grouped.data, 
@@ -863,12 +864,126 @@ calculate_red_list_index <- function(data, timeframe){
                               total.count = n()) # calc number of species
   
   # Calculate RLI scores for each group, rounded to 3 decimal places
-  index.scores <- mutate(summed.weights, 
-                         RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
-                         Criteria = "risk") 
   
-  index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
+  index.scores <- summed.weights %>%
+                  mutate(RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
+                         Criteria = "risk",
+                         Ecoregion_code = ecoregion)
+  
+
+  #index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
   
   return(index.scores)
   
 }
+
+# Calculate the Red List Index for each group, for each timeframe, for each ecoregion
+
+#' TODO: Figure out why this loop drops over half the ecoregions we have data for
+
+rli_by_ecoregion <- list()
+
+for (i in seq_along(species_data)) {
+  
+  rli_by_ecoregion[[i]] <- calculate_red_list_index(species_data_by_ecoregion[[i]])
+  
+}
+
+# Convert back into a dataframe
+
+rli_by_ecoregion_df <- do.call(rbind, rli_by_ecoregion)
+
+# Tidy data, remove species without a class assigned and split RLI values by taxa
+
+rli_by_ecoregion_df <- rli_by_ecoregion_df %>%
+                       filter(!is.na(class.x)) %>%
+                       group_by(Ecoregion_code, class.x) 
+
+rli_by_ecoregion_taxa <- split(rli_by_ecoregion_df, rli_by_ecoregion_df$class.x)
+
+# Use birds as example and take most recent timestep
+
+birds_rli_by_ecoregion <- rli_by_ecoregion_taxa[[2]]
+
+birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion %>%
+                               filter(redlist_assessment_year == 2016)
+
+# Map the Red List Index ----
+
+rli_map_data <- inner_join(ecoregion_map, birds_rli_by_ecoregion_2016[
+                          c("Ecoregion_code", "RLI")], 
+                          by = c("eco_code" = "Ecoregion_code"))
+
+rli_map <- ggplot(rli_map_data) +
+           geom_sf(aes(fill = RLI)) +
+           scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+rli_map
+
+# Read in the Human Footprint Index data ----
+
+hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index", 
+                                        "human_footprint_index_by_ecoregion.csv",
+                                        sep = "/"))
+
+
+# Subset the HFP data by country ----
+
+
+if (!is.na(country)) {
+  
+  full_hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017
+  
+  country_ecoregions <- ecoregion_subset$ECO_NAME
+  
+  hfp_by_ecoregion_2017 <- full_hfp_by_ecoregion_2017[full_hfp_by_ecoregion_2017$ECO_NAME %in% country_ecoregions, ]
+  
+}
+
+# Add ecoregion codes
+
+
+hfp_map_data <- inner_join(ecoregion_map, hfp_by_ecoregion_2017[
+                c("ECO_NAME", "ECO_ID", "HFP")], 
+                by = c("ECO_NAME" = "ECO_NAME"))
+
+hfp_map <- ggplot(hfp_map_data) +
+            geom_sf(aes(fill = HFP)) +
+            scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+hfp_map
+
+# Check distribution of both indicators ----
+
+hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
+
+ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
+
+hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
+  dplyr::select(eco_code, ECO_NAME, HFP) %>%
+  rename(Ecoregion_code = eco_code) %>%
+  distinct(.)
+
+scale_to_1 <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
+
+indicator_values <- birds_rli_by_ecoregion_2016 %>%
+                    dplyr::select(Ecoregion_code, RLI) %>%
+                    merge(hfp_by_ecoregion_2017_new[c("Ecoregion_code", "HFP")], 
+                          all = TRUE,
+                          by = "Ecoregion_code") %>%
+                    mutate(HFP_scaled = scale_to_1(HFP)) 
+                    
+
+model <- lm(RLI ~ HFP_scaled, data = indicator_values)
+
+model
+
+model_diag_metrics <- augment(model)
+
+par(mfrow = c(2, 2))
+plot(model)
+
+install.packages("ggfortify")
+
+library(ggfortify)
+autoplot(model)

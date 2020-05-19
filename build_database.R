@@ -880,21 +880,9 @@ rm(species_ecoregions, species_ecoregions_names)
 #' 
 #' dev.off()
 
-# Calculate the redlist index ----
+# Calculate indicators ----
 
-test_subset <- species_data[1:100,]
-head(test_subset)
-lapply(test_subset, class)
-
-species_data_full <- species_data
-
-species_data <- species_data_full %>% 
-        filter(class.x == "Aves") %>%
-        filter(redlist_assessment_year == 2016)
-
-species_data_by_ecoregion <- split(species_data, species_data$ecoregion_code)
-
-#data <- species_data_by_ecoregion[[1]]
+# data <- mammal_species_data_by_ecoregion[[1]]
 
 calculate_red_list_index <- function(data, timeframe){
   
@@ -951,6 +939,33 @@ calculate_red_list_index <- function(data, timeframe){
   
 }
 
+# Subset data for birds
+
+species_data_full <- species_data
+
+dim(species_data_full)
+
+species_data_full_distinct <- distinct(species_data_full)
+
+dim(species_data_full_distinct)
+
+species_data <- species_data_full_distinct %>% 
+                filter(class.x == "Aves") %>%
+                filter(redlist_assessment_year == 2016)
+
+species_data_by_ecoregion <- split(species_data, 
+                                   species_data$ecoregion_code)
+
+bird_summary <- species_data %>%
+                group_by(ecoregion_code, redlist_status) %>%
+                summarize(n_distinct(tsn))
+
+# Check the outliers
+
+eco_NA0606 <- species_data %>%
+              filter(ecoregion_code == "NA0606")
+
+
 # Calculate the Red List Index for each group, for each timeframe, for each ecoregion
 
 #' TODO: Figure out why this loop drops over half the ecoregions we have data for
@@ -965,28 +980,15 @@ for (i in seq_along(species_data_by_ecoregion)) {
 
 # Convert back into a dataframe
 
-rli_by_ecoregion_df <- do.call(rbind, rli_by_ecoregion)
+birds_rli_by_ecoregion_2016 <- do.call(rbind, rli_by_ecoregion)
 
-birds_rli_by_ecoregion_2016 <- rli_by_ecoregion_df
 
-# Tidy data, remove species without a class assigned and split RLI values by taxa
-
-# rli_by_ecoregion_df <- rli_by_ecoregion_df %>%
-#                        filter(!is.na(class.x)) %>%
-#                        group_by(Ecoregion_code, class.x) 
-# 
-# rli_by_ecoregion_taxa <- split(rli_by_ecoregion_df, rli_by_ecoregion_df$class.x)
-# 
-# # Use birds as example and take most recent timestep
-# 
-# birds_rli_by_ecoregion <- rli_by_ecoregion_taxa[[2]]
-# 
 birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
-                               #filter(redlist_assessment_year == 2016) %>%
-                               #rename(eco_code = Ecoregion_code) %>%
-                               filter( RLI > 0.2)
+                               rename(eco_code = Ecoregion_code) 
+                               # %>%
+                               # filter(!RLI == 0)
 
-# Map the Red List Index ----
+# Map the Red List Index for BIRDS ----
 
 ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
 all_map_data_temp <- ecoregion_map_data_no_geometry
@@ -1005,24 +1007,126 @@ rli_map_data <- inner_join(ecoregion_map, birds_rli_by_ecoregion_2016[
                           c("eco_code", "RLI")], 
                           by = "eco_code")
 
+length(unique(rli_map_data$eco_code))
+
 rli_map_data <- rli_map_data %>%
-                      filter(RLI > 0.9)
+                mutate(RLI_inverted_original = 1 - RLI) %>%
+                mutate(RLI_inverted = ifelse(RLI_inverted == 1, NA, RLI_inverted_original))
+
 
 rli_map <- ggplot(rli_map_data) +
-           geom_sf(aes(fill = RLI), colour = "black", 
+           geom_sf(aes(fill = RLI_inverted), colour = "black", 
                    size = 0.05) +
-           #scale_fill_viridis_c(trans = "sqrt", alpha = .4) +
-          scale_fill_viridis_c(alpha = .4) +         
-          theme(axis.line = element_line(),
+           scale_fill_viridis_c(trans = "log10", alpha = .8, na.value = "grey70") +         
+           theme(axis.line = element_line(),
                 panel.grid.major = element_blank(),
                 panel.grid.minor = element_blank(),
                 #panel.border = element_blank(),
                 panel.background = element_blank()) +
                 labs(fill = "Red List Index (Birds)")
 
+# trans = "log10", 
+
 rli_map
 
-ggsave(paste(outputs, "rli_birds_map.png", sep = "/"), rli_map,  device = "png")
+ggsave(paste(outputs, "rli_birds_map_dark.png", sep = "/"), rli_map,  device = "png")
+
+rli_map_data <- rli_map_data %>%
+                mutate(RLI_inverted_original = 1 - RLI) %>%
+                mutate(RLI_inverted = ifelse(RLI_inverted == 1, NA, RLI_inverted_original)) %>%
+                mutate(RLI_adjusted = ifelse(RLI == 0, NA,
+                                             ifelse(RLI > 0 & RLI < 0.9538, 
+                                                    0.9538, RLI)))
+
+rli_map_2 <-  ggplot(rli_map_data) +
+              geom_sf(aes(fill = RLI_adjusted), colour = "black", 
+                      size = 0.05) +
+              scale_fill_viridis_c(trans = "sqrt",direction = -1, alpha = .8, 
+                                   na.value = "grey70") +         
+              theme(axis.line = element_line(),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank(),
+                    #panel.border = element_blank(),
+                    panel.background = element_blank()) +
+              labs(fill = "Red List Index (Birds)")
+
+
+rli_map_2
+
+ggsave(paste(outputs, "rli_birds_map_adjusted_not_inverted.png", sep = "/"), 
+       rli_map_2,  device = "png")
+
+
+
+# Calculate the Red List Index for Mammals ----
+
+mammal_species_data <- species_data_full_distinct %>% 
+                       filter(class.x == "Mammalia") %>%
+                       filter(redlist_assessment_year == 2008)
+
+
+mammal_species_data_by_ecoregion <- split(mammal_species_data, mammal_species_data$ecoregion_code)
+
+
+# Calculate the Red List Index for each group, for each timeframe, for each ecoregion
+
+#' TODO: Figure out why this loop drops over half the ecoregions we have data for
+
+mammal_rli_by_ecoregion <- list()
+
+for (i in seq_along(mammal_species_data_by_ecoregion)) {
+  
+  mammal_rli_by_ecoregion[[i]] <- calculate_red_list_index(
+    mammal_species_data_by_ecoregion[[i]])
+  
+}
+
+# Convert back into a dataframe
+
+mammal_rli_by_ecoregion_df_2008 <- do.call(rbind, mammal_rli_by_ecoregion)
+
+# Map the Red List Index for MAMMALS ----
+
+# ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
+# all_map_data_temp <- ecoregion_map_data_no_geometry
+
+# ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
+#   select(eco_code, ECO_NAME) %>%
+#   distinct(.)
+
+mammal_rli_by_ecoregion_df_2008 <- mammal_rli_by_ecoregion_df_2008 %>%
+                                   merge(ecoregion_map_data_no_geometry[c(
+                                       "eco_code", "ECO_NAME")], 
+                                            all = TRUE) %>%
+                                     distinct(.)
+
+
+mammal_rli_map_data <- inner_join(ecoregion_map, mammal_rli_by_ecoregion_df_2008[
+                                c("eco_code", "RLI")], 
+                                by = "eco_code")
+
+test_mammal_subset <- mammal_rli_map_data[1:100,]
+
+length(unique(mammal_rli_map_data$eco_code))
+
+mammal_rli_map_data <- mammal_rli_map_data %>%
+                       mutate(RLI_inverted = 1 - RLI)
+
+mammal_rli_map <- ggplot(mammal_rli_map_data) +
+                  geom_sf(aes(fill = RLI_inverted), colour = "black", 
+                          size = 0.05) +
+                  scale_fill_viridis_c(alpha = .8, na.value = "grey70") +         
+                  theme(axis.line = element_line(),
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(),
+                        #panel.border = element_blank(),
+                        panel.background = element_blank()) +
+                  labs(fill = "Red List Index (Mammals)")
+
+mammal_rli_map
+
+ggsave(paste(outputs, "rli_mammals_map_dark.png", sep = "/"), mammal_rli_map,  
+       device = "png")
 
 # Read in the Human Footprint Index data ----
 
@@ -1030,6 +1134,11 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
                                         "human_footprint_index_by_ecoregion.csv",
                                         sep = "/"))
 
+
+hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
+                         rename(HFP_original = HFP) %>%
+                         mutate(HFP = ifelse(HFP_original > 33.29037, 	
+                                             33.29037, HFP_original))
 
 # Subset the HFP data by country ----
 
@@ -1047,28 +1156,27 @@ if (!is.na(country)) {
 # Add ecoregion codes
 
 
-hfp_map_data <- inner_join(ecoregion_map, hfp_by_ecoregion_2017[
+hfp_map_data <- full_join(ecoregion_map, hfp_by_ecoregion_2017[
                 c("ECO_NAME", "ECO_ID", "HFP")], 
-                by = c("ECO_NAME" = "ECO_NAME"))
+                by = c("ECO_NAME" = "ECO_NAME"), na.rm = FALSE)
+
+hfp_map <- ggplot(hfp_map_data) +
+            geom_sf(aes(fill = HFP), colour = "black", 
+                    size = 0.05) +
+            scale_fill_viridis_c(alpha = .8, na.value = "grey70") +
+            theme(axis.line = element_line(colour = "black"),
+                  panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  panel.border = element_blank(),
+                  panel.background = element_blank()) +
+            labs(fill = "Human Footprint Index")
 
 
-test <- ggplot(hfp_map_data) +
-        geom_sf(aes(fill = HFP), colour = "black", 
-                size = 0.05) +
-        scale_fill_viridis_c(trans = "sqrt", alpha = .4) +
- # scale_fill_viridis_c(option = "B", direction = -1, limits = c(10, 50)) +     
-  theme(axis.line = element_line(colour = "black"),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(),
-              panel.border = element_blank(),
-              panel.background = element_blank()) +
-        labs(fill = "Human Footprint Index")
+hfp_map
 
+ggsave(paste(outputs, "hfp_map_dark_adjusted.png", sep = "/"), hfp_map,  device = "png")
 
-test
-
-ggsave(paste(outputs, "hfp_map.png", sep = "/"), test,  device = "png")
-
+dev.off()
 
 # Check distribution of both indicators ----
 

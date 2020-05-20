@@ -734,151 +734,189 @@ save_outputs <- "no"
 
 rm(species_ecoregions, species_ecoregions_names)
 
-# TEMPORARY CODE - Run diagnostics on gaps in our database
+# TEMPORARY CODE - Run diagnostics on gaps in our database ----
+
+# What species are extinct, or extinct in the wild?
+
+extinct_species <- species_data %>%
+                   dplyr::select(tsn, accepted_binomial, redlist_status, ecoregion_code) %>%
+                   filter(redlist_status == "EX" | redlist_status == "EW")  %>%
+                   distinct(.) %>%
+                   mutate(extinct = 1)
 
 # What species do we not have ecoregions for?
 
-#' species_without_ecoregions <- species_data %>%
-#'                               filter(is.na(ecoregion_code)) %>%
-#'                               dplyr::select(tsn, accepted_binomial) %>%
-#'                               distinct(.)
-#' 
-#' if(save_outputs == "yes") {
-#'   
-#'   write_csv(species_without_ecoregions, paste(outputs, "/", date, "_species_without_ecoregions.csv", sep = ""))
-#'   saveRDS(species_without_ecoregions, paste(outputs,"/", date, "_species_without_ecoregions.rds", sep = ""))
-#'   
-#' }
-#' 
-#' # What species do we not have a redlist status in any year for?
-#' 
-#' species_without_redlist_status <- species_data %>%
-#'                                   dplyr::select(-redlist_assessment_year, 
-#'                                                 genus, species) %>%
-#'                                   distinct(.) %>%
-#'                                   group_by(tsn) %>%
-#'                                   filter(all(is.na(redlist_status)))
-#' 
-#' if(save_outputs == "yes") {
-#'   
-#'   write_csv(species_without_redlist_status, paste(outputs, "/", date, "_species_without_redlist_status.csv", sep = ""))
-#'   saveRDS(species_without_redlist_status, paste(outputs,"/", date, "_species_without_redlist_status.rds", sep = ""))
-#'   
-#' }
-#' 
-#' # What species do we have at least one redlist status for?
-#' 
-#' species_with_redlist_status <- species_data %>%
-#'                                dplyr::select(-redlist_assessment_year, 
-#'                                               genus, species) %>%
-#'                                distinct(.) %>%
-#'                                group_by(tsn) %>%
-#'                                filter(!is.na(redlist_status)) %>%
-#'                                dplyr::select(-redlist_status) %>%
-#'                                distinct(.)
-#' 
-#' # Double check we haven't incorrectly detected no redlist status (should be no
-#' # overlap between the two groups)
-#' 
-#' overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
-#' any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
-#' 
-#' # Calculate summary statistics ----
-#' 
-#' #' TODO: Add ecoregion name above so it is included in the species_data
-#' 
-#' # Get the number of species in each ecoregion
-#' 
-#' 
-#' species_by_ecoregion <- species_data %>%
-#'                         group_by(ecoregion_code) %>%
-#'                         summarize(n_distinct(tsn))
-#' 
-#' 
-#' names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
-#' 
-#' # Get the number of species with each redlist status
-#' 
-#' species_by_redlist_status <- species_data %>%
-#'                              group_by(redlist_status) %>%
-#'                              summarize(n_distinct(tsn))
-#' 
-#' 
-#' 
-#' 
-#' # Get number of extinct species (grouping by ecoregion doesn't work well yet bc
-#' # most extinct species haven't been assigned an ecoregion - TBD)
-#' 
-#' extinct_species <- species_data %>%
-#'                    filter(redlist_status == "EX")  %>%
-#'                    group_by(ecoregion_code) %>%
-#'                    summarise(n_distinct(tsn)) 
-#' 
-#' names(extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
-#' 
-#' 
-#' extinct_wild_species <- species_data %>%
-#'                         filter(redlist_status == "EX" | redlist_status == "EW")  %>%
-#'                         group_by(ecoregion_code) %>%
-#'                         summarise(n_distinct(tsn)) 
-#' 
-#' names(extinct_wild_species) <- c("ecoregion_code", "number_of_species_extinct")
-#' 
-#' if(save_outputs == "yes") {
-#'   
-#'   write_csv(extinct_species, paste(outputs, "/", date, "_extinct_species.csv", sep = ""))
-#'   saveRDS(extinct_species, paste(outputs,"/", date, "_extinct_species.rds", sep = ""))
-#'   
-#' }
-#' 
-#' proportion_extinct <- species_by_ecoregion %>%
-#'                       merge(extinct_species, 
-#'                             by = "ecoregion_code", all = TRUE) %>%
-#'                       dplyr::mutate(proportion_extinct = 
-#'                                     number_of_species_extinct/number_of_species) 
-#' 
-#' 
-#' # Visualise summary stats ----
-#' 
-#' if(save_outputs == "yes") {
-#'   
-#'   objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
-#'   tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-#'   
-#' }
-#' 
-#' extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
-#'                         c("ecoregion_code", "number_of_species_extinct")], 
-#'                         by = c("eco_code" = "ecoregion_code"))
-#' 
-#' extinction_map <- ggplot(extinction_map_data) +
-#'                   geom_sf(aes(fill = number_of_species_extinct)) +
-#'                   scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-#' 
-#' extinction_map
-#' 
-#' dev.off()
-#' 
-#' 
-#' if(save_outputs == "yes"){
-#'   
-#'   objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
-#'   tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-#'   
-#' }
-#' 
-#' 
-#' species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
-#'                     c("ecoregion_code", "number_of_species")], 
-#'                     by = c("eco_code" = "ecoregion_code"))
-#' 
-#' species_map <- ggplot(species_map_data) +
-#'                geom_sf(aes(fill = number_of_species)) +
-#'                scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-#' 
-#' species_map
-#' 
-#' dev.off()
+species_without_ecoregions <- species_data %>%
+                              filter(is.na(ecoregion_code)) %>%
+                              dplyr::select(tsn, accepted_binomial) %>%
+                              distinct(.) %>%
+                              mutate(no_ecoregion = 1)
+
+if(save_outputs == "yes") {
+
+  write_csv(species_without_ecoregions, paste(outputs, "/", date, "_species_without_ecoregions.csv", sep = ""))
+  saveRDS(species_without_ecoregions, paste(outputs,"/", date, "_species_without_ecoregions.rds", sep = ""))
+
+}
+
+# What species do we not have a redlist status in any year for?
+
+species_without_redlist_status <- species_data %>%
+                                  dplyr::select(-c(redlist_assessment_year,
+                                                genus, species, ecoregion_code)) %>%
+                                  distinct(.) %>%
+                                  group_by(tsn) %>%
+                                  filter(all(is.na(redlist_status))) %>%
+                                  mutate(no_redlist_status = 1)
+                              
+
+if(save_outputs == "yes") {
+
+  write_csv(species_without_redlist_status, paste(outputs, "/", date, "_species_without_redlist_status.csv", sep = ""))
+  saveRDS(species_without_redlist_status, paste(outputs,"/", date, "_species_without_redlist_status.rds", sep = ""))
+
+}
+
+# What species do we have at least one redlist status for?
+
+species_with_redlist_status <- species_data %>%
+                               dplyr::select(-redlist_assessment_year,
+                                              genus, species) %>%
+                               distinct(.) %>%
+                               group_by(tsn) %>%
+                               filter(!is.na(redlist_status)) %>%
+                               dplyr::select(-redlist_status) %>%
+                               distinct(.)
+
+# Double check we haven't incorrectly detected no redlist status (should be no
+# overlap between the two groups)
+
+overlap <- species_without_redlist_status$tsn %in% species_with_redlist_status$tsn
+any(overlap == TRUE) # The correct output to console should be FALSE (no overlap)
+
+
+# What species are included in our database, and do we have the necessary data for them?
+
+species_in_database <- species_data %>%
+                       select(tsn, accepted_binomial) %>%
+                       distinct(.) %>%
+                       merge(species_without_redlist_status[
+                         c("tsn", "no_redlist_status")], by = "tsn", all = TRUE) %>%
+                       merge(species_without_ecoregions[
+                          c("tsn", "no_ecoregion")], by = "tsn", all = TRUE) %>%
+                       merge(extinct_species[
+                          c("tsn", "extinct")], by = "tsn", all = TRUE) %>%
+                       mutate(incomplete_data = ifelse(no_redlist_status == 1 | 
+                                                         no_ecoregion == 1 |
+                                                         is.na(accepted_binomial),
+                              1,0)) %>%
+                       distinct(.)
+
+species_with_incomplete_data <- species_in_database %>%
+                                filter(incomplete_data == 1) %>%
+                                merge(species_data_with_sources[c("tsn","source")], by = "tsn") %>%
+                                distinct(.)
+
+# write.csv(species_with_incomplete_data, file = "200520_species_with_incomplete_data.csv")
+
+species_with_complete_data <- species_in_database %>%
+                              filter(is.na(incomplete_data))
+
+# Calculate summary statistics ----
+
+#' TODO: Add ecoregion name above so it is included in the species_data
+
+# Get the number of species in each ecoregion
+
+
+species_by_ecoregion <- species_data %>%
+                        group_by(ecoregion_code) %>%
+                        summarize(n_distinct(tsn))
+
+
+names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
+
+# Get the number of species with each redlist status
+
+species_by_redlist_status <- species_data %>%
+                             group_by(redlist_status) %>%
+                             summarize(n_distinct(tsn))
+
+
+
+# Get number of extinct species (grouping by ecoregion doesn't work well yet bc
+# most extinct species haven't been assigned an ecoregion - TBD)
+
+number_of_extinct_species <- species_data %>%
+                   filter(redlist_status == "EX")  %>%
+                   group_by(ecoregion_code) %>%
+                   summarise(n_distinct(tsn))
+
+names(number_of_extinct_species) <- c("ecoregion_code", "number_of_species_extinct")
+
+
+number_of_extinct_wild_species <- species_data %>%
+                        filter(redlist_status == "EX" | redlist_status == "EW")  %>%
+                        group_by(ecoregion_code) %>%
+                        summarise(n_distinct(tsn))
+
+names(number_of_extinct_wild_species) <- c("ecoregion_code", "number_of_species_extinct")
+
+if(save_outputs == "yes") {
+
+  write_csv(number_of_extinct_species, paste(outputs, "/", date, "_extinct_species.csv", sep = ""))
+  saveRDS(number_of_extinct_species, paste(outputs,"/", date, "_extinct_species.rds", sep = ""))
+
+}
+
+proportion_extinct <- species_by_ecoregion %>%
+                      merge(number_of_extinct_species,
+                            by = "ecoregion_code", all = TRUE) %>%
+                      dplyr::mutate(proportion_extinct =
+                                    number_of_species_extinct/number_of_species)
+
+
+# Visualise summary stats ----
+
+if(save_outputs == "yes") {
+
+  objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
+  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+
+}
+
+extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
+                        c("ecoregion_code", "number_of_species_extinct")],
+                        by = c("eco_code" = "ecoregion_code"))
+
+extinction_map <- ggplot(extinction_map_data) +
+                  geom_sf(aes(fill = number_of_species_extinct)) +
+                  scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+extinction_map
+
+dev.off()
+
+
+if(save_outputs == "yes"){
+
+  objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
+  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
+
+}
+
+
+species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
+                    c("ecoregion_code", "number_of_species")],
+                    by = c("eco_code" = "ecoregion_code"))
+
+species_map <- ggplot(species_map_data) +
+               geom_sf(aes(fill = number_of_species)) +
+               scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+
+species_map
+
+dev.off()
 
 # Calculate indicators ----
 

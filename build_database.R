@@ -26,6 +26,7 @@ library(spData)
 library(taxizedb)
 library(functionaltraits)
 library(broom)
+library(rredlist)
 
 # Input and output locations ----
 
@@ -625,24 +626,27 @@ species_data <- species_data_with_sources %>%
 ## TEMPORARY CODE - just using extinct ranges for now as laptop can't manage
 ## all species maps yet
 
-species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps", 
-                                     ecoregion_map)
 
-species_ecoregions <- list(species_ecoregions)
-
-# Use this code when on server, doesn't work on laptop
-
-
-range_directories <- c("redlist_extinct_species_range_maps",
-                       "redlist_reptile_range_maps",
-                       "redlist_amphibian_range_maps",
-                       "redlist_mammal_range_maps" )
 
 # extinct <- get_ecoregions(range_directories[[1]], ecoregion_map) # works
 # reptiles <- get_ecoregions(range_directories[[2]], ecoregion_map) # works
 # amphibians <- get_ecoregions(range_directories[[3]], ecoregion_map) # works
 # mammals <- get_ecoregions(range_directories[[4]], ecoregion_map) # works
 
+if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(outputs))) {
+  
+  species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps", 
+                                       ecoregion_map)
+  
+  species_ecoregions <- list(species_ecoregions)
+  
+  # Use this code when on server, doesn't work on laptop
+  
+  
+  range_directories <- c("redlist_extinct_species_range_maps",
+                         "redlist_reptile_range_maps",
+                         "redlist_amphibian_range_maps",
+                         "redlist_mammal_range_maps" )
 
 
 species_ecoregions <- list()
@@ -657,24 +661,33 @@ for (i in seq_along(range_directories)) {
 
 }
 
-
 species_ecoregions <- do.call(rbind, species_ecoregions)
 
+saveRDS(species_ecoregions, file = file.path(outputs, 
+        "iucn_range_map_species_with_ecoregions.rds"))
 
-# Get TSNs for the species
-
-species_ecoregions_names <- species_ecoregions %>%
-                            dplyr::select(binomial) 
-
-species_ecoregions_names$binomial <- as.character(species_ecoregions_names$binomial)
-
-species_ecoregions_names <- unname(unlist(species_ecoregions_names[,1]))
-
-species_ecoregions_names <- species_ecoregions_names[!is.na(species_ecoregions_names)]
-
-if(!("species_ecoregions_synonyms.rds" %in% list.files(outputs))) { 
+} else {
   
-  species_ecoregions_names <- find_synonyms((species_ecoregions_names)
+species_ecoregions <- readRDS(file.path(outputs, 
+                              "iucn_range_map_species_with_ecoregions.rds"))
+}
+
+
+# Get TSNs for the species from the IUCN range maps
+
+
+if(!("species_ecoregions_synonyms.rds" %in% list.files(outputs))) {
+  
+  species_ecoregions_names <- species_ecoregions %>%
+                              dplyr::select(binomial) 
+  
+  species_ecoregions_names$binomial <- as.character(species_ecoregions_names$binomial)
+  
+  species_ecoregions_names <- unname(unlist(species_ecoregions_names[,1]))
+  
+  species_ecoregions_names <- species_ecoregions_names[!is.na(species_ecoregions_names)]
+  
+  species_ecoregions_names <- find_synonyms(species_ecoregions_names)
   
   saveRDS(redlist_species, file = paste(outputs, "species_ecoregions_synonyms.rds", 
                                         sep = "/"))
@@ -714,6 +727,12 @@ if(!("2020-03-12_draft_species_ecoregions.rds" %in% list.files(outputs))) {
 
 ## Add the new ecoregions to our species data
 
+if(("draft_species_data.rds" %in% list.files(outputs))) { 
+  
+species_data <- readRDS(outputs, "draft_species_data.rds")
+
+} else {
+
 species_data <- species_data %>%
                 merge(species_ecoregions[c( "tsn", "ecoregion_code")], 
                       by = "tsn", all = TRUE) %>%
@@ -721,16 +740,15 @@ species_data <- species_data %>%
                                                  ecoregion_code.y)) %>%
                 dplyr::select(-c(ecoregion_code.x, ecoregion_code.y))
 
-save_outputs <- "yes"
 
 if(save_outputs == "yes") {
   
-  write_csv(species_data, paste(outputs, "/", date, "_draft_species_data.csv", sep = ""))
-  saveRDS(species_data, paste(outputs,"/", date, "_draft_species_data.rds", sep = ""))
+  write_csv(species_data, file.path(outputs,"draft_species_data.csv", sep = ""))
+  saveRDS(species_data, file.path(outputs,"draft_species_data.rds", sep = ""))
   
-}
+  }
 
-save_outputs <- "no"
+}
 
 rm(species_ecoregions, species_ecoregions_names)
 
@@ -817,10 +835,86 @@ species_with_incomplete_data <- species_in_database %>%
                                 merge(species_data_with_sources[c("tsn","source")], by = "tsn") %>%
                                 distinct(.)
 
-# write.csv(species_with_incomplete_data, file = "200520_species_with_incomplete_data.csv")
+# write.csv(species_with_incomplete_data, file.path(outputs, 
+#                                                  "200520_species_with_incomplete_data.csv"))
 
 species_with_complete_data <- species_in_database %>%
                               filter(is.na(incomplete_data))
+
+
+# Scrape IUCN website ----
+
+species_with_incomplete_data <- read.csv(file.path(outputs, 
+                                        "200520_species_with_incomplete_data.csv"))
+
+
+
+# Add your iucn API token to you environment
+
+# file.edit("~/.Renviron")
+
+# In the file that opens, add the text below, save that file, then close and reopen R
+
+# IUCN_REDLIST_KEY='6d46333255cbb1843dd8f6984e45f23a49e8011585b1f128c3a46d17c6a8b5ae'
+
+rl_citation()
+
+# Function to get species data
+
+
+get_redlist_data <- function(species) {
+  
+  library("jsonlite")
+  
+  output <- jsonlite::fromJSON(rl_search_(species))
+  
+  print(paste("Data for", species, "found", sep = " "))
+  
+  return(output)
+}
+
+test <- get_redlist_data('Thylacinus cynocephalus')
+
+# Create list of search names
+
+# species_list <- c('Thylacinus cynocephalus',"Fratercula arctica")
+
+species_list <- as.character(species_with_incomplete_data$accepted_binomial)
+
+species_list <- unique(species_list)
+
+missing_species_data <- lapply(species_list, get_redlist_data)
+
+saveRDS(missing_species_data, file.path(outputs,"200521_missing_species_data_iucn_web.rds"))
+
+missing_species_dataframe_list <- list()
+no_data <- list()
+
+for(i in seq_along(missing_species_data)) {
+  
+if (length(missing_species_data[[i]][[2]]) == 30) {
+  
+accepted_binomial <- missing_species_data[[i]][[1]]
+redlist_status <- missing_species_data[[i]][[2]][13][[1]]
+published_year <- missing_species_data[[i]][[2]][11][[1]]
+source <- "IUCN"
+missing_species_dataframe_list[[i]] <- as.data.frame(cbind(accepted_binomial, redlist_status, 
+                                             published_year, source))
+
+} else if(length(missing_species_data[[i]][[2]]) == 1) {
+  
+accepted_binomial <- missing_species_data[[i]][2][[1]]
+redlist_status <- NA
+published_year <- NA
+source <- "IUCN"
+no_data[[i]] <- as.data.frame(cbind(accepted_binomial, redlist_status, 
+                                             published_year, source))
+  }
+}
+
+missing_species_dataframe <- do.call(rbind, missing_species_dataframe_list)
+
+no_data <- do.call(rbind, no_data)
 
 # Calculate summary statistics ----
 

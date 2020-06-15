@@ -31,10 +31,32 @@ library(rredlist)
 # Input and output locations ----
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
-outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "no"
+outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+save_outputs <- "yes"
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+
+
+# Set output directory
+
+if (save_outputs == "yes") {
+
+outputs_dir <- paste(date,"_output_files",sep="")
+outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
+
+if( !dir.exists( outputs ) ) {
+  
+  dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
+  
+  }
+
+} else {
+  
+  previous_outputs <- list.dirs(outputs_parent, recursive = FALSE)
+  
+  outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
+
+}
 
 # Functions ----
 
@@ -251,6 +273,81 @@ find_synonyms <- function( species ) {
   
 }
 
+# Function to scrape data about species redlist from the IUCN website
+
+get_redlist_data <- function(species) {
+  
+  library("jsonlite")
+  
+  output <- jsonlite::fromJSON(rl_search_(species))
+  
+  print(paste("Data for", species, "found", sep = " "))
+  
+  return(output)
+}
+
+
+calculate_red_list_index <- function(data, timeframe){
+  
+  require(tidyverse)
+  
+  # Remove data without RL status
+  
+  data$redlist_assessment_year <- as.numeric(as.character(data$redlist_assessment_year))
+  
+  data <- data %>%
+    filter(!is.na(redlist_status)) %>%
+    group_by(tsn) 
+  
+  ecoregion <- as.factor(data$ecoregion_code[1])
+  
+  # Assign category weights
+  
+  weighted_data <- data %>%
+    dplyr::mutate(RL_weight = ifelse(redlist_status == "LC", 0,
+                                     ifelse(redlist_status == "NT", 1,
+                                            ifelse(redlist_status == "VU", 2,
+                                                   ifelse(redlist_status == "EN", 3,
+                                                          ifelse(redlist_status == "CR", 4,
+                                                                 ifelse(redlist_status == "EX", 5, NA))))))) 
+  
+  #weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
+  
+  # Filter out rows with NE and DD
+  weighted_data <- filter(weighted_data, RL_weight != "NA" )
+  
+  # Calculate numerical weights for each species based on risk category
+  # weight.data <- calcWeights(filter.data, RL_weight)
+  # weight.data <- drop_na(weight.data, .data[[RL_weight]])
+  
+  # Group data so the index is calculated for each taxa for each year
+  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
+  
+  # Sum category weights for each group, calculate number of species per group
+  summed.weights <- summarise(grouped.data, 
+                              total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
+                              total.count = n()) # calc number of species
+  
+  # Calculate RLI scores for each group, rounded to 3 decimal places
+  
+  index.scores <- summed.weights %>%
+    mutate(RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
+           Criteria = "risk",
+           Ecoregion_code = ecoregion)
+  
+  
+  #index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
+  
+  return(index.scores)
+  
+}
+
+scale_to_1 <- function(vector){
+  
+  (vector-min(vector, na.rm = TRUE))/
+    (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
+}
+
 # Join ecoregion and country data ----
 
 ## This will allow us to subset the data by country for development or analysis
@@ -261,30 +358,29 @@ find_synonyms <- function( species ) {
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
-if(!("ecoregion_country_data.rds" %in% list.files(outputs))) {
+if(!("ecoregion_country_data.rds" %in% list.files(outputs_parent))) { 
 
 country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/"))
 
-# Check how it deals with ecoregions not entirely within countries
+#' TODO: Check how it deals with ecoregions not entirely within countries
 
 ecoregion_country_sf <-  st_join(ecoregion_map, country_map)
 
-ecoregion_country_map <- ggplot() +
-                         geom_sf(data = ecoregion_country_sf, aes(fill = ECO_NAME)) +
-                         scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-
-ggsave("N:/Quantitative-Ecology/Simone/extinction_test/ecoregion_country_map.pdf",
-       ecoregion_country_map, device = "pdf")
+# ecoregion_country_map <- ggplot(ecoregion_country_sf) +
+#                          geom_sf(aes(fill = ECO_NAME)) +
+#                          scale_fill_viridis_c(trans = "sqrt", alpha = .4)
+# 
+# ggsave(file.path(output_parents, "ecoregion_country_map.png", ecoregion_country_map))
 
 ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
                                       arrange(OBJECTID)
 
-saveRDS(ecoregion_country_df, file = paste(outputs, "ecoregion_country_data.rds", sep = "/"))
+saveRDS(ecoregion_country_df, file = file.path(outputs_parent, "ecoregion_country_data.rds"))
 
 } else {
   
-ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", sep = "/"))
+ecoregion_country_df <- readRDS(paste(outputs_parent, "ecoregion_country_data.rds", sep = "/"))
 
 }
 
@@ -345,17 +441,17 @@ wildfinder_species <- wildfinder_species[,1]
 
 # Get synonyms
 
-if(!("wildfinder_species_synonyms.rds" %in% list.files(outputs))) { 
+if(!("wildfinder_species_synonyms.rds" %in% list.files(outputs_parent))) { 
   
 wildfinder_species <- find_synonyms( wildfinder_species)
 
-saveRDS(wildfinder_species, file = paste(outputs, 
-                                         "wildfinder_species_synonyms.rds", sep = "/"))
+saveRDS(wildfinder_species, file.path(outputs_parent,"wildfinder_species_synonyms.rds"))
 
 } else {
 
 
-wildfinder_species <- readRDS(paste(outputs, "wildfinder_species_synonyms.rds", sep = "/"))
+wildfinder_species <- readRDS(file.path(outputs_parent, 
+                                        "wildfinder_species_synonyms.rds"))
 
 }
 
@@ -379,7 +475,7 @@ rm(tables)
 
 # Clear memory by removing large objects
 
-rm(redlist_species, common_names)
+rm(common_names)
 
 # Subset the wildfinder database by country ----
 
@@ -403,17 +499,15 @@ cooke_species <- cooke_database %>%
 cooke_species$binomial <- as.character(cooke_species$binomial)
 cooke_species <- cooke_species[,1]
 
-if(!("cooke_species_synonyms.rds" %in% list.files(outputs))) { 
+if(!("cooke_species_synonyms.rds" %in% list.files(outputs_parent))) { 
   
   cooke_species <- find_synonyms(cooke_species)
   
-  saveRDS(cooke_species, file = paste(outputs, "cooke_species_synonyms.rds", 
-                                      sep = "/"))
+  saveRDS(cooke_species, file.path(outputs_parent, "cooke_species_synonyms.rds"))
   
 } else {
   
-  
-  cooke_species <- readRDS(paste(outputs, "cooke_species_synonyms.rds", sep = "/"))
+  cooke_species <- readRDS(file.path(outputs_parent, "cooke_species_synonyms.rds"))
 
 }
 
@@ -518,28 +612,27 @@ group_tables <- list(birds, mammals, amphibians)
 
 #' TODO: Change name of species_redlist to henrique database?
 
-species_redlist <- do.call(bind_rows, group_tables)
+henriques_redlist_database <- do.call(bind_rows, group_tables)
 
 # Get the synonyms and taxonomic ids
 
-redlist_species <- species_redlist %>%
+henriques_species <- henriques_redlist_database %>%
                    dplyr::select(binomial) 
 
-redlist_species$binomial <- as.character(redlist_species$binomial)
-redlist_species <- unname(unlist(redlist_species[,1]))
-redlist_species <- redlist_species[!is.na(redlist_species)]
+henriques_species$binomial <- as.character(henriques_species$binomial)
+henriques_species <- unname(unlist(henriques_species[,1]))
+henriques_species <- henriques_species[!is.na(henriques_species)]
 
-if(!("henrique_species_synonyms.rds" %in% list.files(outputs))) { 
+if (!("henrique_species_synonyms.rds" %in% list.files(outputs_parent))) { 
   
-  redlist_species <- find_synonyms(redlist_species)
+  henriques_species <- find_synonyms(henriques_species)
   
-  saveRDS(redlist_species, file = paste(outputs, "henrique_species_synonyms.rds", 
-                                      sep = "/"))
+  saveRDS(henriques_species, file.path(outputs_parent, "henrique_species_synonyms.rds"))
   
 } else {
   
   
-  redlist_species <- readRDS(paste(outputs, "henrique_species_synonyms.rds", sep = "/"))
+  henriques_species <- readRDS(file.path(outputs_parent, "henrique_species_synonyms.rds"))
   
 }
 
@@ -547,13 +640,13 @@ if(!("henrique_species_synonyms.rds" %in% list.files(outputs))) {
 
 # Order columns, drop group variable and melt in to long format
 
-species_redlist <- species_redlist %>%
+henriques_redlist_database <- henriques_redlist_database %>%
                    dplyr::select("binomial", "1988", "1994", "1996", "2000", 
                                 "2004", "2008", "2012", "2016", "redlist_source") %>%
                    melt(.,id.vars = c("binomial", "redlist_source"),
                         value.name = "redlist_status") %>%
                    rename(redlist_assessment_year = variable) %>% 
-                   merge(redlist_species[c("binomial", "tsn", "accepted_name", 
+                   merge(henriques_species[c("binomial", "tsn", "accepted_name", 
                                            "common_name", "class")])
 
 
@@ -568,7 +661,7 @@ merged_databases <- rbind(wildfinder_database, cooke_database)
 if (!is.na(country)) {
 
 species_data_with_sources <- merged_databases %>%
-                             merge(species_redlist, by = "tsn", all = FALSE) %>% 
+                             merge(henriques_redlist_database, by = "tsn", all = FALSE) %>% 
                              mutate(source = coalesce(source, redlist_source)) %>%
                              mutate(binomial = coalesce(binomial.x, binomial.y)) %>%
                              mutate(accepted_name = coalesce(accepted_name.x, 
@@ -577,12 +670,12 @@ species_data_with_sources <- merged_databases %>%
                                                            common_name.y)) %>%
                              dplyr::select(-c(binomial.x, binomial.y, 
                                               accepted_name.x, accepted_name.y, 
-                                               common_name.x, common_name.y))
+                                               common_name.x, common_name.y, class.y))
 
 } else {
   
 species_data_with_sources <- merged_databases %>%
-                             merge(species_redlist, by = "tsn", all = TRUE) %>% 
+                             merge(henriques_redlist_database, by = "tsn", all = TRUE) %>% 
                              mutate(source = coalesce(source, redlist_source)) %>%
                              mutate(binomial = coalesce(binomial.x, binomial.y)) %>%
                              mutate(accepted_name = coalesce(accepted_name.x, 
@@ -591,12 +684,11 @@ species_data_with_sources <- merged_databases %>%
                                                               common_name.y)) %>%
                              dplyr::select(-c(binomial.x, binomial.y, 
                                                  accepted_name.x, accepted_name.y, 
-                                                 common_name.x, common_name.y))
+                                                 common_name.x, common_name.y, class.y))
   
 }
 
 # Consolidate duplicates ----
-
 
 species_data <- species_data_with_sources %>%
                 dplyr::select(-c("source", "redlist_source", "binomial")) %>%
@@ -633,12 +725,12 @@ species_data <- species_data_with_sources %>%
 # amphibians <- get_ecoregions(range_directories[[3]], ecoregion_map) # works
 # mammals <- get_ecoregions(range_directories[[4]], ecoregion_map) # works
 
-if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(outputs))) {
+if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(outputs_parent))) {
   
-  species_ecoregions <- get_ecoregions("redlist_extinct_species_range_maps", 
+  iucn_rangemap_database <- get_ecoregions("redlist_extinct_species_range_maps", 
                                        ecoregion_map)
   
-  species_ecoregions <- list(species_ecoregions)
+  iucn_rangemap_database <- list(iucn_rangemap_database)
   
   # Use this code when on server, doesn't work on laptop
   
@@ -649,11 +741,11 @@ if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(outputs))) {
                          "redlist_mammal_range_maps" )
 
 
-species_ecoregions <- list()
+  iucn_rangemap_database <- list()
 
 for (i in seq_along(range_directories)) {
 
- species_ecoregions[[i]] <- get_ecoregions(range_directories[[i]], 
+ iucn_rangemap_database[[i]] <- get_ecoregions(range_directories[[i]], 
                                                      ecoregion_map)
   
  print(paste("processed", i, "of" , length(range_directories), 
@@ -661,96 +753,100 @@ for (i in seq_along(range_directories)) {
 
 }
 
-species_ecoregions <- do.call(rbind, species_ecoregions)
+iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
 
-saveRDS(species_ecoregions, file = file.path(outputs, 
+saveRDS(iucn_rangemap_database, file = file.path(outputs_parent, 
         "iucn_range_map_species_with_ecoregions.rds"))
 
 } else {
   
-species_ecoregions <- readRDS(file.path(outputs, 
+iucn_rangemap_database <- readRDS(file.path(outputs_parent, 
                               "iucn_range_map_species_with_ecoregions.rds"))
 }
 
+if (!is.na(country)) {
+  
+iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregion_code 
+                                                 %in% ecoregion_subset$eco_code, ]
+}
 
 # Get TSNs for the species from the IUCN range maps
 
-
-if(!("species_ecoregions_synonyms.rds" %in% list.files(outputs))) {
+if (!("iucn_rangemap_synonyms.rds" %in% list.files(outputs_parent))) {
   
-  species_ecoregions_names <- species_ecoregions %>%
+  iucn_rangemap_species <- iucn_rangemap_database %>%
                               dplyr::select(binomial) 
   
-  species_ecoregions_names$binomial <- as.character(species_ecoregions_names$binomial)
+  iucn_rangemap_species$binomial <- as.character(iucn_rangemap_species$binomial)
   
-  species_ecoregions_names <- unname(unlist(species_ecoregions_names[,1]))
+  iucn_rangemap_species <- unname(unlist(iucn_rangemap_species[,1]))
   
-  species_ecoregions_names <- species_ecoregions_names[!is.na(species_ecoregions_names)]
+  iucn_rangemap_species <- iucn_rangemap_species[!is.na(iucn_rangemap_species)]
   
-  species_ecoregions_names <- find_synonyms(species_ecoregions_names)
+  iucn_rangemap_species <- find_synonyms(iucn_rangemap_species)
   
-  saveRDS(redlist_species, file = paste(outputs, "species_ecoregions_synonyms.rds", 
-                                        sep = "/"))
+  saveRDS(iucn_rangemap_species, file.path(outputs_parent, "iucn_rangemap_synonyms.rds"))
   
 } else {
   
   
-  species_ecoregion_names <- readRDS(paste(outputs, "species_ecoregions_synonyms.rds", sep = "/"))
+  iucn_rangemap_species <- readRDS(file.path(outputs_parent, "iucn_rangemap_synonyms.rds"))
   
 }
 
+# Add the scientific names and tsn to the iucn species and ecoregion data
 
-if(!("2020-03-12_draft_species_ecoregions.rds" %in% list.files(outputs))) { 
+if (!("iucn_rangemap_synonyms.rds" %in% list.files(outputs))) { 
   
-  species_ecoregions <- species_ecoregions %>%
-                        merge(species_ecoregions_names[c("binomial", "tsn", 
+  iucn_rangemap_database <-  iucn_rangemap_database %>%
+                             merge(iucn_rangemap_species[c("binomial", "tsn", 
                                                          "found")], 
                               by = "binomial")
   
   
-  if(save_outputs == "yes") {
+  if (save_outputs == "yes") {
     
-    write_csv(species_ecoregions, paste(outputs, "/", date, 
-                                        "_draft_species_ecoregions.csv", sep = ""))
-    saveRDS(species_ecoregions, paste(outputs,"/", date, 
-                                      "_draft_species_ecoregions.rds", sep = ""))
+    write_csv(iucn_rangemap_database, file.path(outputs,"iucn_rangemap_database.csv"))
+    saveRDS(iucn_rangemap_database, file.path(outputs,"iucn_rangemap_database.rds"))
+    
   }
   
                                             
 } else {
   
   
-  species_ecoregions <- readRDS(paste(outputs, "2020-03-12_draft_species_ecoregions.rds", sep = "/"))
+  iucn_rangemap_database <- readRDS(file.path(outputs,"iucn_rangemap_database.rds"))
   
   
 }
 
 ## Add the new ecoregions to our species data
 
-if(("draft_species_data.rds" %in% list.files(outputs))) { 
+if (("species_data.rds" %in% list.files(outputs))) { 
   
-species_data <- readRDS(outputs, "draft_species_data.rds")
+species_data <- readRDS(file.path(outputs, "species_data.rds"))
 
 } else {
 
 species_data <- species_data %>%
-                merge(species_ecoregions[c( "tsn", "ecoregion_code")], 
+                merge(iucn_rangemap_database[c( "tsn", "ecoregion_code")], 
                       by = "tsn", all = TRUE) %>%
                 mutate(ecoregion_code = coalesce(ecoregion_code.x, 
                                                  ecoregion_code.y)) %>%
-                dplyr::select(-c(ecoregion_code.x, ecoregion_code.y))
+                dplyr::select(-c(ecoregion_code.x, ecoregion_code.y)) %>%
+                distinct(.)
 
 
-if(save_outputs == "yes") {
+if (save_outputs == "yes") {
   
-  write_csv(species_data, file.path(outputs,"draft_species_data.csv", sep = ""))
-  saveRDS(species_data, file.path(outputs,"draft_species_data.rds", sep = ""))
+  write_csv(species_data, file.path(outputs,"species_data.csv", sep = ""))
+  saveRDS(species_data, file.path(outputs,"species_data.rds", sep = ""))
   
   }
 
 }
 
-rm(species_ecoregions, species_ecoregions_names)
+
 
 # TEMPORARY CODE - Run diagnostics on gaps in our database ----
 
@@ -762,11 +858,25 @@ extinct_species <- species_data %>%
                    distinct(.) %>%
                    mutate(extinct = 1)
 
-# What species do we not have ecoregions for?
+# What species do we not have accepted binomials for?
+
+species_without_binomials <- species_data %>%
+                             filter(is.na(accepted_binomial))
+
+species_data_all <- species_data
+
+# Remove all the no binomial species for the time being
+
+species_data <- species_data %>%
+                filter(!is.na(accepted_binomial))
+
+# What species do we not have ecoregions for? Note this will produce nothing
+# if subsetting by country
 
 species_without_ecoregions <- species_data %>%
                               filter(is.na(ecoregion_code)) %>%
-                              dplyr::select(tsn, accepted_binomial) %>%
+                              dplyr::select(tsn, accepted_binomial, 
+                                            redlist_status, ecoregion_code) %>%
                               distinct(.) %>%
                               mutate(no_ecoregion = 1)
 
@@ -816,7 +926,7 @@ any(overlap == TRUE) # The correct output to console should be FALSE (no overlap
 # What species are included in our database, and do we have the necessary data for them?
 
 species_in_database <- species_data %>%
-                       select(tsn, accepted_binomial) %>%
+                       select(tsn, accepted_binomial, ecoregion_code) %>%
                        distinct(.) %>%
                        merge(species_without_redlist_status[
                          c("tsn", "no_redlist_status")], by = "tsn", all = TRUE) %>%
@@ -844,11 +954,9 @@ species_with_complete_data <- species_in_database %>%
 
 # Scrape IUCN website ----
 
-species_with_incomplete_data <- read.csv(file.path(outputs, 
-                                        "200520_species_with_incomplete_data.csv"))
-
-
-
+#species_with_incomplete_data <- read.csv("N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-05-19_output_files\\200520_species_with_incomplete_data.csv")
+#species_with_incomplete_data <- species_with_incomplete_data %>%
+                                select(-X)
 # Add your iucn API token to you environment
 
 # file.edit("~/.Renviron")
@@ -859,51 +967,66 @@ species_with_incomplete_data <- read.csv(file.path(outputs,
 
 rl_citation()
 
-# Function to get species data
 
-
-get_redlist_data <- function(species) {
-  
-  library("jsonlite")
-  
-  output <- jsonlite::fromJSON(rl_search_(species))
-  
-  print(paste("Data for", species, "found", sep = " "))
-  
-  return(output)
-}
-
-test <- get_redlist_data('Thylacinus cynocephalus')
+# test <- get_redlist_data('Thylacinus cynocephalus')
 
 # Create list of search names
 
 # species_list <- c('Thylacinus cynocephalus',"Fratercula arctica")
 
+if (!("iucn_scraped_data.rds" %in% list.files(outputs))) {
+  
 species_list <- as.character(species_with_incomplete_data$accepted_binomial)
 
 species_list <- unique(species_list)
 
-missing_species_data <- lapply(species_list, get_redlist_data)
+# Scrape the data in batches because otherwise the iucn website throws an error
 
-saveRDS(missing_species_data, file.path(outputs,"200521_missing_species_data_iucn_web.rds"))
+species_list_1 <- species_list[1:970]
 
-missing_species_dataframe_list <- list()
+iucn_scraped_data_1 <- lapply(species_list_1, get_redlist_data)
+
+species_list_2 <- species_list[971:1940]
+
+iucn_scraped_data_2 <- lapply(species_list_2, get_redlist_data)
+
+species_list_3 <- species_list[1941:2910]
+
+iucn_scraped_data_3 <- lapply(species_list_3, get_redlist_data)
+
+species_list_4 <- species_list[2911:length(species_list)]
+
+iucn_scraped_data_4 <- lapply(species_list_4, get_redlist_data)
+
+iucn_scraped_data <- c(iucn_scraped_data_1, iucn_scraped_data_2,
+                       iucn_scraped_data_3, iucn_scraped_data_4)
+
+saveRDS(iucn_scraped_data, file.path(outputs,"iucn_scraped_data.rds"))
+
+} else {
+
+iucn_scraped_data <- readRDS(file.path(outputs,"iucn_scraped_data.rds"))
+
+}
+
+
+iucn_scraped_data_list <- list()
 no_data <- list()
 
-for(i in seq_along(missing_species_data)) {
+for(i in seq_along(iucn_scraped_data)) {
   
-if (length(missing_species_data[[i]][[2]]) == 30) {
+if (length(iucn_scraped_data[[i]][[2]]) == 30) {
   
-accepted_binomial <- missing_species_data[[i]][[1]]
-redlist_status <- missing_species_data[[i]][[2]][13][[1]]
-published_year <- missing_species_data[[i]][[2]][11][[1]]
+accepted_binomial <- iucn_scraped_data[[i]][[1]]
+redlist_status <- as.character(iucn_scraped_data[[i]][[2]][13][[1]])
+published_year <- iucn_scraped_data[[i]][[2]][11][[1]]
 source <- "IUCN"
-missing_species_dataframe_list[[i]] <- as.data.frame(cbind(accepted_binomial, redlist_status, 
+iucn_scraped_data_list[[i]] <- as.data.frame(cbind(accepted_binomial, redlist_status, 
                                              published_year, source))
 
-} else if(length(missing_species_data[[i]][[2]]) == 1) {
+} else if (length(iucn_scraped_data[[i]][[2]]) == 1) {
   
-accepted_binomial <- missing_species_data[[i]][2][[1]]
+accepted_binomial <- iucn_scraped_data[[i]][2][[1]]
 redlist_status <- NA
 published_year <- NA
 source <- "IUCN"
@@ -912,9 +1035,81 @@ no_data[[i]] <- as.data.frame(cbind(accepted_binomial, redlist_status,
   }
 }
 
-missing_species_dataframe <- do.call(rbind, missing_species_dataframe_list)
+iucn_scraped_dataframe <- do.call(rbind, iucn_scraped_data_list)
+
+iucn_scraped_dataframe$redlist_status <- as.character(iucn_scraped_dataframe$redlist_status)
 
 no_data <- do.call(rbind, no_data)
+
+# Scrape all the extinct species from iucn website ----
+
+#' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
+
+iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
+
+tsn <- iucn_scraped_extinct_species[[3]][[1]]
+accepted_binomial <- iucn_scraped_extinct_species[[3]][[2]]
+
+iucn_scraped_extinct_species_df <- as.data.frame(cbind(tsn, accepted_binomial))
+iucn_scraped_extinct_species_df <- iucn_scraped_extinct_species_df %>%
+                                   mutate(redlist_status = "EX")
+# Likewise Extinct in the wild
+
+iucn_scraped_ew_species <- rl_sp_category("EW", key = NULL, parse = TRUE)
+
+tsn <- iucn_scraped_extinct_species[[3]][[1]]
+accepted_binomial <- iucn_scraped_extinct_species[[3]][[2]]
+
+iucn_scraped_ew_species_df <- as.data.frame(cbind(tsn, accepted_binomial))
+iucn_scraped_ew_species_df <- iucn_scraped_ew_species_df %>%
+                              mutate(redlist_status = "EW")
+
+iucn_scraped_extinct_species_df <- rbind(iucn_scraped_extinct_species_df,
+                                         iucn_scraped_ew_species_df)
+
+if(save_outputs == "yes") {
+  
+  write_csv(iucn_scraped_extinct_species_df, 
+            file.path(outputs, "iucn_scraped_extinct.csv"))
+  saveRDS(iucn_scraped_extinct_species_df, 
+          file.path(outputs, "iucn_scraped_extinct.rds"))
+  
+}
+    
+
+# Add new red list status back into the species data
+
+names(iucn_scraped_dataframe) <- c("accepted_binomial", "redlist_status", 
+                              "redlist_assessment_year", "source")
+
+# different_names <- c("tsn", "accepted_binomial", "wwf_species_id","genus", 
+#                      "species", "class.x" , "common_name" ,  "ecoregion_code")
+
+different_names <- names(species_data)[!str_detect(names(species_data), 
+                                                   names(iucn_scraped_dataframe))]
+
+correct_order <- names(species_data)
+
+iucn_scraped_dataframe <- iucn_scraped_dataframe %>%
+                          merge(species_data[different_names], 
+                                by = "accepted_binomial", all = FALSE) %>%
+                          dplyr::select(-source) %>%
+                          distinct(.) %>%
+                          dplyr::select(correct_order)
+
+old_species_data <- species_data
+
+species_data <- rbind(species_data, iucn_scraped_dataframe)
+
+species_data <- distinct(species_data)
+
+
+if (save_outputs == "yes") {
+  
+  write_csv(species_data, file.path(outputs, paste(date, "_species_data.csv", sep = "")))
+  saveRDS(species_data, file.path(outputs, paste(date, "_species_data.csv", sep = "")))
+  
+}
 
 # Calculate summary statistics ----
 
@@ -930,7 +1125,7 @@ species_by_ecoregion <- species_data %>%
 
 names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 
-# Get the number of species with each redlist status
+# Get the number of species in each redlist category
 
 species_by_redlist_status <- species_data %>%
                              group_by(redlist_status) %>%
@@ -972,13 +1167,6 @@ proportion_extinct <- species_by_ecoregion %>%
 
 # Visualise summary stats ----
 
-if(save_outputs == "yes") {
-
-  objectname <- paste(date,"_extinct_species_map",".tiff",sep="")
-  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-
-}
-
 extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
                         c("ecoregion_code", "number_of_species_extinct")],
                         by = c("eco_code" = "ecoregion_code"))
@@ -989,15 +1177,14 @@ extinction_map <- ggplot(extinction_map_data) +
 
 extinction_map
 
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "extinctions_map.png", extinction_map))
+  
+}
+
 dev.off()
 
-
-if(save_outputs == "yes"){
-
-  objectname <- paste(date,"_number_of_species_map",".tiff",sep="")
-  tiff(file = (paste(outputs,objectname, sep = "/")), units="in", width=10, height=5, res=400)
-
-}
 
 
 species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
@@ -1010,66 +1197,15 @@ species_map <- ggplot(species_map_data) +
 
 species_map
 
-dev.off()
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "species_richness_map.png", species_map))
+  
+}
 
 # Calculate indicators ----
 
 # data <- mammal_species_data_by_ecoregion[[1]]
-
-calculate_red_list_index <- function(data, timeframe){
-  
-  require(tidyverse)
-  
-  # Remove data without RL status
-  
-  data$redlist_assessment_year <- as.numeric(as.character(data$redlist_assessment_year))
-  
-  data <- data %>%
-          filter(!is.na(redlist_status)) %>%
-          group_by(tsn) 
-  
-  ecoregion <- as.factor(data$ecoregion_code[1])
-  
-  # Assign category weights
-  
-  weighted_data <- data %>%
-                   dplyr::mutate(RL_weight = ifelse(redlist_status == "LC", 0,
-                                 ifelse(redlist_status == "NT", 1,
-                                 ifelse(redlist_status == "VU", 2,
-                                 ifelse(redlist_status == "EN", 3,
-                                 ifelse(redlist_status == "CR", 4,
-                                 ifelse(redlist_status == "EX", 5, NA))))))) 
-  
- #weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
-  
-  # Filter out rows with NE and DD
-  weighted_data <- filter(weighted_data, RL_weight != "NA" )
-  
-  # Calculate numerical weights for each species based on risk category
-  # weight.data <- calcWeights(filter.data, RL_weight)
-  # weight.data <- drop_na(weight.data, .data[[RL_weight]])
-  
-  # Group data so the index is calculated for each taxa for each year
-  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
-  
-  # Sum category weights for each group, calculate number of species per group
-  summed.weights <- summarise(grouped.data, 
-                              total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
-                              total.count = n()) # calc number of species
-  
-  # Calculate RLI scores for each group, rounded to 3 decimal places
-  
-  index.scores <- summed.weights %>%
-                  mutate(RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
-                         Criteria = "risk",
-                         Ecoregion_code = ecoregion)
-  
-
-  #index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
-  
-  return(index.scores)
-  
-}
 
 # Subset data for birds
 
@@ -1080,6 +1216,12 @@ dim(species_data_full)
 species_data_full_distinct <- distinct(species_data_full)
 
 dim(species_data_full_distinct)
+
+# Select birds and year 2016
+
+#' TODO: Alter this so it splits the data by taxa and then automatically calculates
+#' the RLI for each time point, for each taxa (instead of wrangling all the data
+#' and functions one by one for each group)
 
 species_data <- species_data_full_distinct %>% 
                 filter(class.x == "Aves") %>%
@@ -1099,8 +1241,6 @@ eco_NA0606 <- species_data %>%
 
 
 # Calculate the Red List Index for each group, for each timeframe, for each ecoregion
-
-#' TODO: Figure out why this loop drops over half the ecoregions we have data for
 
 rli_by_ecoregion <- list()
 
@@ -1129,22 +1269,32 @@ ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
                                   select(eco_code, ECO_NAME) %>%
                                   distinct(.)
 
+# Add ecoregion names
 birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
-                               merge(ecoregion_map_data_no_geometry[c("eco_code", "ECO_NAME")], 
+                               merge(ecoregion_map_data_no_geometry[c("eco_code", 
+                                                                      "ECO_NAME")], 
                                all = TRUE) %>%
                                distinct(.)
       
+# Add geometry back in so it can be mapped
 
 rli_map_data <- inner_join(ecoregion_map, birds_rli_by_ecoregion_2016[
                           c("eco_code", "RLI")], 
                           by = "eco_code")
 
+# Check you've got all the ecoregions
+
 length(unique(rli_map_data$eco_code))
+
+# Add an inverted RLI variable so the colours can go either light to dark or 
+# dark to light (fix this properly in the plots later?)
 
 rli_map_data <- rli_map_data %>%
                 mutate(RLI_inverted_original = 1 - RLI) %>%
-                mutate(RLI_inverted = ifelse(RLI_inverted == 1, NA, RLI_inverted_original))
+                mutate(RLI_inverted = ifelse(RLI_inverted_original == 1, NA,
+                                             RLI_inverted_original))
 
+# Make a map of birds RLI for 2016
 
 rli_map <- ggplot(rli_map_data) +
            geom_sf(aes(fill = RLI_inverted), colour = "black", 
@@ -1163,12 +1313,17 @@ rli_map
 
 ggsave(paste(outputs, "rli_birds_map_dark.png", sep = "/"), rli_map,  device = "png")
 
+# TEMPORARY CODE - smooth outliers by putting an upper limit on RLI value (see RLI_adjusted)
+
 rli_map_data <- rli_map_data %>%
                 mutate(RLI_inverted_original = 1 - RLI) %>%
                 mutate(RLI_inverted = ifelse(RLI_inverted == 1, NA, RLI_inverted_original)) %>%
                 mutate(RLI_adjusted = ifelse(RLI == 0, NA,
                                              ifelse(RLI > 0 & RLI < 0.9538, 
                                                     0.9538, RLI)))
+
+# Make the new map - should have a more even distribution of colours instead of
+# a couple of really high values and everything else kind of the same
 
 rli_map_2 <-  ggplot(rli_map_data) +
               geom_sf(aes(fill = RLI_adjusted), colour = "black", 
@@ -1314,51 +1469,74 @@ dev.off()
 
 hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
 
-
-
 hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
   dplyr::select(eco_code, ECO_NAME, HFP) %>%
  # rename(Ecoregion_code = eco_code) %>%
   distinct(.)
 
-scale_to_1 <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
+# Create indicator scatter plots ----
+
+names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 indicator_values <- birds_rli_by_ecoregion_2016 %>%
                     dplyr::select(eco_code, RLI) %>%
                     merge(hfp_by_ecoregion_2017_new[c("eco_code", "HFP")], 
                           all = TRUE,
                           by = "eco_code") %>%
-                    mutate(HFP_scaled = scale_to_1(HFP)) 
+                    mutate(HFP_scaled = scale_to_1(HFP)) %>%
+                    mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
+                    merge(species_by_ecoregion, by = "eco_code") %>%
+                    filter(RLI != 0) %>%
+                    mutate(RLI_scaled = scale_to_1(RLI))
 
-objectname <- paste("hfp_rli_scatterplot",".tiff",sep="")
+hfp_hist <- hist(indicator_values$HFP_scaled_inverted, breaks = 100)
+hfp_hist
 
-tiff(file = (paste(outputs,objectname, sep = "/")), units="in", 
-     width=10, height=5, res=100)
+rli_hist <- hist(indicator_values$RLI_scaled, breaks = 100)
+rli_hist
 
-hfp_rli_plot <- plot(indicator_values$RLI, indicator_values$HFP_scaled,xlab = "Red List Index by ecoregion", 
-     ylab = "Human Footprint Index by ecoregion (scaled)")
-
-hfp_rli_plot
-
-dev.off()
-
-model <- lm(RLI ~ HFP_scaled, data = indicator_values)
-
-model
-
-plot(RLI ~ HFP_scaled, data = indicator_values, pch = 16, cex = 1.3, 
-     col = "blue", xlab = "Red List Index by ecoregion", 
-     ylab = "Human Footprint Index by ecoregion (scaled)")
-abline(model)
+cor(indicator_values$HFP_scaled_inverted, indicator_values$RLI_scaled, 
+    method = "pearson", use = "complete.obs")
 
 
+library(grid)
 
-model_diag_metrics <- augment(model)
+d <- expand.grid(x=1:100, y=1:100)
 
-par(mfrow = c(2, 2))
-plot(model)
+x <- ggplot(d, aes(x, y, fill=atan(y/x), alpha=x+y)) + 
+      geom_tile() + 
+      scale_fill_gradient(high="red", low="blue")+
+      theme(legend.position="none", panel.background=element_blank())
 
-install.packages("ggfortify")
+x
 
-library(ggfortify)
-autoplot(model)
+
+g <- rasterGrob(blues9, width=unit(1,"npc"), height = unit(1,"npc"),
+                interpolate = TRUE)
+
+rli_hfp <- ggplot(indicator_values, aes(x = HFP_scaled_inverted,
+                                        y = RLI_scaled,
+                                        colour = HFP_scaled)) + 
+           annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+           geom_point() +
+                   scale_colour_viridis_c() +
+                   theme(panel.grid.major = element_blank(), 
+                         panel.grid.minor = element_blank(),
+                         panel.background = element_blank(), 
+                         axis.line = element_line(colour = "black")) +
+                  scale_y_continuous(breaks = c(0, 1),
+                             labels = c("Bad", "Good")) +
+                  scale_x_continuous(breaks = c(0, 1),
+                             labels = c("Bad", "Good")) +
+                  labs(x = "Human Footprint Index", 
+                       y = "Red List Index") +
+                  geom_tile() +
+                  scale_colour_viridis()
+rli_hfp
+
+
+
+
+
+
+

@@ -13,7 +13,7 @@
 #' TODO: Remove objects when they are no longer needed
 #' TODO: Important - use packrat or something to save version of taxizedb
 
-# Packages ----
+# Load packages ----
 
 library(raster)
 library(tidyverse)
@@ -28,7 +28,7 @@ library(functionaltraits)
 library(broom)
 library(rredlist)
 
-# Input and output locations ----
+# Set input and output locations ----
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
@@ -1207,6 +1207,11 @@ if(save_outputs == "yes") {
 
 # data <- mammal_species_data_by_ecoregion[[1]]
 
+
+ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
+
+
 # Red List Index for Birds ----
 
 # Subset data for birds
@@ -1267,9 +1272,22 @@ birds_rli_by_ecoregion_2016 <- do.call(rbind, rli_by_ecoregion)
 
 
 birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
-                               rename(eco_code = Ecoregion_code) 
-                               # %>%
-                               # filter(!RLI == 0)
+                               rename(eco_code = Ecoregion_code) %>%
+                               filter(RLI != 0) %>%
+                               mutate(RLI_scaled = scale_to_1(RLI)) %>%
+                               mutate(RLI_inverted = 1 - RLI) %>%
+                               mutate(RLI_scaled_inverted = 
+                                        scale_to_1(RLI_inverted)) %>%
+                               mutate(RLI_adjusted_old = ifelse(RLI == 0, NA, 
+                                      ifelse(RLI > 0 & RLI < 0.9538, 
+                                             0.9538, RLI))) %>%
+                               mutate(RLI_adjusted = ifelse(RLI == 0, NA, 
+                                      pmin(pmax(RLI,
+                                       quantile(RLI, .05, na.rm = TRUE))))) %>% 
+                                      # quantile(RLI, .995, na.rm = TRUE)))) %>%
+                               # mutate(RLI_scaled = scale_to_1(RLI)) %>%
+                               mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
+                               
 
 
 
@@ -1283,12 +1301,19 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
 
 
 hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
-  rename(HFP_original = HFP) %>%
-  mutate(HFP = ifelse(HFP_original > 33.29037, 	
-                      33.29037, HFP_original))
+                         mutate(HFP_original = HFP) %>%
+                         mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037, 	
+                         33.29037, HFP_original)) %>%
+                         mutate(HFP_adjusted = 
+                                pmin(pmax(HFP_original,quantile(HFP_original,
+                                          .005, na.rm = TRUE)), 
+                                          quantile(HFP_original, .995, 
+                                          na.rm = TRUE))) %>%
+                        mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
+                        mutate(HFP_scaled_adjusted_inverted = 
+                                 1 - HFP_scaled_adjusted) 
 
 # Subset the HFP data by country 
-
 
 if (!is.na(country)) {
   
@@ -1301,7 +1326,8 @@ if (!is.na(country)) {
 }
 
 hfp_map_data <- full_join(ecoregion_map, hfp_by_ecoregion_2017[
-                        c("ECO_NAME", "ECO_ID", "HFP")], 
+                        c("ECO_NAME", "ECO_ID", "HFP", "HFP_adjusted",
+                          "HFP_scaled_adjusted", "HFP_adjusted_old", "HFP_scaled_adjusted_inverted")], 
                         by = c("ECO_NAME" = "ECO_NAME"), na.rm = FALSE)
 
 # Wilderness Intactness Index ----
@@ -1317,7 +1343,9 @@ wii_data <- as.data.frame(wii_map_data) %>%
 hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
 
 hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
-                             dplyr::select(eco_code, ECO_NAME, HFP) %>%
+                             dplyr::select(eco_code, ECO_NAME, HFP,
+                                           HFP_adjusted, HFP_adjusted_old, HFP_scaled_adjusted,
+                                           HFP_scaled_adjusted_inverted) %>%
                             # rename(Ecoregion_code = eco_code) %>%
                              distinct(.) %>%
                              mutate(eco_code = as.character(eco_code)) %>%
@@ -1333,26 +1361,34 @@ names(ecoregions) <-
 
 indicator_values <- birds_rli_by_ecoregion_2016 %>%
                     merge(ecoregions, by = "eco_code") %>%
-                    dplyr::select(eco_code, ECO_NAME, RLI) %>%
-                    merge(hfp_by_ecoregion_2017_new[c("eco_code", "HFP")], 
+                    dplyr::select(eco_code, ECO_NAME, RLI, RLI_adjusted_old,
+                                  RLI_inverted, RLI_scaled,
+                                  RLI_scaled_inverted, RLI_adjusted,
+                                  RLI_adjusted_inverted) %>%
+                    merge(hfp_by_ecoregion_2017_new[c("eco_code",
+                                                      "HFP", 
+                                                      "HFP_adjusted",
+                                                      "HFP_adjusted_old",
+                                                      "HFP_scaled_adjusted",
+                                                      "HFP_scaled_adjusted_inverted")], 
                           all = TRUE,
                           by = "eco_code") %>%
-                    mutate(HFP_scaled = scale_to_1(HFP)) %>%
-                    mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
+                    # mutate(HFP_scaled = scale_to_1(HFP)) %>%
+                    # mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
                     merge(species_by_ecoregion, by = "eco_code") %>%
-                    filter(RLI != 0) %>%
-                    mutate(RLI_scaled = scale_to_1(RLI)) %>%
-                    mutate(RLI_scaled_inverted = 1 - RLI_scaled) %>%
-                    merge(wii_data[c("ECO_NAME", "Q2009", "PLOTCAT")]) %>%
-                    rename(WII = Q2009) %>%
-                    mutate(WII = as.numeric(as.character(WII))) %>%
-                    mutate(WII_inverted = 1 - WII) 
+                    # filter(RLI != 0) %>%
+                    # merge(wii_data[c("ECO_NAME","Q2009", "PLOTCAT")], 
+                    #       by = "ECO_NAME") %>%
+                    # rename(WII = Q2009) %>%
+                    # mutate(WII = as.numeric(as.character(WII))) %>%
+                    # mutate(WII_inverted = 1 - WII) %>%
+                    distinct(.)
 
 
-hfp_hist <- hist(indicator_values$HFP_scaled_inverted, breaks = 100)
+hfp_hist <- hist(indicator_values$HFP, breaks = 100)
 hfp_hist
 
-rli_hist <- hist(indicator_values$RLI_scaled, breaks = 100)
+rli_hist <- hist(indicator_values$RLI, breaks = 100)
 rli_hist
 
 wii_hist <- hist(indicator_values$WII_inverted, breaks = 100)
@@ -1376,6 +1412,7 @@ cor(indicator_values$RLI_scaled, indicator_values$WII_inverted,
 library(grid)
 library(viridis)
 library(png)
+library(gridExtra)
 
 
 # http://lenkiefer.com/2017/04/24/bivariate-map/
@@ -1399,18 +1436,17 @@ library(png)
 gradient_background <- readPNG(file.path(inputs, "gradient_inverted_cropped.png"))
 
 
-rli_hfp <- ggplot(indicator_values, aes(x = HFP_scaled,
-                                        y = RLI_scaled_inverted,
-                                        size = HFP_scaled,
-                                        col = RLI_scaled_inverted),
-                  alpha = 0.2) + 
-           guides(size = guide_legend(reverse = TRUE)) +
+rli_hfp <- ggplot(indicator_values, aes(x = HFP_adjusted,
+                                        y = RLI_scaled,
+                                        size = HFP_adjusted,
+                                        col = RLI_scaled)) + 
+            #guides(size = guide_legend(reverse = TRUE)) +
             # annotation_custom(rasterGrob(gradient_background, 
             #                              width = unit(1,"npc"), 
             #                              height = unit(1,"npc")), 
             #         -Inf, Inf, -Inf, Inf) +
-            geom_point() +
-            scale_colour_viridis_c() +
+            geom_point(alpha = 0.8) +
+            scale_colour_viridis_c(direction = -1 ) +
             theme(panel.grid.major = element_blank(), 
                   panel.grid.minor = element_blank(),
                   panel.background = element_blank(), 
@@ -1419,15 +1455,18 @@ rli_hfp <- ggplot(indicator_values, aes(x = HFP_scaled,
             #                    labels = c("Low extinction risk", "High extinction risk")) +
             # scale_x_continuous(breaks = c(0, 1),
             #                    labels = c("Small footprint", "Large footprint")) +
-            labs(x = "Human Footprint Index", 
+            labs(x = "Human Footprint Index (scaled)", 
                  y = "Red List Index (Birds)",
-                 size = "Size of human footprint (large to small)",
-                 col = "Extinction risk (high to low)") +
+                 size = "Size of human\nfootprint\n(small to large)",
+                 col = "Extinction risk\n(low to high)") +
             #geom_tile() +
             #scale_colour_viridis() +
-            theme(plot.background = element_rect(fill = NA)) + 
+            theme(plot.background = element_rect(fill = NA),
+                  axis.text = element_text(size = 14),
+                  axis.title = element_text(size = 14)) + 
             scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
-                               limits = c(0.00,1.00))
+                               limits = c(0.00,1.00)) +
+            scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
 rli_hfp
 
 if(save_outputs == "yes") {
@@ -1436,29 +1475,100 @@ if(save_outputs == "yes") {
   
 }
 
+rli_hfp_2 <- ggplot(indicator_values, aes(x = HFP_adjusted,
+                                        y = RLI_scaled)) + 
+  guides(size = guide_legend(reverse = TRUE)) +
+  annotation_custom(rasterGrob(gradient_background,
+                               width = unit(1,"npc"),
+                               height = unit(1,"npc")),
+          -Inf, Inf, -Inf, Inf) +
+  geom_point(size = 2) +
+  theme(axis.line = element_line(colour = "black")) +
+  # scale_y_continuous(breaks = c(0, 1),
+  #                    labels = c("Low extinction risk", "High extinction risk")) +
+  # scale_x_continuous(breaks = c(0, 1),
+  #                    labels = c("Small footprint", "Large footprint")) +
+  labs(x = "Human Footprint Index (scaled)", 
+       y = "Red List Index (Birds)",
+       size = "Size of human\nfootprint\n(small to large)",
+       col = "Extinction risk\n(low to high)") +
+  theme(plot.background = element_rect(fill = NA),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14)) + 
+  scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
+                     limits = c(0.00,1.00)) +
+  scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
+
+rli_hfp_2
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "hfp_rli_scatterplot_gradient.png"), 
+         rli_hfp_2,  device = "png")
+  
+}
+
+
 # Map indicators ----
 
 indicator_map_data <- inner_join(ecoregion_map, indicator_values[
-                      c("eco_code", "RLI_scaled_inverted", "HFP_scaled", 
-                        "WII", "PLOTCAT")], 
+                      c("eco_code", "RLI_adjusted", "RLI_adjusted_old",
+                        "HFP", "HFP_adjusted", "HFP_adjusted_old", "HFP_scaled_adjusted")], 
                       by = "eco_code")
 
 
 indicator_map_rli <- ggplot(indicator_map_data) +
-                     geom_sf(aes(fill = RLI_scaled_inverted), colour = "black", 
-                              size = 0.05) +
-                     scale_fill_viridis_c(trans = "log10", alpha = .8, 
+                     geom_sf(aes(fill = RLI_adjusted_old), colour = "black", 
+                              size = 0.05, show.legend = 'fill') +
+                     scale_fill_viridis_c(trans = "reverse", alpha = .8, 
                                           na.value = "grey70") +         
                      theme(axis.line = element_line(),
                            panel.grid.major = element_blank(),
                            panel.grid.minor = element_blank(),
                             #panel.border = element_blank(),
                            panel.background = element_blank()) +
-                     labs(fill = "Red List Index (Birds)")
+                     labs(fill = "Red List\nIndex (Birds)")
                     
                     # trans = "log10", 
 
 indicator_map_rli
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "indicator_map_rli.png"), indicator_map_rli,  device = "png")
+  
+}
+
+
+indicator_map_hfp <- ggplot(indicator_map_data) +
+                     geom_sf(aes(fill = HFP_adjusted_old), colour = "black", 
+                              size = 0.05, show.legend = 'fill') +
+                     scale_fill_viridis_c(trans = "log10", alpha = .8, 
+                                           na.value = "grey70") +         
+                     theme(axis.line = element_line(),
+                            panel.grid.major = element_blank(),
+                            panel.grid.minor = element_blank(),
+                            #panel.border = element_blank(),
+                            panel.background = element_blank()) +
+                     labs(fill = "Human\nFootprint\nIndex")
+
+# trans = "log10", 
+
+indicator_map_hfp
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "indicator_map_hfp.png"), indicator_map_hfp,  device = "png")
+  
+}
+
+indicator_maps <- grid.arrange(indicator_map_rli, indicator_map_hfp)
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "indicator_maps.png"), indicator_maps,  device = "png")
+  
+}
 
 # Red List Index for mammals ----
 

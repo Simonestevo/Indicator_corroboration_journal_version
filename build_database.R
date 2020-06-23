@@ -287,61 +287,6 @@ get_redlist_data <- function(species) {
 }
 
 
-calculate_red_list_index <- function(data, timeframe){
-  
-  require(tidyverse)
-  
-  # Remove data without RL status
-  
-  data$redlist_assessment_year <- as.numeric(as.character(data$redlist_assessment_year))
-  
-  data <- data %>%
-    filter(!is.na(redlist_status)) %>%
-    group_by(tsn) 
-  
-  ecoregion <- as.factor(data$ecoregion_code[1])
-  
-  # Assign category weights
-  
-  weighted_data <- data %>%
-    dplyr::mutate(RL_weight = ifelse(redlist_status == "LC", 0,
-                                     ifelse(redlist_status == "NT", 1,
-                                            ifelse(redlist_status == "VU", 2,
-                                                   ifelse(redlist_status == "EN", 3,
-                                                          ifelse(redlist_status == "CR", 4,
-                                                                 ifelse(redlist_status == "EX", 5, NA))))))) 
-  
-  #weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
-  
-  # Filter out rows with NE and DD
-  weighted_data <- filter(weighted_data, RL_weight != "NA" )
-  
-  # Calculate numerical weights for each species based on risk category
-  # weight.data <- calcWeights(filter.data, RL_weight)
-  # weight.data <- drop_na(weight.data, .data[[RL_weight]])
-  
-  # Group data so the index is calculated for each taxa for each year
-  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
-  
-  # Sum category weights for each group, calculate number of species per group
-  summed.weights <- summarise(grouped.data, 
-                              total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
-                              total.count = n()) # calc number of species
-  
-  # Calculate RLI scores for each group, rounded to 3 decimal places
-  
-  index.scores <- summed.weights %>%
-    mutate(RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
-           Criteria = "risk",
-           Ecoregion_code = ecoregion)
-  
-  
-  #index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
-  
-  return(index.scores)
-  
-}
-
 scale_to_1 <- function(vector){
   
   (vector-min(vector, na.rm = TRUE))/

@@ -12,41 +12,114 @@
 
 # Load packages ----
 
+library(tidyverse)
+library(sf)
+library(raster)
+library(grid)
+library(viridis)
+library(png)
+library(gridExtra)
 
 # Set input and output locations ----
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "yes"
+save_outputs <- "no"
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
 
 # Set output directory
 
-if (save_outputs == "yes") {
+# if (save_outputs == "yes") {
+#   
+#   outputs_dir <- paste(date,"_output_files",sep="")
+#   outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
+#   
+#   if( !dir.exists( outputs ) ) {
+#     
+#     dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
+#     
+#   }
+#   
+# } else {
+#   
+#   previous_outputs <- list.dirs(outputs_parent, recursive = FALSE)
+#   
+#   outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
+#   
+# }
+
+# Load functions ----
+
+# Function to scale the values of a vector from 0 to 1
+
+scale_to_1 <- function(vector){
   
-  outputs_dir <- paste(date,"_output_files",sep="")
-  outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
+  (vector-min(vector, na.rm = TRUE))/
+    (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
+}
+
+# Funciton to calculate the Red List Index
+
+calculate_red_list_index <- function(data, timeframe){
   
-  if( !dir.exists( outputs ) ) {
-    
-    dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
-    
-  }
+  require(tidyverse)
   
-} else {
+  # Remove data without RL status
   
-  previous_outputs <- list.dirs(outputs_parent, recursive = FALSE)
+  data$redlist_assessment_year <- as.numeric(as.character(data$redlist_assessment_year))
   
-  outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
+  data <- data %>%
+    filter(!is.na(redlist_status)) %>%
+    group_by(tsn) 
+  
+  ecoregion <- as.factor(data$ecoregion_code[1])
+  
+  # Assign category weights
+  
+  weighted_data <- data %>%
+    dplyr::mutate(RL_weight = ifelse(redlist_status == "LC", 0,
+                                     ifelse(redlist_status == "NT", 1,
+                                            ifelse(redlist_status == "VU", 2,
+                                                   ifelse(redlist_status == "EN", 3,
+                                                          ifelse(redlist_status == "CR", 4,
+                                                                 ifelse(redlist_status == "EX", 5, NA))))))) 
+  
+  #weighted_data$RL_weight <- as.numeric(as.character(weighted_data$RL_weight))
+  
+  # Filter out rows with NE and DD
+  weighted_data <- filter(weighted_data, RL_weight != "NA" )
+  
+  # Calculate numerical weights for each species based on risk category
+  # weight.data <- calcWeights(filter.data, RL_weight)
+  # weight.data <- drop_na(weight.data, .data[[RL_weight]])
+  
+  # Group data so the index is calculated for each taxa for each year
+  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
+  
+  # Sum category weights for each group, calculate number of species per group
+  summed.weights <- summarise(grouped.data, 
+                              total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
+                              total.count = n()) # calc number of species
+  
+  # Calculate RLI scores for each group, rounded to 3 decimal places
+  
+  index.scores <- summed.weights %>%
+    mutate(RLI = 1 - (total.weight/(total.count * 5)), # actual RLI formula
+           Criteria = "risk",
+           Ecoregion_code = ecoregion)
+  
+  
+  #index.scores <- index.scores[seq(1, nrow(index.scores), t), ]
+  
+  return(index.scores)
   
 }
 
 
-# Calculate indicators ----
 
-# data <- mammal_species_data_by_ecoregion[[1]]
+# Calculate indicators ----
 
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
@@ -59,17 +132,17 @@ ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometr
 
 species_data <- readRDS(file.path(outputs, "species_data.rds"))
 
-species_data_full <- species_data
+#species_data_full <- species_data
 
-dim(species_data_full)
+#dim(species_data_full)
 
-species_data_full_distinct <- distinct(species_data_full)
+species_data_full_distinct <- distinct(species_data)
 
 dim(species_data_full_distinct)
 
 species_by_ecoregion <- species_data %>%
-  group_by(ecoregion_code) %>%
-  summarize(n_distinct(tsn))
+                        group_by(ecoregion_code) %>%
+                        summarize(n_distinct(tsn))
 
 
 names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
@@ -132,7 +205,7 @@ birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
 
 
 
-# Human Footprint Index ----
+# Human Footprint Index 2017 ----
 
 # Read in the Human Footprint Index data 
 
@@ -171,6 +244,12 @@ hfp_map_data <- full_join(ecoregion_map, hfp_by_ecoregion_2017[
     "HFP_scaled_adjusted", "HFP_adjusted_old", "HFP_scaled_adjusted_inverted")], 
   by = c("ECO_NAME" = "ECO_NAME"), na.rm = FALSE)
 
+# Biodiversity Intactness Index 2005 ----
+
+
+bii_2005_raster_data <- raster(file.path(inputs, "biodiversity_intactness_index\\lbii.asc"))
+
+
 # Wilderness Intactness Index ----
 
 wii_map_data <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\intactness\\intactness\\Ecoregions2017_intactness.shp")
@@ -192,53 +271,53 @@ hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
   mutate(eco_code = as.character(eco_code)) %>%
   filter(eco_code != is.na(eco_code))
 
-# Create indicator scatter plots ----
+# Combine indicator values into a single dataframe ----
 
 names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 ecoregions <- as.data.frame(ecoregion_map) %>% select(-geometry)
-names(ecoregions) <- 
-  
-  
-  indicator_values <- birds_rli_by_ecoregion_2016 %>%
-  merge(ecoregions, by = "eco_code") %>%
-  dplyr::select(eco_code, ECO_NAME, RLI, RLI_adjusted_old,
-                RLI_inverted, RLI_scaled,
-                RLI_scaled_inverted, RLI_adjusted,
-                RLI_adjusted_inverted) %>%
-  merge(hfp_by_ecoregion_2017_new[c("eco_code",
-                                    "HFP", 
-                                    "HFP_adjusted",
-                                    "HFP_adjusted_old",
-                                    "HFP_scaled_adjusted",
-                                    "HFP_scaled_adjusted_inverted")], 
-        all = TRUE,
-        by = "eco_code") %>%
-  # mutate(HFP_scaled = scale_to_1(HFP)) %>%
-  # mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
-  merge(species_by_ecoregion, by = "eco_code") %>%
-  # filter(RLI != 0) %>%
-  # merge(wii_data[c("ECO_NAME","Q2009", "PLOTCAT")], 
-  #       by = "ECO_NAME") %>%
-  # rename(WII = Q2009) %>%
-  # mutate(WII = as.numeric(as.character(WII))) %>%
-  # mutate(WII_inverted = 1 - WII) %>%
-  distinct(.)
 
+
+indicator_values <- birds_rli_by_ecoregion_2016 %>%
+                    merge(ecoregions, by = "eco_code") %>%
+                    dplyr::select(eco_code, ECO_NAME, RLI, RLI_adjusted_old,
+                                  RLI_inverted, RLI_scaled,
+                                  RLI_scaled_inverted, RLI_adjusted,
+                                  RLI_adjusted_inverted) %>%
+                    merge(hfp_by_ecoregion_2017_new[c("eco_code",
+                                                      "HFP", 
+                                                      "HFP_adjusted",
+                                                      "HFP_adjusted_old",
+                                                      "HFP_scaled_adjusted",
+                                                      "HFP_scaled_adjusted_inverted")], 
+                          all = TRUE,
+                          by = "eco_code") %>%
+                    # mutate(HFP_scaled = scale_to_1(HFP)) %>%
+                    # mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
+                    merge(species_by_ecoregion, by = "eco_code") %>%
+                    # filter(RLI != 0) %>%
+                    # merge(wii_data[c("ECO_NAME","Q2009", "PLOTCAT")], 
+                    #       by = "ECO_NAME") %>%
+                    # rename(WII = Q2009) %>%
+                    # mutate(WII = as.numeric(as.character(WII))) %>%
+                    # mutate(WII_inverted = 1 - WII) %>%
+                    distinct(.)
+
+# Look at the data distribution
 
 hfp_hist <- hist(indicator_values$HFP, breaks = 100)
-hfp_hist
+hfp_hist # Values close to 0 = good, close to 30 = bad
 
 rli_hist <- hist(indicator_values$RLI, breaks = 100)
-rli_hist
+rli_hist # Values close to 1 = good, close to 0 = bad
 
-wii_hist <- hist(indicator_values$WII_inverted, breaks = 100)
-wii_hist
-
-indicator_values$PLOTCAT <- as.numeric(as.character(indicator_values$PLOTCAT))
-
-wii_category_hist <- hist(indicator_values$PLOTCAT, breaks = 10)
-wii_category_hist
+# wii_hist <- hist(indicator_values$WII_inverted, breaks = 100)
+# wii_hist
+# 
+# indicator_values$PLOTCAT <- as.numeric(as.character(indicator_values$PLOTCAT))
+# 
+# wii_category_hist <- hist(indicator_values$PLOTCAT, breaks = 10)
+# wii_category_hist
 
 cor(indicator_values$HFP_scaled_inverted, indicator_values$RLI_scaled, 
     method = "pearson", use = "complete.obs")
@@ -250,10 +329,7 @@ cor(indicator_values$RLI_scaled, indicator_values$WII_inverted,
     method = "pearson", use = "complete.obs")
 
 
-library(grid)
-library(viridis)
-library(png)
-library(gridExtra)
+
 
 
 # http://lenkiefer.com/2017/04/24/bivariate-map/
@@ -274,8 +350,7 @@ library(gridExtra)
 
 # RLI vs HFP scatterplot ----
 
-gradient_background <- readPNG(file.path(inputs, "gradient_inverted_cropped.png"))
-
+# Make the scatterplot with colours mapped to RLI, size mapped to HFP
 
 rli_hfp <- ggplot(indicator_values, aes(x = HFP_adjusted,
                                         y = RLI_scaled,
@@ -308,6 +383,7 @@ rli_hfp <- ggplot(indicator_values, aes(x = HFP_adjusted,
   scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
                      limits = c(0.00,1.00)) +
   scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
+
 rli_hfp
 
 if(save_outputs == "yes") {
@@ -315,6 +391,10 @@ if(save_outputs == "yes") {
   ggsave(file.path(outputs, "hfp_rli_scatterplot.png"), rli_hfp,  device = "png")
   
 }
+
+# Make the same scatterplot with no aes mapped, but gradient background instead
+
+gradient_background <- readPNG(file.path(inputs, "gradient_inverted_cropped.png"))
 
 rli_hfp_2 <- ggplot(indicator_values, aes(x = HFP_adjusted,
                                           y = RLI_scaled)) + 

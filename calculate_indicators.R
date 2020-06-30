@@ -170,7 +170,36 @@ names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 #' the RLI for each time point, for each taxa (instead of wrangling all the data
 #' and functions one by one for each group)
 
-species_data <- species_data_full_distinct %>% 
+classes <- unique(species_data$class.x)
+classes <- na.omit(classes)
+
+timepoints <- unique(species_data$redlist_assessment_year)
+timepoints <- na.omit(timepoints)
+
+# Split into different classes
+
+class_list <- split(species_data, species_data$class.x)
+
+# Split each class into different time points
+
+class_time_list <- list()
+class_time_ecoregion_list <- list()
+
+for (i in seq_along(class_list)) {
+  
+  class_timestep <- split(class_list[[i]], 
+                          class_list[[i]]$redlist_assessment_year)
+  
+  for (j in seq_along(class_timestep))
+  
+  class_time_ecoregion_list[[j]] <- split(class_timestep[[j]], 
+                                          class_timestep[[j]]$ecoregion_code)
+  
+  class_time_list[[i]] <- class_time_ecoregion_list
+  
+}
+
+species_data <- species_data %>% 
   filter(class.x == "Aves") %>%
   filter(redlist_assessment_year == 2016)
 

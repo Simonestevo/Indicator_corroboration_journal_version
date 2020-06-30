@@ -12,9 +12,9 @@
 
 # Load packages ----
 
+library(raster)
 library(tidyverse)
 library(sf)
-library(raster)
 library(grid)
 library(viridis)
 library(png)
@@ -26,7 +26,7 @@ inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 save_outputs <- "no"
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
 
 # Set output directory
@@ -121,24 +121,41 @@ calculate_red_list_index <- function(data, timeframe){
 
 # Calculate indicators ----
 
+# Get ecoregions
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
+# Get ecoregion countries
 
+ecoregion_country_df <- readRDS(paste(outputs_parent, 
+                                      "ecoregion_country_data.rds", sep = "/"))
+
+if (!is.na(country)) {
+  
+    ecoregion_subset <- ecoregion_country_df %>%
+    filter(CNTRY_NAME == country) %>%
+    unique(.) %>%
+    rename(ecoregion_code = eco_code)
+  
+}
+  
 # Red List Index for Birds ----
 
-# Subset data for birds
+# Read in species data
 
 species_data <- readRDS(file.path(outputs, "species_data.rds"))
 
-#species_data_full <- species_data
+# Subset by test country
 
-#dim(species_data_full)
+if (!is.na(country)) {
+  
+    species_data <- species_data %>%
+    merge(ecoregion_subset[c("ecoregion_code", "CNTRY_NAME")], by = "ecoregion_code") %>%
+    unique(.)
+  
+}
 
-species_data_full_distinct <- distinct(species_data)
-
-dim(species_data_full_distinct)
 
 species_by_ecoregion <- species_data %>%
                         group_by(ecoregion_code) %>%
@@ -255,7 +272,7 @@ bii_2005_raster_data <- raster(file.path(inputs, "biodiversity_intactness_index\
 wii_map_data <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\intactness\\intactness\\Ecoregions2017_intactness.shp")
 
 wii_data <- as.data.frame(wii_map_data) %>%
-  select(OBJECTID, ECO_NAME, ECO_ID, Q2009_LL, Q2009, Q2009_UL, PLOTCAT)
+  dplyr::select(OBJECTID, ECO_NAME, ECO_ID, Q2009_LL, Q2009, Q2009_UL, PLOTCAT)
 
 # Analyse indicators ----
 
@@ -275,7 +292,7 @@ hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
 
 names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
-ecoregions <- as.data.frame(ecoregion_map) %>% select(-geometry)
+ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
 
 indicator_values <- birds_rli_by_ecoregion_2016 %>%
@@ -328,25 +345,6 @@ cor(indicator_values$HFP_scaled_inverted, indicator_values$PLOTCAT,
 cor(indicator_values$RLI_scaled, indicator_values$WII_inverted, 
     method = "pearson", use = "complete.obs")
 
-
-
-
-
-# http://lenkiefer.com/2017/04/24/bivariate-map/
-
-# d <- expand.grid(x=1:100,y=1:100)
-# 
-# plot <- ggplot(d, aes(x,y,fill=atan(y/x),alpha=x+y))+
-#         geom_tile()+
-#         scale_fill_viridis()+
-#         theme(legend.position="none",
-#               panel.background=element_blank())+
-#         labs(title="A bivariate color scheme (Viridis)")
-# 
-# plot
-# 
-# g <- rasterGrob(blues9, width=unit(1,"npc"), height = unit(1,"npc"),
-#                 interpolate = TRUE)
 
 # RLI vs HFP scatterplot ----
 
@@ -425,10 +423,43 @@ rli_hfp_2
 if(save_outputs == "yes") {
   
   ggsave(file.path(outputs, "hfp_rli_scatterplot_gradient.png"), 
-         rli_hfp_2,  device = "png")
+         rli_hfp_2, height = 4, width = 5, device = "png")
   
 }
 
+horizontal_gradient <-  readPNG(file.path(inputs, "horizontal_gradient.png"))
+
+rli_hfp_3 <- ggplot(indicator_values, aes(x = HFP_adjusted,
+                                          y = RLI_scaled,
+                                          col = RLI_scaled)) + 
+  annotation_custom(rasterGrob(horizontal_gradient,
+                               width = unit(1,"npc"),
+                               height = unit(1,"npc")),
+                    -Inf, Inf, -Inf, Inf) +
+  geom_point(shape = 21, colour = "white", size = 4,
+             aes(fill = RLI_scaled)) +
+  scale_fill_viridis_c(direction = -1 ) +
+  theme(axis.line = element_line(colour = "black")) +
+  labs(x = "Human Footprint Index (scaled)", 
+       y = "Red List Index (Birds)",
+       size = "Size of human\nfootprint\n(small to large)",
+       col = "Extinction risk\n(low to high)") +
+  theme(plot.background = element_rect(fill = NA),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14)) + 
+  scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
+                     limits = c(0.00,1.00)) +
+  scale_x_continuous(breaks = c(0,5,10,15,20,25,30)) +
+  theme(legend.position = "none")
+
+rli_hfp_3
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "hfp_rli_scatterplot_multi_colour_scales.png"), 
+         rli_hfp_3, height = 4, width = 5, device = "png")
+  
+}
 
 # Map indicators ----
 
@@ -448,7 +479,8 @@ indicator_map_rli <- ggplot(indicator_map_data) +
         panel.grid.minor = element_blank(),
         #panel.border = element_blank(),
         panel.background = element_blank()) +
-  labs(fill = "Red List\nIndex (Birds)")
+  labs(fill = "Red List\nIndex (Birds)") +
+  theme(legend.position = "none")
 
 # trans = "log10", 
 
@@ -456,7 +488,8 @@ indicator_map_rli
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "indicator_map_rli.png"), indicator_map_rli,  device = "png")
+  ggsave(file.path(outputs, "indicator_map_rli_dimensions_nl.png"), 
+         indicator_map_rli, height = 4, width = 5, device = "png")
   
 }
 
@@ -471,7 +504,8 @@ indicator_map_hfp <- ggplot(indicator_map_data) +
         panel.grid.minor = element_blank(),
         #panel.border = element_blank(),
         panel.background = element_blank()) +
-  labs(fill = "Human\nFootprint\nIndex")
+  labs(fill = "Human\nFootprint\nIndex") +
+  theme(legend.position = "none")
 
 # trans = "log10", 
 
@@ -479,7 +513,8 @@ indicator_map_hfp
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "indicator_map_hfp.png"), indicator_map_hfp,  device = "png")
+  ggsave(file.path(outputs, "indicator_map_hfp_dimensions_nl.png"), 
+         height = 4, width = 5,indicator_map_hfp,  device = "png")
   
 }
 
@@ -541,7 +576,7 @@ ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
 all_map_data_temp <- ecoregion_map_data_no_geometry
 
 ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
-  select(eco_code, ECO_NAME) %>%
+  dplyr::select(eco_code, ECO_NAME) %>%
   distinct(.)
 
 # Add ecoregion names

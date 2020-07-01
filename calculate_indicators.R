@@ -146,6 +146,14 @@ if (!is.na(country)) {
 
 species_data <- readRDS(file.path(outputs, "species_data.rds"))
 
+# Remove cases without redlist status and/or assessment year
+#' TODO: this might be better done in the build_database script? So there's no
+#' wrangling of the species data in this script?
+
+species_data <- species_data %>%
+                drop_na(redlist_assessment_year, redlist_status) %>%
+                distinct(.)
+
 # Subset by test country
 
 if (!is.na(country)) {
@@ -156,6 +164,7 @@ if (!is.na(country)) {
   
 }
 
+# Get number of species by ecoregion
 
 species_by_ecoregion <- species_data %>%
                         group_by(ecoregion_code) %>%
@@ -170,34 +179,74 @@ names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 #' the RLI for each time point, for each taxa (instead of wrangling all the data
 #' and functions one by one for each group)
 
-classes <- unique(species_data$class.x)
-classes <- na.omit(classes)
-
-timepoints <- unique(species_data$redlist_assessment_year)
-timepoints <- na.omit(timepoints)
 
 # Split into different classes
 
 class_list <- split(species_data, species_data$class.x)
 
-# Split each class into different time points
+# Split each class into different time points (output should be dataframes of 
+# species red list status in a nested list with levels: Class, Time point, Ecoregion)
 
 class_time_list <- list()
 class_time_ecoregion_list <- list()
 
 for (i in seq_along(class_list)) {
   
+  # Split by different assessment timepoints
+  
   class_timestep <- split(class_list[[i]], 
                           class_list[[i]]$redlist_assessment_year)
   
-  for (j in seq_along(class_timestep))
-  
-  class_time_ecoregion_list[[j]] <- split(class_timestep[[j]], 
-                                          class_timestep[[j]]$ecoregion_code)
-  
-  class_time_list[[i]] <- class_time_ecoregion_list
-  
+    for (j in seq_along(class_timestep)) {
+      
+    # Split by each ecoregion (so have a list of species for each class, timepoint,
+    # ecoregion)
+    
+    class_time_ecoregion_list[[j]] <- split(class_timestep[[j]], 
+                                            class_timestep[[j]]$ecoregion_code)
+    }
+    
+    class_time_list[[i]] <- class_time_ecoregion_list
 }
+
+# Calculate the RLI per ecoregion, per timepoint, per class (output should be
+# dataframes of RLI values by ecoregion, by timepoint, split by class)
+
+#' TODO: Not working yet
+
+
+class_time_ecoregions <- list()
+classes_rli <- list()
+class_all_timepoints <- list()
+
+for (i in seq_along(class_time_list)) {
+  
+  class <- class_time_list[[i]] # Get list of timesteps for one class
+  
+    for (j in seq_along(class)) {
+    
+      time <- class[[j]] # Get list of ecoregions for one timestep, for one class
+    
+        for (k in seq_along(time)) {
+        
+          class_time_ecoregions[[k]] <- calculate_red_list_index(time[[k]]) # Calculate RLI for each ecoregion for one timestep, one class
+          
+          class_time_ecoregion_df <- do.call(rbind, class_time_ecoregions) # One dataframe for one time point, one class
+          
+        }
+    
+    class_all_timepoints[[j]] <- class_time_ecoregion_df # Put the time point into a list of timepoints
+    
+    }
+  
+  class_all_timepoints_df <- do.call(rbind, class_all_timepoints)
+  
+  classes_rli[[i]] <- class_all_timepoints_df # Put the list of time points into a class
+}
+
+
+test <- classes_rli[[1]]
+## Previous way of calculating RLI used for grant applications
 
 species_data <- species_data %>% 
   filter(class.x == "Aves") %>%

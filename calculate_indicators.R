@@ -227,11 +227,13 @@ class_time_list[[i]] <- class_time_list_full[[i]][lengths(class_time_list_full[[
 
 class_time_ecoregions <- list()
 classes_rli <- list()
-class_all_timepoints <- list()
+
 
 for (i in seq_along(class_time_list)) {
   
   class <- class_time_list[[i]] # Get list of timesteps for one class
+  
+  class_all_timepoints <- list()
   
     for (j in seq_along(class)) {
     
@@ -255,7 +257,10 @@ for (i in seq_along(class_time_list)) {
   
 }
 
-test <- classes_rli[[1]]
+frogs <- classes_rli[[1]]
+birds <- classes_rli[[2]]
+mammals <- classes_rli[[3]]
+
 ## Previous way of calculating RLI used for grant applications
 
 species_data <- species_data %>% 

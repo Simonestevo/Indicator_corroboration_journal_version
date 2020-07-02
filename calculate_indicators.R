@@ -117,7 +117,32 @@ calculate_red_list_index <- function(data, timeframe){
   
 }
 
+map_indicators <- function(data, indicator_variable, title, legend) {
+  
+indicator_map <-  ggplot(data) +
+                  geom_sf(aes(fill = indicator_variable), colour = "black", 
+                          size = 0.05, show.legend = 'fill') +
+                  scale_fill_viridis_c(trans = "reverse", alpha = .8, 
+                                       na.value = "grey70") +         
+                  theme(axis.line = element_line(),
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(),
+                        panel.background = element_blank()) +
+                  labs(fill = title) +
+                  theme(legend.position = legend) +
+                  facet_wrap(~ year)
 
+return(indicator_map)
+
+}
+
+data <- indicator_map_data %>% filter(indicator == "human footprint index")
+
+test <- map_indicators(data, data$HFP_adjusted_old, "test", "right")
+
+test2 <- indicator_map_data %>%
+         filter(indicator == "red list index Aves") %>%
+         map_indicators(.$RLI_adjusted_old, "test", "right")
 
 # Calculate indicators ----
 
@@ -140,7 +165,7 @@ if (!is.na(country)) {
   
 }
   
-# Red List Index for Birds ----
+# Red List Index ----
 
 # Read in species data
 
@@ -222,9 +247,6 @@ class_time_list[[i]] <- class_time_list_full[[i]][lengths(class_time_list_full[[
 # Calculate the RLI per ecoregion, per timepoint, per class (output should be
 # dataframes of RLI values by ecoregion, by timepoint, split by class)
 
-#' TODO: Not working yet
-
-
 class_time_ecoregions <- list()
 classes_rli <- list()
 
@@ -257,62 +279,30 @@ for (i in seq_along(class_time_list)) {
   
 }
 
-frogs <- classes_rli[[1]]
-birds <- classes_rli[[2]]
-mammals <- classes_rli[[3]]
+# Convert back into one dataframe
 
-## Previous way of calculating RLI used for grant applications
+rli_values <- do.call(rbind, classes_rli)
 
-species_data <- species_data %>% 
-  filter(class.x == "Aves") %>%
-  filter(redlist_assessment_year == 2016)
+# Add scaled/inverted values
 
-species_data_by_ecoregion <- split(species_data, 
-                                   species_data$ecoregion_code)
-
-bird_summary <- species_data %>%
-  group_by(ecoregion_code, redlist_status) %>%
-  summarize(n_distinct(tsn))
-
-# Check the outliers
-
-eco_NA0606 <- species_data %>%
-  filter(ecoregion_code == "NA0606")
-
-
-# Calculate the Red List Index for each group, for each timeframe, for each ecoregion
-
-rli_by_ecoregion <- list()
-
-for (i in seq_along(species_data_by_ecoregion)) {
-  
-  rli_by_ecoregion[[i]] <- calculate_red_list_index(species_data_by_ecoregion[[i]])
-  
-}
-
-# Convert back into a dataframe
-
-birds_rli_by_ecoregion_2016 <- do.call(rbind, rli_by_ecoregion)
-
-
-birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
-  rename(eco_code = Ecoregion_code) %>%
-  filter(RLI != 0) %>%
-  mutate(RLI_scaled = scale_to_1(RLI)) %>%
-  mutate(RLI_inverted = 1 - RLI) %>%
-  mutate(RLI_scaled_inverted = 
-           scale_to_1(RLI_inverted)) %>%
-  mutate(RLI_adjusted_old = ifelse(RLI == 0, NA, 
-                                   ifelse(RLI > 0 & RLI < 0.9538, 
-                                          0.9538, RLI))) %>%
-  mutate(RLI_adjusted = ifelse(RLI == 0, NA, 
-                               pmin(pmax(RLI,
-                                         quantile(RLI, .05, na.rm = TRUE))))) %>% 
-  # quantile(RLI, .995, na.rm = TRUE)))) %>%
-  # mutate(RLI_scaled = scale_to_1(RLI)) %>%
-  mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
-
-
+rli_values <- rli_values %>%
+              filter(RLI != 0) %>%
+              mutate(indicator = paste("red list index", class.x, sep = " ")) %>%
+              rename(year = redlist_assessment_year) %>%
+              rename(raw_indicator_value = RLI) %>%
+              rename(ecoregion_code = Ecoregion_code) %>%
+              ungroup()%>%
+              dplyr::select(indicator, year, ecoregion_code, raw_indicator_value) 
+                  # mutate(RLI_inverted = 1 - RLI) %>%
+                  # mutate(RLI_scaled_inverted =
+                  #          scale_to_1(RLI_inverted)) %>%
+                  # mutate(RLI_adjusted_old = ifelse(RLI == 0, NA,
+                  #                           ifelse(RLI > 0 & RLI < 0.9538,
+                  #                                         0.9538, RLI))) %>%
+                  # mutate(RLI_adjusted = ifelse(RLI == 0, NA,
+                  #                              pmin(pmax(RLI,
+                  #                       quantile(RLI, .05, na.rm = TRUE))))) %>%
+                  # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
 
 
 # Human Footprint Index 2017 ----
@@ -323,19 +313,30 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
                                         "human_footprint_index_by_ecoregion.csv",
                                         sep = "/"))
 
+hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
+                         merge(ecoregion_map[c("ECO_NAME", "eco_code")], 
+                               by = "ECO_NAME")
+
 
 hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
-  mutate(HFP_original = HFP) %>%
-  mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037, 	
-                                   33.29037, HFP_original)) %>%
-  mutate(HFP_adjusted = 
-           pmin(pmax(HFP_original,quantile(HFP_original,
-                                           .005, na.rm = TRUE)), 
-                quantile(HFP_original, .995, 
-                         na.rm = TRUE))) %>%
-  mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
-  mutate(HFP_scaled_adjusted_inverted = 
-           1 - HFP_scaled_adjusted) 
+                         mutate(year = "2017") %>%
+                         mutate(indicator = "human footprint index") %>%
+                         rename(raw_indicator_value = HFP) %>%
+                         dplyr::select(indicator, year, eco_code, 
+                                       raw_indicator_value) %>%
+                         rename(ecoregion_code = eco_code)
+                         # mutate(HFP_original = HFP) %>%
+                         # mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037,
+                         #                                   33.29037, HFP_original)) %>%
+                         # mutate(HFP_adjusted =
+                         #           pmin(pmax(HFP_original,quantile(HFP_original,
+                         #                                           .005, na.rm = TRUE)),
+                         #                quantile(HFP_original, .995,
+                         #                         na.rm = TRUE))) %>%
+                         # mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
+                         # mutate(HFP_scaled_adjusted_inverted =
+                         #           1 - HFP_scaled_adjusted)
+
 
 # Subset the HFP data by country 
 
@@ -343,9 +344,9 @@ if (!is.na(country)) {
   
   full_hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017
   
-  country_ecoregions <- ecoregion_subset$ECO_NAME
+  country_ecoregions <- ecoregion_subset$ecoregion_code
   
-  hfp_by_ecoregion_2017 <- full_hfp_by_ecoregion_2017[full_hfp_by_ecoregion_2017$ECO_NAME %in% country_ecoregions, ]
+  hfp_by_ecoregion_2017 <- full_hfp_by_ecoregion_2017[full_hfp_by_ecoregion_2017$ecoregion_code %in% country_ecoregions, ]
   
 }
 
@@ -370,16 +371,16 @@ wii_data <- as.data.frame(wii_map_data) %>%
 # Analyse indicators ----
 
 
-hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
-
-hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
-  dplyr::select(eco_code, ECO_NAME, HFP,
-                HFP_adjusted, HFP_adjusted_old, HFP_scaled_adjusted,
-                HFP_scaled_adjusted_inverted) %>%
-  # rename(Ecoregion_code = eco_code) %>%
-  distinct(.) %>%
-  mutate(eco_code = as.character(eco_code)) %>%
-  filter(eco_code != is.na(eco_code))
+# hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
+# 
+# hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
+#   dplyr::select(eco_code, ECO_NAME, HFP,
+#                 HFP_adjusted, HFP_adjusted_old, HFP_scaled_adjusted,
+#                 HFP_scaled_adjusted_inverted) %>%
+#   # rename(Ecoregion_code = eco_code) %>%
+#   distinct(.) %>%
+#   mutate(eco_code = as.character(eco_code)) %>%
+#   filter(eco_code != is.na(eco_code))
 
 # Combine indicator values into a single dataframe ----
 
@@ -387,31 +388,81 @@ names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
+indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017)
 
-indicator_values <- birds_rli_by_ecoregion_2016 %>%
-                    merge(ecoregions, by = "eco_code") %>%
-                    dplyr::select(eco_code, ECO_NAME, RLI, RLI_adjusted_old,
-                                  RLI_inverted, RLI_scaled,
-                                  RLI_scaled_inverted, RLI_adjusted,
-                                  RLI_adjusted_inverted) %>%
-                    merge(hfp_by_ecoregion_2017_new[c("eco_code",
-                                                      "HFP", 
-                                                      "HFP_adjusted",
-                                                      "HFP_adjusted_old",
-                                                      "HFP_scaled_adjusted",
-                                                      "HFP_scaled_adjusted_inverted")], 
-                          all = TRUE,
-                          by = "eco_code") %>%
-                    # mutate(HFP_scaled = scale_to_1(HFP)) %>%
-                    # mutate(HFP_scaled_inverted = 1 - HFP_scaled) %>%
-                    merge(species_by_ecoregion, by = "eco_code") %>%
-                    # filter(RLI != 0) %>%
-                    # merge(wii_data[c("ECO_NAME","Q2009", "PLOTCAT")], 
-                    #       by = "ECO_NAME") %>%
-                    # rename(WII = Q2009) %>%
-                    # mutate(WII = as.numeric(as.character(WII))) %>%
-                    # mutate(WII_inverted = 1 - WII) %>%
-                    distinct(.)
+indicator_values <- indicator_values %>%
+                    mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
+                                                     33.29037, raw_indicator_value)) %>%
+                    mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
+                                   ifelse(raw_indicator_value > 0 & 
+                                            raw_indicator_value < 0.9538,
+                                          0.9538, raw_indicator_value))) %>%
+                    mutate(year = as.numeric(year)) %>%
+                    mutate(HFP_adjusted_old = ifelse(indicator != 
+                                              "human footprint index", NA,
+                                              HFP_adjusted_old)) %>%
+                    mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
+                                                    indicator), 
+                                                    RLI_adjusted_old, NA))
+                    # %>%
+                    # mutate(HFP_adjusted =
+                    #          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
+                    #                                          .005, na.rm = TRUE)),
+                    #               quantile(raw_indicator_value, .995,
+                    #                        na.rm = TRUE))) %>%
+                    # mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
+                    # mutate(HFP_scaled_adjusted_inverted =
+                    #          1 - HFP_scaled_adjusted) %>%
+                    # mutate(scaled = scale_to_1(raw_indicator_value)) %>%
+                    # mutate(inverted = 1 - raw_indicator_value) %>%
+                    # mutate(scaled_inverted = 1 - scaled) %>%
+                    # mutate(RLI_adjusted = ifelse(raw_indicator_value == 0, NA,
+                    #                              pmin(pmax(raw_indicator_value,
+                    #                   quantile(raw_indicator_value, .05, 
+                    #                            na.rm = TRUE))))) %>%
+                    # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
+
+# Make it into a list by timestep
+
+indicator_values_time_list <- split(indicator_values, indicator_values$year)
+
+# Map the indicators ----
+
+names(ecoregion_map) <- c("ecoregion_code", "ECO_NAME", "geometry")
+
+indicator_map_data <- inner_join(ecoregion_map, indicator_values, 
+                                 by = "ecoregion_code")
+
+# Map the Red List Index by class
+
+#' TODO: Put this into a loop - currently doesn't work because they have
+#' different timesteps
+
+birds_rli_map <- indicator_map_data %>%
+                 filter(indicator == "red list index Aves") %>%
+                 map_indicators(.$RLI_adjusted_old,
+                                "Red List\nIndex (Birds)", 
+                                "right")
+
+mammals_rli_map <- indicator_map_data %>%
+                   filter(indicator == "red list index Mammalia") %>%
+                   map_indicators(.$raw_indicator_value,
+                                   "Red List\nIndex (Mammals)", 
+                                   "right")
+
+amphibians_rli_map <- indicator_map_data %>%
+                      filter(indicator == "red list index Amphibia") %>%
+                      map_indicators(.$raw_indicator_value,
+                                     "Red List\nIndex (Amphibians)", 
+                                     "right")
+# Map the Human Footprint Index
+
+hfp_map <- indicator_map_data %>%
+           filter(indicator == "human footprint index") %>%
+           map_indicators(.$HFP_adjusted_old,
+                          "Human\nFootprint\nIndex",
+                          "right")
+
 
 # Look at the data distribution
 
@@ -770,33 +821,56 @@ ggsave(paste(outputs, "hfp_map_dark_adjusted.png", sep = "/"), hfp_map,  device 
 
 dev.off()
 
-# Calculate the Red List Index for Mammals ----
-#' 
-#' mammal_species_data <- species_data_full_distinct %>% 
-#'   filter(class.x == "Mammalia") %>%
-#'   filter(redlist_assessment_year == 2008)
-#' 
-#' 
-#' mammal_species_data_by_ecoregion <- split(mammal_species_data, mammal_species_data$ecoregion_code)
-#' 
-#' 
-#' # Calculate the Red List Index for each group, for each timeframe, for each ecoregion
-#' 
-#' #' TODO: Figure out why this loop drops over half the ecoregions we have data for
-#' 
-#' mammal_rli_by_ecoregion <- list()
-#' 
-#' for (i in seq_along(mammal_species_data_by_ecoregion)) {
-#'   
-#'   mammal_rli_by_ecoregion[[i]] <- calculate_red_list_index(
-#'     mammal_species_data_by_ecoregion[[i]])
-#'   
-#' }
-#' 
-#' # Convert back into a dataframe
-#' 
-#' mammal_rli_by_ecoregion_df_2008 <- do.call(rbind, mammal_rli_by_ecoregion)
-#' 
-#' 
-#' 
-#' 
+
+
+## Previous way of calculating RLI used for NESP/WWF docs ----
+
+# species_data <- species_data %>% 
+#   filter(class.x == "Aves") %>%
+#   filter(redlist_assessment_year == 2016)
+# 
+# species_data_by_ecoregion <- split(species_data, 
+#                                    species_data$ecoregion_code)
+# 
+# bird_summary <- species_data %>%
+#   group_by(ecoregion_code, redlist_status) %>%
+#   summarize(n_distinct(tsn))
+# 
+# # Check the outliers
+# 
+# eco_NA0606 <- species_data %>%
+#   filter(ecoregion_code == "NA0606")
+# 
+# 
+# # Calculate the Red List Index for each group, for each timeframe, for each ecoregion
+# 
+# rli_by_ecoregion <- list()
+# 
+# for (i in seq_along(species_data_by_ecoregion)) {
+#   
+#   rli_by_ecoregion[[i]] <- calculate_red_list_index(species_data_by_ecoregion[[i]])
+#   
+# }
+# 
+# # Convert back into a dataframe
+# 
+# birds_rli_by_ecoregion_2016 <- do.call(rbind, rli_by_ecoregion)
+# 
+# 
+# birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
+#   rename(eco_code = Ecoregion_code) %>%
+#   filter(RLI != 0) %>%
+#   mutate(RLI_scaled = scale_to_1(RLI)) %>%
+#   mutate(RLI_inverted = 1 - RLI) %>%
+#   mutate(RLI_scaled_inverted = 
+#            scale_to_1(RLI_inverted)) %>%
+#   mutate(RLI_adjusted_old = ifelse(RLI == 0, NA, 
+#                                    ifelse(RLI > 0 & RLI < 0.9538, 
+#                                           0.9538, RLI))) %>%
+#   mutate(RLI_adjusted = ifelse(RLI == 0, NA, 
+#                                pmin(pmax(RLI,
+#                                          quantile(RLI, .05, na.rm = TRUE))))) %>% 
+#   # quantile(RLI, .995, na.rm = TRUE)))) %>%
+#   # mutate(RLI_scaled = scale_to_1(RLI)) %>%
+#   mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
+

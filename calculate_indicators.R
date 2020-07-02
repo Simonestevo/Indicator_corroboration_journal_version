@@ -187,7 +187,7 @@ class_list <- split(species_data, species_data$class.x)
 # Split each class into different time points (output should be dataframes of 
 # species red list status in a nested list with levels: Class, Time point, Ecoregion)
 
-class_time_list <- list()
+class_time_list_full <- list()
 class_time_ecoregion_list <- list()
 
 for (i in seq_along(class_list)) {
@@ -206,7 +206,17 @@ for (i in seq_along(class_list)) {
                                             class_timestep[[j]]$ecoregion_code)
     }
     
-    class_time_list[[i]] <- class_time_ecoregion_list
+    class_time_list_full[[i]] <- class_time_ecoregion_list
+}
+
+# Remove the empty lists with no data in them
+
+class_time_list <- list()
+
+for (i in seq_along(class_time_list_full)) {
+
+class_time_list[[i]] <- class_time_list_full[[i]][lengths(class_time_list_full[[i]]) != 0]
+
 }
 
 # Calculate the RLI per ecoregion, per timepoint, per class (output should be
@@ -226,14 +236,14 @@ for (i in seq_along(class_time_list)) {
     for (j in seq_along(class)) {
     
       time <- class[[j]] # Get list of ecoregions for one timestep, for one class
-    
+      
         for (k in seq_along(time)) {
         
           class_time_ecoregions[[k]] <- calculate_red_list_index(time[[k]]) # Calculate RLI for each ecoregion for one timestep, one class
           
           class_time_ecoregion_df <- do.call(rbind, class_time_ecoregions) # One dataframe for one time point, one class
           
-        }
+        } 
     
     class_all_timepoints[[j]] <- class_time_ecoregion_df # Put the time point into a list of timepoints
     
@@ -242,8 +252,8 @@ for (i in seq_along(class_time_list)) {
   class_all_timepoints_df <- do.call(rbind, class_all_timepoints)
   
   classes_rli[[i]] <- class_all_timepoints_df # Put the list of time points into a class
+  
 }
-
 
 test <- classes_rli[[1]]
 ## Previous way of calculating RLI used for grant applications

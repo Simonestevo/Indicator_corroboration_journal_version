@@ -10,6 +10,11 @@
 
 ## 3: Visualisation - maps and plots
 
+#' TODO: IMPORTANT - resolve issues with multiple polygons = same ecoregion.  Either
+#' give separate IDs (might be tricky for those species not assigned via spatial
+#' data), OR remove duplicates before analysis (more likely to work) (can keep for
+#' mapping though)
+
 # Load packages ----
 
 library(raster)
@@ -117,6 +122,9 @@ calculate_red_list_index <- function(data, timeframe){
   
 }
 
+# Function that maps indicator values to ecoregions
+#' TODO: Get rid of grid background
+
 map_indicators <- function(data, indicator_variable, title, legend) {
   
 indicator_map <-  ggplot(data) +
@@ -136,14 +144,6 @@ return(indicator_map)
 
 }
 
-data <- indicator_map_data %>% filter(indicator == "human footprint index")
-
-test <- map_indicators(data, data$HFP_adjusted_old, "test", "right")
-
-test2 <- indicator_map_data %>%
-         filter(indicator == "red list index Aves") %>%
-         map_indicators(.$RLI_adjusted_old, "test", "right")
-
 # Calculate indicators ----
 
 # Get ecoregions
@@ -151,22 +151,33 @@ test2 <- indicator_map_data %>%
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
+names(ecoregion_map) <- c("ecoregion_code", "ECO_NAME", "geometry")
+
 # Get ecoregion countries
 
 ecoregion_country_df <- readRDS(paste(outputs_parent, 
                                       "ecoregion_country_data.rds", sep = "/"))
 
+ecoregion_country_df <- ecoregion_country_df %>%
+                        rename(ecoregion_code = eco_code) %>%
+                        mutate(ecoregion_code = as.character(ecoregion_code)) %>%
+                        na.omit(.) %>%
+                        distinct(.)
+
 if (!is.na(country)) {
   
     ecoregion_subset <- ecoregion_country_df %>%
     filter(CNTRY_NAME == country) %>%
-    unique(.) %>%
-    rename(ecoregion_code = eco_code)
-  
+    unique(.) 
 }
-  
-# Red List Index ----
 
+if (!is.na(country)) {
+  
+  ecoregion_map <- inner_join(ecoregion_map, ecoregion_subset,
+                              by = "ecoregion_code")
+
+  }
+  
 # Read in species data
 
 species_data <- readRDS(file.path(outputs, "species_data.rds"))
@@ -184,7 +195,8 @@ species_data <- species_data %>%
 if (!is.na(country)) {
   
     species_data <- species_data %>%
-    merge(ecoregion_subset[c("ecoregion_code", "CNTRY_NAME")], by = "ecoregion_code") %>%
+    merge(ecoregion_subset[c("ecoregion_code", "CNTRY_NAME")], 
+          by = "ecoregion_code") %>%
     unique(.)
   
 }
@@ -198,12 +210,7 @@ species_by_ecoregion <- species_data %>%
 
 names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 
-# Select birds and year 2016
-
-#' TODO: Alter this so it splits the data by taxa and then automatically calculates
-#' the RLI for each time point, for each taxa (instead of wrangling all the data
-#' and functions one by one for each group)
-
+# # Red List Index ----
 
 # Split into different classes
 
@@ -315,15 +322,12 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
 
 hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
                          merge(ecoregion_map[c("ECO_NAME", "eco_code")], 
-                               by = "ECO_NAME")
-
-
-hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
+                               by = "ECO_NAME") %>%
                          mutate(year = "2017") %>%
                          mutate(indicator = "human footprint index") %>%
                          rename(raw_indicator_value = HFP) %>%
                          dplyr::select(indicator, year, eco_code, 
-                                       raw_indicator_value) %>%
+                                        raw_indicator_value) %>%
                          rename(ecoregion_code = eco_code)
                          # mutate(HFP_original = HFP) %>%
                          # mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037,
@@ -350,37 +354,42 @@ if (!is.na(country)) {
   
 }
 
-hfp_map_data <- full_join(ecoregion_map, hfp_by_ecoregion_2017[
-  c("ECO_NAME", "ECO_ID", "HFP", "HFP_adjusted",
-    "HFP_scaled_adjusted", "HFP_adjusted_old", "HFP_scaled_adjusted_inverted")], 
-  by = c("ECO_NAME" = "ECO_NAME"), na.rm = FALSE)
-
 # Biodiversity Intactness Index 2005 ----
 
+if (!is.na(country)) {
 
-bii_2005_raster_data <- raster(file.path(inputs, "biodiversity_intactness_index\\lbii.asc"))
+bii_2005_raster_data <- raster(file.path(inputs, 
+                                         "biodiversity_intactness_index\\asc1.tif"))
 
+} else {
+
+bii_2005_raster_data <- raster(file.path(inputs, 
+                                         "biodiversity_intactness_index\\lbii.asc"))
+
+}
+
+#' TODO: Work out why this is producing so many NaNs
+
+bii_ecoregion_map <- ecoregion_map %>% 
+                     mutate(raw_indicator_value = raster::extract(bii_2005_raster_data, 
+                                                  ecoregion_map, 
+                                                  fun = mean, na.rm = TRUE))
+
+bii_values <- bii_ecoregion_map %>%
+              st_set_geometry(NULL) %>%
+              mutate(indicator = "biodiversity intactness index") %>%
+              mutate(year = "2005") %>%
+              #rename(ecoregion_code = eco_code) %>%
+              select(names(rli_values))
 
 # Wilderness Intactness Index ----
 
-wii_map_data <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\intactness\\intactness\\Ecoregions2017_intactness.shp")
-
-wii_data <- as.data.frame(wii_map_data) %>%
-  dplyr::select(OBJECTID, ECO_NAME, ECO_ID, Q2009_LL, Q2009, Q2009_UL, PLOTCAT)
+# wii_map_data <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\intactness\\intactness\\Ecoregions2017_intactness.shp")
+# 
+# wii_data <- as.data.frame(wii_map_data) %>%
+#   dplyr::select(OBJECTID, ECO_NAME, ECO_ID, Q2009_LL, Q2009, Q2009_UL, PLOTCAT)
 
 # Analyse indicators ----
-
-
-# hfp_map_data_no_geometry <- as.data.frame(hfp_map_data)
-# 
-# hfp_by_ecoregion_2017_new <- hfp_map_data_no_geometry %>%
-#   dplyr::select(eco_code, ECO_NAME, HFP,
-#                 HFP_adjusted, HFP_adjusted_old, HFP_scaled_adjusted,
-#                 HFP_scaled_adjusted_inverted) %>%
-#   # rename(Ecoregion_code = eco_code) %>%
-#   distinct(.) %>%
-#   mutate(eco_code = as.character(eco_code)) %>%
-#   filter(eco_code != is.na(eco_code))
 
 # Combine indicator values into a single dataframe ----
 
@@ -388,7 +397,7 @@ names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
-indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017)
+indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, bii_values)
 
 indicator_values <- indicator_values %>%
                     mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
@@ -403,7 +412,12 @@ indicator_values <- indicator_values %>%
                                               HFP_adjusted_old)) %>%
                     mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
                                                     indicator), 
-                                                    RLI_adjusted_old, NA))
+                                                    RLI_adjusted_old, NA)) %>%
+                    merge(ecoregion_country_df[c("ecoregion_code", 
+                                                 "CNTRY_NAME")], 
+                          by = "ecoregion_code", all.x = TRUE, all.y = FALSE) %>%
+                    distinct(.) %>%
+                    rename(country = CNTRY_NAME)
                     # %>%
                     # mutate(HFP_adjusted =
                     #          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
@@ -427,8 +441,6 @@ indicator_values <- indicator_values %>%
 indicator_values_time_list <- split(indicator_values, indicator_values$year)
 
 # Map the indicators ----
-
-names(ecoregion_map) <- c("ecoregion_code", "ECO_NAME", "geometry")
 
 indicator_map_data <- inner_join(ecoregion_map, indicator_values, 
                                  by = "ecoregion_code")
@@ -462,6 +474,13 @@ hfp_map <- indicator_map_data %>%
            map_indicators(.$HFP_adjusted_old,
                           "Human\nFootprint\nIndex",
                           "right")
+# Map the Biodiversity Intactness Index
+
+bii_map <- indicator_map_data %>%
+           filter(indicator == "biodiversity intactness index") %>%
+           map_indicators(.$raw_indicator_value,
+                           "Biodiversity\nIntactness\nIndex",
+                           "right")
 
 
 # Look at the data distribution

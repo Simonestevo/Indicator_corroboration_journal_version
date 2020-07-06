@@ -24,6 +24,7 @@ library(grid)
 library(viridis)
 library(png)
 library(gridExtra)
+library(reshape2)
 
 # Set input and output locations ----
 
@@ -173,9 +174,11 @@ if (!is.na(country)) {
 
 if (!is.na(country)) {
   
-  ecoregion_map <- inner_join(ecoregion_map, ecoregion_subset,
+  ecoregion_map <- inner_join(ecoregion_map, ecoregion_subset[c("ecoregion_code", 
+                                                                "OBJECTID",
+                                                                "CNTRY_NAME")],
                               by = "ecoregion_code")
-
+  
   }
   
 # Read in species data
@@ -321,14 +324,13 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
                                         sep = "/"))
 
 hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
-                         merge(ecoregion_map[c("ECO_NAME", "eco_code")], 
+                         merge(ecoregion_map[c("ECO_NAME", "ecoregion_code")], 
                                by = "ECO_NAME") %>%
                          mutate(year = "2017") %>%
                          mutate(indicator = "human footprint index") %>%
                          rename(raw_indicator_value = HFP) %>%
-                         dplyr::select(indicator, year, eco_code, 
-                                        raw_indicator_value) %>%
-                         rename(ecoregion_code = eco_code)
+                         dplyr::select(indicator, year, ecoregion_code, 
+                                        raw_indicator_value) 
                          # mutate(HFP_original = HFP) %>%
                          # mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037,
                          #                                   33.29037, HFP_original)) %>%
@@ -436,9 +438,48 @@ indicator_values <- indicator_values %>%
                     #                            na.rm = TRUE))))) %>%
                     # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
 
-# Make it into a list by timestep
+# Test for correlations between indicators ----
 
 indicator_values_time_list <- split(indicator_values, indicator_values$year)
+
+correlations <- list()
+
+for (i in seq_along(indicator_values_time_list)) {
+  
+  year <- indicator_values_time_list[[i]][[1,2]]
+  
+  step1 <- indicator_values_time_list[[i]] %>% 
+           select(ecoregion_code, 
+                  raw_indicator_value, 
+                  indicator, 
+                  -year) 
+  
+  step2 <- dcast(step1, ecoregion_code ~ indicator, 
+                 value.var = "raw_indicator_value")
+  
+  step3 <- as.matrix(step2[2:ncol(step2)])
+  
+  if(ncol(step3) == 1) {
+    
+    print(paste("Year", year, "does not have values for more than one indicator to test correlations between"))
+    
+    rm(step1, step2, step3)
+    
+  } else {
+  
+  step4 <- step3[complete.cases(step3),]
+  
+  correlations[[i]] <- as.data.frame(cor(step4, method = "pearson"))
+  
+  rm(step1, step2, step3, step4)
+  
+  }
+  
+}
+
+# Remove the empty lists with no data in them
+
+correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
 
 # Map the indicators ----
 

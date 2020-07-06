@@ -34,6 +34,7 @@ save_outputs <- "no"
 date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+aggregate_timepoints <- "yes"
 
 # Set output directory
 
@@ -377,12 +378,16 @@ bii_ecoregion_map <- ecoregion_map %>%
                                                   ecoregion_map, 
                                                   fun = mean, na.rm = TRUE))
 
+#' TODO: Figure out how to deal with multiple polygons of the same ecoregion - once
+#' you remove the geometry you end up with multiple values p/ecoregion
+
 bii_values <- bii_ecoregion_map %>%
               st_set_geometry(NULL) %>%
               mutate(indicator = "biodiversity intactness index") %>%
               mutate(year = "2005") %>%
               #rename(ecoregion_code = eco_code) %>%
-              select(names(rli_values))
+              select(names(rli_values)) %>%
+              drop_na()
 
 # Wilderness Intactness Index ----
 
@@ -440,13 +445,47 @@ indicator_values <- indicator_values %>%
 
 # Test for correlations between indicators ----
 
+# Split by year
+
 indicator_values_time_list <- split(indicator_values, indicator_values$year)
 
+
+if (aggregate_timepoints == "yes") {
+
+# Aggregate years that are close to each other
+
+indicators_1988 <- indicator_values_time_list[[1]]
+
+indicators_1994_1996 <- rbind(indicator_values_time_list[[2]], 
+                              indicator_values_time_list[[3]])
+
+indicators_2000 <- indicator_values_time_list[[4]]
+
+indicators_2004_2005 <- rbind(indicator_values_time_list[[5]],
+                              indicator_values_time_list[[6]])
+
+indicators_2008 <- indicator_values_time_list[[7]]
+
+indicators_2012 <- indicator_values_time_list[[8]]
+
+indicators_2016_2017 <- rbind(indicator_values_time_list[[9]],
+                           indicator_values_time_list[[10]])
+
+indicator_values_time_list <- list(indicators_1988, indicators_1994_1996,
+                                   indicators_2000, indicators_2004_2005,
+                                   indicators_2008, indicators_2012, 
+                                   indicators_2016_2017)
+
+}
+
+# Test for correlations between variables, for each year
+
 correlations <- list()
+years <- list()
 
 for (i in seq_along(indicator_values_time_list)) {
   
-  year <- indicator_values_time_list[[i]][[1,2]]
+  year <- range(indicator_values_time_list[[i]]$year)
   
   step1 <- indicator_values_time_list[[i]] %>% 
            select(ecoregion_code, 
@@ -455,7 +494,7 @@ for (i in seq_along(indicator_values_time_list)) {
                   -year) 
   
   step2 <- dcast(step1, ecoregion_code ~ indicator, 
-                 value.var = "raw_indicator_value")
+                 value.var = "raw_indicator_value", sum)
   
   step3 <- as.matrix(step2[2:ncol(step2)])
   
@@ -471,6 +510,8 @@ for (i in seq_along(indicator_values_time_list)) {
   
   correlations[[i]] <- as.data.frame(cor(step4, method = "pearson"))
   
+  years[[i]] <- year
+  
   rm(step1, step2, step3, step4)
   
   }
@@ -478,6 +519,8 @@ for (i in seq_along(indicator_values_time_list)) {
 }
 
 # Remove the empty lists with no data in them
+
+names(correlations) <- years
 
 correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
 

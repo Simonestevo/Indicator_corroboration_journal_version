@@ -207,12 +207,25 @@ if (!is.na(country)) {
 
 # Get number of species by ecoregion
 
+# TODO: Add in redlist proportion to indicator values for analysis
+
 species_by_ecoregion <- species_data %>%
-                        group_by(ecoregion_code) %>%
-                        summarize(n_distinct(tsn))
+                        group_by(ecoregion_code, redlist_assessment_year) %>%
+                        summarize(number_of_species = n_distinct(tsn),
+                                  proportion_extinct = sum(redlist_status == "EX"| 
+                                                         redlist_status =="EW")/
+                                    number_of_species,
+                                  proportion_endangered = sum(redlist_status == "EN")/
+                                    number_of_species,
+                                  proportion_critical = sum(redlist_status == "CR"|
+                                                          redlist_status == "CR(PE)")/
+                                    number_of_species,
+                                  proportion_vulnerable = sum(redlist_status == "VU")/
+                                    number_of_species,
+                                  proportion_lowrisk = sum(redlist_status == "LC"|
+                                                            redlist_status == "NT")/
+                                    number_of_species)
 
-
-names(species_by_ecoregion) <- c("ecoregion_code", "number_of_species")
 
 # # Red List Index ----
 
@@ -475,6 +488,11 @@ indicator_values_time_list <- list(indicators_1988, indicators_1994_1996,
                                    indicators_2000, indicators_2004_2005,
                                    indicators_2008, indicators_2012, 
                                    indicators_2016_2017)
+
+rm(indicators_1988, indicators_1994_1996,
+        indicators_2000, indicators_2004_2005,
+        indicators_2008, indicators_2012, 
+        indicators_2016_2017)
 
 }
 

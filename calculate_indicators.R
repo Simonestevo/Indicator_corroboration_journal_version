@@ -25,6 +25,7 @@ library(viridis)
 library(png)
 library(gridExtra)
 library(reshape2)
+library(rlist)
 
 # Set input and output locations ----
 
@@ -205,7 +206,7 @@ if (!is.na(country)) {
   
 }
 
-# Get number of species by ecoregion
+# Extinction/Risk status ----
 
 # TODO: Add in redlist proportion to indicator values for analysis
 
@@ -222,10 +223,39 @@ species_by_ecoregion <- species_data %>%
                                     number_of_species,
                                   proportion_vulnerable = sum(redlist_status == "VU")/
                                     number_of_species,
+                                  proportion_atrisk = sum(redlist_status == "EX"| 
+                                                          redlist_status =="EW"|
+                                                          redlist_status == "EN"|
+                                                          redlist_status == "CR"|
+                                                          redlist_status == "CR(PE)"|
+                                                          redlist_status == "VU")/
+                                                            number_of_species,
                                   proportion_lowrisk = sum(redlist_status == "LC"|
                                                             redlist_status == "NT")/
-                                    number_of_species)
+                                    number_of_species) %>%
+                        mutate(check = proportion_extinct + 
+                                       proportion_endangered +
+                                       proportion_critical +
+                                 proportion_vulnerable +
+                                 proportion_lowrisk)
 
+# Extinctions
+
+extinction_values <- species_by_ecoregion %>%
+                     mutate(indicator = "proportion extinct") %>%
+                     select(indicator, redlist_assessment_year, 
+                            ecoregion_code, proportion_extinct) %>%
+                     rename(year = redlist_assessment_year, 
+                            raw_indicator_value = proportion_extinct)
+
+# Threatened status
+
+at_risk_values <- species_by_ecoregion %>%
+                 mutate(indicator = "proportion at risk") %>%
+                 select(indicator, redlist_assessment_year, 
+                         ecoregion_code, proportion_atrisk) %>%
+                 rename(year = redlist_assessment_year, 
+                         raw_indicator_value = proportion_atrisk)
 
 # # Red List Index ----
 
@@ -413,11 +443,14 @@ bii_values <- bii_ecoregion_map %>%
 
 # Combine indicator values into a single dataframe ----
 
+# TODO: Melt the adjusted values into long form
+
 names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
-indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, bii_values)
+indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, bii_values,
+                          extinction_values, at_risk_values)
 
 indicator_values <- indicator_values %>%
                     mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,

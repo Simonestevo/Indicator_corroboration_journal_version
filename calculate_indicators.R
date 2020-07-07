@@ -402,24 +402,31 @@ if (!is.na(country)) {
 
 # Biodiversity Intactness Index 2005 ----
 
-if (!is.na(country)) {
+# TEMPORARY CODE - the below takes ages to run on a laptop, so currently just
+# reading in prepped bii data for development, but put the below chunk back on 
+# when doing the real deal analysis
 
-bii_2005_raster_data <- raster(file.path(inputs, 
-                                         "biodiversity_intactness_index\\asc1.tif"))
+#' if (!is.na(country)) {
+#' 
+#' bii_2005_raster_data <- raster(file.path(inputs, 
+#'                                          "biodiversity_intactness_index\\asc1.tif"))
+#' 
+#' } else {
+#' 
+#' bii_2005_raster_data <- raster(file.path(inputs, 
+#'                                          "biodiversity_intactness_index\\lbii.asc"))
+#' 
+#' }
+#' 
+#' #' TODO: Work out why this is producing so many NaNs
+#' 
+#' bii_ecoregion_map <- ecoregion_map %>% 
+#'                      mutate(raw_indicator_value = raster::extract(bii_2005_raster_data, 
+#'                                                   ecoregion_map, 
+#'                                                   fun = mean, na.rm = TRUE))
+#' saveRDS(bii_ecoregion_map, file.path(outputs, "bii_2005_aus_ecoregion_map.rds"))
 
-} else {
-
-bii_2005_raster_data <- raster(file.path(inputs, 
-                                         "biodiversity_intactness_index\\lbii.asc"))
-
-}
-
-#' TODO: Work out why this is producing so many NaNs
-
-bii_ecoregion_map <- ecoregion_map %>% 
-                     mutate(raw_indicator_value = raster::extract(bii_2005_raster_data, 
-                                                  ecoregion_map, 
-                                                  fun = mean, na.rm = TRUE))
+bii_ecoregion_map <- readRDS(file.path(outputs, "bii_2005_aus_ecoregion_map.rds"))
 
 #' TODO: Figure out how to deal with multiple polygons of the same ecoregion - once
 #' you remove the geometry you end up with multiple values p/ecoregion

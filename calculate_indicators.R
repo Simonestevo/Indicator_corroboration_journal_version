@@ -590,7 +590,10 @@ rm(indicators_1988, indicators_1994_1996,
 
 
 
-# Test for correlations between variables, for each year
+# Pairwise correlations and scatterplots ----
+
+#' TODO: Can we use ggpair with other ggplot syntax? Including attributes but
+#' also transformations? https://www.r-graph-gallery.com/199-correlation-matrix-with-ggally.html
 
 correlations <- list()
 years <- list()
@@ -662,6 +665,25 @@ names(scatterplots) <- years
 indicator_map_data <- inner_join(ecoregion_map, indicator_values, 
                                  by = "ecoregion_code")
 
+# Map species risk status
+
+at_risk_map <- indicator_map_data %>%
+               filter(indicator == "proportion at risk") %>%
+               map_indicators(.$raw_indicator_value,
+                             "Proportion\nof species\nat risk", 
+                             "right")
+
+at_risk_map
+
+extinct_map <- indicator_map_data %>%
+               filter(indicator == "proportion extinct") %>%
+               map_indicators(.$raw_indicator_value,
+                               "Proportion\nof species\nextinct", 
+                               "right")
+
+extinct_map
+  
+  
 # Map the Red List Index by class
 
 #' TODO: Put this into a loop - currently doesn't work because they have
@@ -673,17 +695,24 @@ birds_rli_map <- indicator_map_data %>%
                                 "Red List\nIndex (Birds)", 
                                 "right")
 
+birds_rli_map
+
 mammals_rli_map <- indicator_map_data %>%
                    filter(indicator == "red list index Mammalia") %>%
                    map_indicators(.$raw_indicator_value,
                                    "Red List\nIndex (Mammals)", 
                                    "right")
 
+mammals_rli_map
+
 amphibians_rli_map <- indicator_map_data %>%
                       filter(indicator == "red list index Amphibia") %>%
                       map_indicators(.$raw_indicator_value,
                                      "Red List\nIndex (Amphibians)", 
                                      "right")
+
+amphibians_rli_map
+
 # Map the Human Footprint Index
 
 hfp_map <- indicator_map_data %>%
@@ -691,13 +720,16 @@ hfp_map <- indicator_map_data %>%
            map_indicators(.$HFP_adjusted_old,
                           "Human\nFootprint\nIndex",
                           "right")
+hfp_map
+
+#' TODO: Turn this back on when we've figures out bii
 # Map the Biodiversity Intactness Index
 
-bii_map <- indicator_map_data %>%
-           filter(indicator == "biodiversity intactness index") %>%
-           map_indicators(.$raw_indicator_value,
-                           "Biodiversity\nIntactness\nIndex",
-                           "right")
+# bii_map <- indicator_map_data %>%
+#            filter(indicator == "biodiversity intactness index") %>%
+#            map_indicators(.$raw_indicator_value,
+#                            "Biodiversity\nIntactness\nIndex",
+#                            "right")
 
 
 # Look at the data distribution
@@ -715,15 +747,6 @@ rli_hist # Values close to 1 = good, close to 0 = bad
 # 
 # wii_category_hist <- hist(indicator_values$PLOTCAT, breaks = 10)
 # wii_category_hist
-
-cor(indicator_values$HFP_scaled_inverted, indicator_values$RLI_scaled, 
-    method = "pearson", use = "complete.obs")
-
-cor(indicator_values$HFP_scaled_inverted, indicator_values$PLOTCAT, 
-    method = "pearson", use = "complete.obs")
-
-cor(indicator_values$RLI_scaled, indicator_values$WII_inverted, 
-    method = "pearson", use = "complete.obs")
 
 
 # RLI vs HFP scatterplot ----
@@ -840,223 +863,6 @@ if(save_outputs == "yes") {
          rli_hfp_3, height = 4, width = 5, device = "png")
   
 }
-
-# Map indicators ----
-
-indicator_map_data <- inner_join(ecoregion_map, indicator_values[
-  c("eco_code", "RLI_adjusted", "RLI_adjusted_old",
-    "HFP", "HFP_adjusted", "HFP_adjusted_old", "HFP_scaled_adjusted")], 
-  by = "eco_code")
-
-
-indicator_map_rli <- ggplot(indicator_map_data) +
-  geom_sf(aes(fill = RLI_adjusted_old), colour = "black", 
-          size = 0.05, show.legend = 'fill') +
-  scale_fill_viridis_c(trans = "reverse", alpha = .8, 
-                       na.value = "grey70") +         
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #panel.border = element_blank(),
-        panel.background = element_blank()) +
-  labs(fill = "Red List\nIndex (Birds)") +
-  theme(legend.position = "none")
-
-# trans = "log10", 
-
-indicator_map_rli
-
-if(save_outputs == "yes") {
-  
-  ggsave(file.path(outputs, "indicator_map_rli_dimensions_nl.png"), 
-         indicator_map_rli, height = 4, width = 5, device = "png")
-  
-}
-
-
-indicator_map_hfp <- ggplot(indicator_map_data) +
-  geom_sf(aes(fill = HFP_adjusted_old), colour = "black", 
-          size = 0.05, show.legend = 'fill') +
-  scale_fill_viridis_c(trans = "log10", alpha = .8, 
-                       na.value = "grey70") +         
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #panel.border = element_blank(),
-        panel.background = element_blank()) +
-  labs(fill = "Human\nFootprint\nIndex") +
-  theme(legend.position = "none")
-
-# trans = "log10", 
-
-indicator_map_hfp
-
-if(save_outputs == "yes") {
-  
-  ggsave(file.path(outputs, "indicator_map_hfp_dimensions_nl.png"), 
-         height = 4, width = 5,indicator_map_hfp,  device = "png")
-  
-}
-
-indicator_maps <- grid.arrange(indicator_map_rli, indicator_map_hfp)
-
-if(save_outputs == "yes") {
-  
-  ggsave(file.path(outputs, "indicator_maps.png"), indicator_maps,  device = "png")
-  
-}
-
-# Red List Index for mammals ----
-
-# ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
-# all_map_data_temp <- ecoregion_map_data_no_geometry
-
-# ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
-#   select(eco_code, ECO_NAME) %>%
-#   distinct(.)
-
-# mammal_rli_by_ecoregion_df_2008 <- mammal_rli_by_ecoregion_df_2008 %>%
-#                                    merge(ecoregion_map_data_no_geometry[c(
-#                                        "eco_code", "ECO_NAME")], 
-#                                             all = TRUE) %>%
-#                                      distinct(.)
-# 
-# 
-# mammal_rli_map_data <- inner_join(ecoregion_map, mammal_rli_by_ecoregion_df_2008[
-#                                 c("eco_code", "RLI")], 
-#                                 by = "eco_code")
-# 
-# test_mammal_subset <- mammal_rli_map_data[1:100,]
-# 
-# length(unique(mammal_rli_map_data$eco_code))
-# 
-# mammal_rli_map_data <- mammal_rli_map_data %>%
-#                        mutate(RLI_inverted = 1 - RLI)
-# 
-# mammal_rli_map <- ggplot(mammal_rli_map_data) +
-#                   geom_sf(aes(fill = RLI_inverted), colour = "black", 
-#                           size = 0.05) +
-#                   scale_fill_viridis_c(alpha = .8, na.value = "grey70") +         
-#                   theme(axis.line = element_line(),
-#                         panel.grid.major = element_blank(),
-#                         panel.grid.minor = element_blank(),
-#                         #panel.border = element_blank(),
-#                         panel.background = element_blank()) +
-#                   labs(fill = "Red List Index (Mammals)")
-# 
-# mammal_rli_map
-
-# ggsave(paste(outputs, "rli_mammals_map_dark.png", sep = "/"), mammal_rli_map,  
-#        device = "png")
-
-
-# Red List Index for BIRDS ----
-
-ecoregion_map_data_no_geometry <- as.data.frame(ecoregion_map)
-all_map_data_temp <- ecoregion_map_data_no_geometry
-
-ecoregion_map_data_no_geometry <- ecoregion_map_data_no_geometry %>%
-  dplyr::select(eco_code, ECO_NAME) %>%
-  distinct(.)
-
-# Add ecoregion names
-birds_rli_by_ecoregion_2016 <- birds_rli_by_ecoregion_2016 %>%
-  merge(ecoregion_map_data_no_geometry[c("eco_code", 
-                                         "ECO_NAME")], 
-        all = TRUE) %>%
-  distinct(.)
-
-# Add geometry back in so it can be mapped
-
-rli_map_data <- inner_join(ecoregion_map, birds_rli_by_ecoregion_2016[
-  c("eco_code", "RLI")], 
-  by = "eco_code")
-
-# Check you've got all the ecoregions
-
-length(unique(rli_map_data$eco_code))
-
-# Add an inverted RLI variable so the colours can go either light to dark or 
-# dark to light (fix this properly in the plots later?)
-
-rli_map_data <- rli_map_data %>%
-  mutate(RLI_inverted_original = 1 - RLI) %>%
-  mutate(RLI_inverted = ifelse(RLI_inverted_original == 1, NA,
-                               RLI_inverted_original))
-
-# Make a map of birds RLI for 2016
-
-rli_map <- ggplot(rli_map_data) +
-  geom_sf(aes(fill = RLI_inverted), colour = "black", 
-          size = 0.05) +
-  scale_fill_viridis_c(trans = "log10", alpha = .8, na.value = "grey70") +         
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #panel.border = element_blank(),
-        panel.background = element_blank()) +
-  labs(fill = "Red List Index (Birds)")
-
-# trans = "log10", 
-
-rli_map
-
-ggsave(paste(outputs, "rli_birds_map_dark.png", sep = "/"), rli_map,  device = "png")
-
-# TEMPORARY CODE - smooth outliers by putting an upper limit on RLI value (see RLI_adjusted)
-
-rli_map_data <- rli_map_data %>%
-  mutate(RLI_inverted_original = 1 - RLI) %>%
-  mutate(RLI_inverted = ifelse(RLI_inverted == 1, NA, RLI_inverted_original)) %>%
-  mutate(RLI_adjusted = ifelse(RLI == 0, NA,
-                               ifelse(RLI > 0 & RLI < 0.9538, 
-                                      0.9538, RLI)))
-
-# Make the new map - should have a more even distribution of colours instead of
-# a couple of really high values and everything else kind of the same
-
-rli_map_2 <-  ggplot(rli_map_data) +
-  geom_sf(aes(fill = RLI_adjusted), colour = "black", 
-          size = 0.05) +
-  scale_fill_viridis_c(trans = "sqrt",direction = -1, alpha = .8, 
-                       na.value = "grey70") +         
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #panel.border = element_blank(),
-        panel.background = element_blank()) +
-  labs(fill = "Red List Index (Birds)")
-
-
-rli_map_2
-
-ggsave(paste(outputs, "rli_birds_map_adjusted_not_inverted.png", sep = "/"), 
-       rli_map_2,  device = "png")
-
-
-# Add ecoregion codes
-
-
-
-
-hfp_map <- ggplot(hfp_map_data) +
-  geom_sf(aes(fill = HFP), colour = "black", 
-          size = 0.05) +
-  scale_fill_viridis_c(alpha = .8, na.value = "grey70") +
-  theme(axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank()) +
-  labs(fill = "Human Footprint Index")
-
-
-hfp_map
-
-ggsave(paste(outputs, "hfp_map_dark_adjusted.png", sep = "/"), hfp_map,  device = "png")
-
-dev.off()
-
 
 
 ## Previous way of calculating RLI used for NESP/WWF docs ----

@@ -14,6 +14,8 @@
 #' give separate IDs (might be tricky for those species not assigned via spatial
 #' data), OR remove duplicates before analysis (more likely to work) (can keep for
 #' mapping though)
+#' TODO: Figure out best way to test correlations between different indicators
+#' and years because all years, all indicators is too many.
 
 # Load packages ----
 
@@ -26,6 +28,8 @@ library(png)
 library(gridExtra)
 library(reshape2)
 library(rlist)
+library(GGally)
+
 
 # Set input and output locations ----
 
@@ -248,6 +252,8 @@ extinction_values <- species_by_ecoregion %>%
                      rename(year = redlist_assessment_year, 
                             raw_indicator_value = proportion_extinct)
 
+extinction_values <- as.data.frame(extinction_values)
+
 # Threatened status
 
 at_risk_values <- species_by_ecoregion %>%
@@ -256,6 +262,8 @@ at_risk_values <- species_by_ecoregion %>%
                          ecoregion_code, proportion_atrisk) %>%
                  rename(year = redlist_assessment_year, 
                          raw_indicator_value = proportion_atrisk)
+
+at_risk_values <- as.data.frame(at_risk_values)
 
 # # Red List Index ----
 
@@ -451,13 +459,17 @@ bii_values <- bii_ecoregion_map %>%
 # Combine indicator values into a single dataframe ----
 
 # TODO: Melt the adjusted values into long form
+# TODO: Add the BII back in when we've dealt with multiple ecosystem issue
 
 names(species_by_ecoregion) <- c("eco_code", "number_of_species")
 
 ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
-indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, bii_values,
-                          extinction_values, at_risk_values)
+# indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, bii_values,
+#                           extinction_values, at_risk_values)
+
+indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, extinction_values, 
+                          at_risk_values)
 
 indicator_values <- indicator_values %>%
                     mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
@@ -477,7 +489,8 @@ indicator_values <- indicator_values %>%
                                                  "CNTRY_NAME")], 
                           by = "ecoregion_code", all.x = TRUE, all.y = FALSE) %>%
                     distinct(.) %>%
-                    rename(country = CNTRY_NAME)
+                    rename(country = CNTRY_NAME) %>%
+                    mutate(indicator_year = paste(indicator, year, sep = " "))
                     # %>%
                     # mutate(HFP_adjusted =
                     #          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
@@ -498,12 +511,51 @@ indicator_values <- indicator_values %>%
 
 # Test for correlations between indicators ----
 
+# All years
+
+indicator_values_2 <- indicator_values %>%
+                      dplyr::select(ecoregion_code, indicator_year, 
+                                    raw_indicator_value) %>%
+                      filter(indicator_year != 
+                               "biodiversity intactness index 2005") %>%
+                      distinct(.)
+
+
+indicator_values_wide <- indicator_values_2 %>%
+                         spread(key = indicator_year, 
+                                value = raw_indicator_value) 
+
+names(indicator_values_wide) <- make.names(names(indicator_values_wide), 
+                                           unique = TRUE)
+
+indicator_values_matrix <- as.matrix(indicator_values_wide[, -1])
+
+indicator_values_wide_complete  <- as.matrix(indicator_values_matrix[
+                                   complete.cases(indicator_values_matrix),])
+
+correlations_all_years <- as.data.frame(cor(indicator_values_wide_complete, 
+                                            method = "pearson"))
+
+
+indicators_for_scatterplots <- indicator_values_wide %>%
+                               dplyr::select(- ecoregion_code)
+                               mutate(human.footprint.index.2017.scaled = 
+                                            scale_to_1(human.footprint.index.2017)) %>%
+                               dplyr::select(-human.footprint.index.2017)
+
+summary(indicators_for_scatterplots)
+
+indicator_scatterplots <- ggpairs(indicators_for_scatterplots)
+
 # Split by year
+
 
 indicator_values_time_list <- split(indicator_values, indicator_values$year)
 
 
 if (aggregate_timepoints == "yes") {
+  
+#' TODO: find a programmatical way to select which years get grouped together
 
 # Aggregate years that are close to each other
 
@@ -514,15 +566,14 @@ indicators_1994_1996 <- rbind(indicator_values_time_list[[2]],
 
 indicators_2000 <- indicator_values_time_list[[4]]
 
-indicators_2004_2005 <- rbind(indicator_values_time_list[[5]],
-                              indicator_values_time_list[[6]])
+indicators_2004_2005 <- rbind(indicator_values_time_list[[5]])
 
-indicators_2008 <- indicator_values_time_list[[7]]
+indicators_2008 <- indicator_values_time_list[[6]]
 
-indicators_2012 <- indicator_values_time_list[[8]]
+indicators_2012 <- indicator_values_time_list[[7]]
 
-indicators_2016_2017 <- rbind(indicator_values_time_list[[9]],
-                           indicator_values_time_list[[10]])
+indicators_2016_2017 <- rbind(indicator_values_time_list[[8]],
+                           indicator_values_time_list[[9]])
 
 indicator_values_time_list <- list(indicators_1988, indicators_1994_1996,
                                    indicators_2000, indicators_2004_2005,
@@ -536,6 +587,9 @@ rm(indicators_1988, indicators_1994_1996,
 
 }
 
+
+
+
 # Test for correlations between variables, for each year
 
 correlations <- list()
@@ -543,18 +597,33 @@ years <- list()
 
 for (i in seq_along(indicator_values_time_list)) {
   
+  # Get the year name
+  
   year <- range(indicator_values_time_list[[i]]$year)
+  
+  # Remove year column from dataframe
   
   step1 <- indicator_values_time_list[[i]] %>% 
            select(ecoregion_code, 
                   raw_indicator_value, 
-                  indicator, 
-                  -year) 
+                  indicator_year, 
+                  -year) %>%
+           distinct(.)
   
-  step2 <- dcast(step1, ecoregion_code ~ indicator, 
-                 value.var = "raw_indicator_value", sum)
+  # Convert into wide format
+  
+  # step2 <- dcast(step1, ecoregion_code ~ indicator, 
+  #                value.var = "raw_indicator_value", sum)
+  
+  step2 <- step1 %>%
+           spread(key = indicator_year, 
+           value = raw_indicator_value) 
+  
+  # Convert into matrix without id variables
   
   step3 <- as.matrix(step2[2:ncol(step2)])
+  
+  # Check if there's enough indicators to analyse correlation (ie more than 2)
   
   if(ncol(step3) == 1) {
     
@@ -563,10 +632,14 @@ for (i in seq_along(indicator_values_time_list)) {
     rm(step1, step2, step3)
     
   } else {
+    
+  # Analyse correlations between indicators 
   
   step4 <- step3[complete.cases(step3),]
   
   correlations[[i]] <- as.data.frame(cor(step4, method = "pearson"))
+  
+  scatterplots[[i]] <- ggpairs(as.data.frame(step4))
   
   years[[i]] <- year
   
@@ -581,6 +654,8 @@ for (i in seq_along(indicator_values_time_list)) {
 names(correlations) <- years
 
 correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
+
+names(scatterplots) <- years
 
 # Map the indicators ----
 

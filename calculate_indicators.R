@@ -153,12 +153,15 @@ return(indicator_map)
 
 # Calculate indicators ----
 
-# Get ecoregions
+# Get ecoregions and their attributes ----
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
 
 names(ecoregion_map) <- c("ecoregion_code", "ECO_NAME", "geometry")
+
+library(rgdal)
+data.shape<- st_read(dsn="N:/Quantitative-Ecology/Simone/extinction_test/inputs/official_teow_wwf",layer="terr_biomes")
 
 # Get ecoregion countries
 

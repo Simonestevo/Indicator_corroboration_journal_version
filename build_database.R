@@ -338,15 +338,15 @@ get_gbif_data <- function(species, observations, polygon_map) {
     if ( "decimalLatitude" %in% names(single_spp) == TRUE) {
       
       extinct_coordinates[[i]] <- single_spp %>%
-        select(name, decimalLatitude, decimalLongitude ) %>%
+        select(species, decimalLatitude, decimalLongitude ) %>%
         distinct(.) %>%
         filter(complete.cases(decimalLatitude, decimalLongitude))
       
     } else {
       
-      no_coordinates[[i]] <- single_spp[1,1]
+      no_coordinates[[i]] <- single_spp$species[1]
       
-      print(paste("no co-ordinates found for", single_spp[1,1], "among", 
+      print(paste("no co-ordinates found for", single_spp$species[1], "among", 
                   observations, "observations", "try increasing observation argument to a larger number"), sep = " ")
       
     }
@@ -390,7 +390,8 @@ scale_to_1 <- function(vector){
 # Get the ecoregion map & subset to required variables
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
+# ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
 
 if(!("ecoregion_country_data.rds" %in% list.files(outputs_parent))) { 
 
@@ -1154,9 +1155,21 @@ extinct_species_names <- extinct_species_data %>%
 
 extinct_species_ecoregions <- get_gbif_data(extinct_species_names, 10, ecoregion_map)
 
-no_ecoregions <- pull(as.vector(extinct_species_ecoregions[[2]]))
+no_ecoregions <- as.vector(extinct_species_ecoregions[[2]])
 
-extinct_species_ecoregions <- extinct_species_ecoregions[[1]]
+extinct_species_ecoregions <- extinct_species_ecoregions[[1]] %>%
+                              distinct(.) %>%
+                              rename(accepted_binomial = species)
+
+# Add ecoregions to our other data
+
+extinct_species_data <- extinct_species_data %>%
+                        merge(extinct_species_ecoregions[c("accepted_binomial",
+                                  "eco_code", "OBJECTID")], 
+                                  by = "accepted_binomial", all = TRUE) %>%
+                        dplyr::select(-ecoregion_code) %>%
+                        rename(ecoregion_code = eco_code,
+                                   objectid = OBJECTID)
 
 
 if(save_outputs == "yes") {
@@ -1168,7 +1181,6 @@ if(save_outputs == "yes") {
   
 }
 
-# Find ecoregions for the extinct species pulled from the iucn website
 
 
 

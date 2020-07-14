@@ -318,7 +318,12 @@ get_gbif_data <- function(species, observations, polygon_map) {
   require(sf)
   require(tidyverse)
   
-  keys <- sapply(species, function(x) name_suggest(x)$key[1], USE.NAMES = FALSE)
+  #keys <- sapply(species, function(x) name_suggest(x)$key[1], USE.NAMES = FALSE)
+  
+  gbif_keys <- sapply(species, name_suggest, USE.NAMES = FALSE)
+  
+  keys <- sapply(gbif_keys, function(x) x$key[1])
+  
   keys <- list.clean(keys, fun = is.null, recursive = FALSE)
   
   extinct_gbif_data <- occ_search(taxonKey = keys, limit = observations)
@@ -362,9 +367,9 @@ get_gbif_data <- function(species, observations, polygon_map) {
   
   no_coordinates <- do.call(rbind,no_coordinates)
   
-  output <- list(extinct_coordinates, no_coordinates)
+  output <- list(extinct_ecoregions, no_coordinates)
   
-  names(output) <- c("extinct_coordinates","no_coordinates")
+  names(output) <- c("extinct_ecoregions","no_coordinates")
   
   return(output)
   
@@ -1078,26 +1083,32 @@ iucn_scraped_dataframe$redlist_status <- as.character(iucn_scraped_dataframe$red
 
 no_data <- do.call(rbind, no_data)
 
-# Scrape all the extinct species from iucn website ----
+# Get the names of EXTINCT species from iucn website ----
 
 #' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
 
 iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
 iucn_scraped_ew_species <- rl_sp_category("EW", key = NULL, parse = TRUE)
 
-# ex <- iucn_scraped_extinct_species[[3]]$scientific_name
-# ew <- iucn_scraped_ew_species[[3]]$scientific_name
+# Put names into a vector and clean it (names that don't follow the binomial
+# 'genus species' format will break the next loop)
 
 extinct_species_names <- unique(c(iucn_scraped_extinct_species[[3]]$scientific_name, 
                                   iucn_scraped_ew_species[[3]]$scientific_name))
 
-extinct_species_names <- extinct_species_names[1:10]
+extinct_species_names <- word(extinct_species_names, 1, 2)
+extinct_species_names <- unique(extinct_species_names)
+
+# Feed the names back to the iucn website to get the other variables we need
 
 extinct_species_data_list <- list()
+leftovers <- list()
 
-for (i in seq_along(extinct_species_names)){
+for (i in seq_along(extinct_species_names)) {
   
-  temp <- rl_search(y[i], parse = FALSE)
+  temp <- rl_search(extinct_species_names[i], parse = FALSE)
+  
+  if (is.list(temp[[2]]) && (length(temp[[2]]) != 0)) {
   
   tsn <- temp[[2]][[1]]$taxonid
   accepted_binomial <- temp[[2]][[1]]$scientific_name
@@ -1114,13 +1125,38 @@ for (i in seq_along(extinct_species_names)){
   
   extinct_species_data_list[[i]] <- df
   
+  } else {
+    
+  leftovers[[i]] <- temp[[1]]
+  
+  }
+  
 }
 
-extinct_species_data <- do.call(rbind, extinct_species_data_list)
+extinct_species_data <- as.data.frame(do.call(rbind, extinct_species_data_list))
+
+extinct_species_data$class <- as.character(extinct_species_data$class)
+extinct_species_data$accepted_binomial <- as.character(extinct_species_data$accepted_binomial)
+
+# Subset to the classes we are looking for
+
+# extinct_species_data <- extinct_species_data %>%
+#                         filter(class == c("REPTILIA", "AVES", "MAMMALIA", 
+#                                          "AMPHIBIA"))
 
 # Get ecoregions for the extinct species
 
+extinct_species_names <- extinct_species_data %>%
+                         dplyr::select(accepted_binomial) %>%
+                         pull(.)
+
+# Add ecoregions to extinct species via gbif ----
+
 extinct_species_ecoregions <- get_gbif_data(extinct_species_names, 10, ecoregion_map)
+
+no_ecoregions <- pull(as.vector(extinct_species_ecoregions[[2]]))
+
+extinct_species_ecoregions <- extinct_species_ecoregions[[1]]
 
 
 if(save_outputs == "yes") {
@@ -1133,7 +1169,8 @@ if(save_outputs == "yes") {
 }
 
 # Find ecoregions for the extinct species pulled from the iucn website
-    
+
+
 
 # Add new red list status back into the species data
 

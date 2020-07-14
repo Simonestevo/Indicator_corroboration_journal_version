@@ -35,32 +35,29 @@ library(GGally)
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "no"
+save_outputs <- "yes"
 date <- Sys.Date()
-country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
-outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 aggregate_timepoints <- "yes"
 
 # Set output directory
 
-# if (save_outputs == "yes") {
-#   
-#   outputs_dir <- paste(date,"_output_files",sep="")
-#   outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
-#   
-#   if( !dir.exists( outputs ) ) {
-#     
-#     dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
-#     
-#   }
-#   
-# } else {
-#   
-#   previous_outputs <- list.dirs(outputs_parent, recursive = FALSE)
-#   
-#   outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
-#   
-# }
+if (save_outputs == "yes") {
+
+  outputs_dir <- paste(date,"_output_files",sep="")
+  outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
+
+  if( !dir.exists( outputs ) ) {
+
+    dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+  }
+
+} else {
+
+  outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+
+}
 
 # Load functions ----
 
@@ -151,17 +148,18 @@ return(indicator_map)
 
 }
 
-# Calculate indicators ----
 
 # Get ecoregions and their attributes ----
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, 
+                                                     OBJECTID, 
+                                                     geometry)
 
-names(ecoregion_map) <- c("ecoregion_code", "ECO_NAME", "geometry")
+names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","objectid", "geometry")
 
-library(rgdal)
-data.shape<- st_read(dsn="N:/Quantitative-Ecology/Simone/extinction_test/inputs/official_teow_wwf",layer="terr_biomes")
+# library(rgdal)
+# data.shape<- st_read(dsn="N:/Quantitative-Ecology/Simone/extinction_test/inputs/official_teow_wwf",layer="terr_biomes")
 
 # Get ecoregion countries
 
@@ -192,7 +190,7 @@ if (!is.na(country)) {
   
 # Read in species data
 
-species_data <- readRDS(file.path(outputs, "species_data.rds"))
+species_data <- readRDS(file.path(inputs, "deakin_species_data/species_data.rds"))
 
 # Remove cases without redlist status and/or assessment year
 #' TODO: this might be better done in the build_database script? So there's no
@@ -212,6 +210,10 @@ if (!is.na(country)) {
     unique(.)
   
 }
+
+
+# Calculate indicators ----
+
 
 # Extinction/Risk status ----
 
@@ -272,7 +274,11 @@ at_risk_values <- as.data.frame(at_risk_values)
 
 # Split into different classes
 
-class_list <- split(species_data, species_data$class.x)
+species_data_for_rli <- species_data %>%
+                        filter(class.x == "Amphibia"|class.x == "Aves"|
+                               class.x == "Mammalia")
+
+class_list <- split(species_data_for_rli, species_data$class.x)
 
 # Split each class into different time points (output should be dataframes of 
 # species red list status in a nested list with levels: Class, Time point, Ecoregion)
@@ -379,8 +385,9 @@ hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index",
                                         sep = "/"))
 
 hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
-                         merge(ecoregion_map[c("ECO_NAME", "ecoregion_code")], 
-                               by = "ECO_NAME") %>%
+                         rename(ecoregion_name = ECO_NAME) %>%
+                         merge(ecoregion_map[c("ecoregion_name", "ecoregion_code")], 
+                               by = "ecoregion_name") %>%
                          mutate(year = "2017") %>%
                          mutate(indicator = "human footprint index") %>%
                          rename(raw_indicator_value = HFP) %>%
@@ -437,18 +444,18 @@ if (!is.na(country)) {
 #'                                                   fun = mean, na.rm = TRUE))
 #' saveRDS(bii_ecoregion_map, file.path(outputs, "bii_2005_aus_ecoregion_map.rds"))
 
-bii_ecoregion_map <- readRDS(file.path(outputs, "bii_2005_aus_ecoregion_map.rds"))
-
-#' TODO: Figure out how to deal with multiple polygons of the same ecoregion - once
-#' you remove the geometry you end up with multiple values p/ecoregion
-
-bii_values <- bii_ecoregion_map %>%
-              st_set_geometry(NULL) %>%
-              mutate(indicator = "biodiversity intactness index") %>%
-              mutate(year = "2005") %>%
-              #rename(ecoregion_code = eco_code) %>%
-              select(names(rli_values)) %>%
-              drop_na()
+#' bii_ecoregion_map <- readRDS(file.path(outputs, "bii_2005_aus_ecoregion_map.rds"))
+#' 
+#' #' TODO: Figure out how to deal with multiple polygons of the same ecoregion - once
+#' #' you remove the geometry you end up with multiple values p/ecoregion
+#' 
+#' bii_values <- bii_ecoregion_map %>%
+#'               st_set_geometry(NULL) %>%
+#'               mutate(indicator = "biodiversity intactness index") %>%
+#'               mutate(year = "2005") %>%
+#'               #rename(ecoregion_code = eco_code) %>%
+#'               select(names(rli_values)) %>%
+#'               drop_na()
 
 # Wilderness Intactness Index ----
 
@@ -541,14 +548,21 @@ correlations_all_years <- as.data.frame(cor(indicator_values_wide_complete,
 
 
 indicators_for_scatterplots <- indicator_values_wide %>%
-                               dplyr::select(- ecoregion_code)
+                               dplyr::select(- ecoregion_code) %>%
                                mutate(human.footprint.index.2017.scaled = 
-                                            scale_to_1(human.footprint.index.2017)) %>%
+                                     scale_to_1(human.footprint.index.2017)) %>%
                                dplyr::select(-human.footprint.index.2017)
 
 summary(indicators_for_scatterplots)
 
 indicator_scatterplots <- ggpairs(indicators_for_scatterplots)
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "scatterplot_all_indicators_years.png"),
+         indicator_scatterplots,  device = "png")
+  
+}
 
 # Split by year
 
@@ -599,6 +613,7 @@ rm(indicators_1988, indicators_1994_1996,
 #' also transformations? https://www.r-graph-gallery.com/199-correlation-matrix-with-ggally.html
 
 correlations <- list()
+scatterplots <- list()
 years <- list()
 
 for (i in seq_along(indicator_values_time_list)) {
@@ -663,6 +678,17 @@ correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
 
 names(scatterplots) <- years
 
+if(save_outputs == "yes") {
+
+for (i in seq_along(scatterplots)) {
+  
+    ggsave(file.path(outputs, paste(as.character(years[[i]]),"_scatterplot",
+                                    ".png", sep = "")), 
+                     scatterplots[[i]],  device = "png")
+    
+  }
+}
+
 # Map the indicators ----
 
 indicator_map_data <- inner_join(ecoregion_map, indicator_values, 
@@ -678,6 +704,14 @@ at_risk_map <- indicator_map_data %>%
 
 at_risk_map
 
+if(save_outputs == "yes") {
+  
+ggsave(file.path(outputs, "at_risk_map.png"), 
+at_risk_map,  device = "png")
+    
+
+}
+
 extinct_map <- indicator_map_data %>%
                filter(indicator == "proportion extinct") %>%
                map_indicators(.$raw_indicator_value,
@@ -685,6 +719,14 @@ extinct_map <- indicator_map_data %>%
                                "right")
 
 extinct_map
+
+if(save_outputs == "yes") {
+  
+  ggsave(file.path(outputs, "extinct_map.png"), 
+         extinct_map,  device = "png")
+  
+  
+}
   
   
 # Map the Red List Index by class

@@ -34,44 +34,53 @@ library(rlist)
 
 dev_mode <- TRUE
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+save_outputs <- "yes"
+parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 
 if (dev_mode == FALSE) {
 
-outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-06-11_parent_files"
-save_outputs <- "no"
+interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-06-11_parent_files"
 outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
 
 } else if (dev_mode == TRUE) {
-  
-outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_parent_files"
-save_outputs <- "yes"
+
+# TODO: automate this so it copies files from previous folder  
+interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
+
 date <- Sys.Date()
-outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
-  
-  
-}
-# Set output directory
+outputs_dir <- paste(date,"_database_output_files",sep = "")
+outputs <- file.path(parent_outputs, paste(date,"_database_output_files",sep=""))
 
-if (save_outputs == "yes") {
-
-outputs_dir <- paste(date,"_output_files",sep="")
-outputs <- file.path(outputs_parent, paste(date,"_output_files",sep=""))
-
-if( !dir.exists( outputs ) ) {
+if ( !dir.exists( outputs ) ) {
   
   dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
   
   }
-
-} else {
-  
-  previous_outputs <- list.dirs(outputs_parent, recursive = FALSE)
-  
-  outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
-
 }
+
+# Set output directory
+#' TODO: add the stuff below into the dev mode stuff above
+
+# if (save_outputs == "yes") {
+# 
+# outputs_dir <- paste(date,"_output_files",sep="")
+# outputs <- file.path(interim_outputs, paste(date,"_output_files",sep=""))
+# 
+# if( !dir.exists( outputs ) ) {
+#   
+#   dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
+#   
+#   }
+# 
+# } else {
+#   
+#   previous_outputs <- list.dirs(interim_outputs, recursive = FALSE)
+#   
+#   outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
+# 
+# }
 
 # Functions ----
 
@@ -407,7 +416,7 @@ ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
 
-if(!("ecoregion_country_data.rds" %in% list.files(outputs_parent))) { 
+if(!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) { 
 
 country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
                rename(country_objectid = OBJECTID)
@@ -418,11 +427,11 @@ ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
                                       arrange(country_objectid) 
 
-saveRDS(ecoregion_country_df, file = file.path(outputs_parent, "ecoregion_country_data.rds"))
+saveRDS(ecoregion_country_df, file = file.path(interim_outputs, "ecoregion_country_data.rds"))
 
 } else {
   
-ecoregion_country_df <- readRDS(paste(outputs_parent, "ecoregion_country_data.rds", sep = "/"))
+ecoregion_country_df <- readRDS(paste(interim_outputs, "ecoregion_country_data.rds", sep = "/"))
 
 }
 
@@ -483,16 +492,16 @@ wildfinder_species <- wildfinder_species[,1]
 
 # Get synonyms
 
-if(!("wildfinder_species_synonyms.rds" %in% list.files(outputs_parent))) { 
+if(!("wildfinder_species_synonyms.rds" %in% list.files(interim_outputs))) { 
   
 wildfinder_species <- find_synonyms( wildfinder_species)
 
-saveRDS(wildfinder_species, file.path(outputs_parent,"wildfinder_species_synonyms.rds"))
+saveRDS(wildfinder_species, file.path(interim_outputs,"wildfinder_species_synonyms.rds"))
 
 } else {
 
 
-wildfinder_species <- readRDS(file.path(outputs_parent, 
+wildfinder_species <- readRDS(file.path(interim_outputs, 
                                         "wildfinder_species_synonyms.rds"))
 
 }
@@ -542,15 +551,15 @@ cooke_species <- cooke_database %>%
 cooke_species$binomial <- as.character(cooke_species$binomial)
 cooke_species <- cooke_species[,1]
 
-if(!("cooke_species_synonyms.rds" %in% list.files(outputs_parent))) { 
+if(!("cooke_species_synonyms.rds" %in% list.files(interim_outputs))) { 
   
   cooke_species <- find_synonyms(cooke_species)
   
-  saveRDS(cooke_species, file.path(outputs_parent, "cooke_species_synonyms.rds"))
+  saveRDS(cooke_species, file.path(interim_outputs, "cooke_species_synonyms.rds"))
   
 } else {
   
-  cooke_species <- readRDS(file.path(outputs_parent, "cooke_species_synonyms.rds"))
+  cooke_species <- readRDS(file.path(interim_outputs, "cooke_species_synonyms.rds"))
 
 }
 
@@ -666,16 +675,16 @@ henriques_species$binomial <- as.character(henriques_species$binomial)
 henriques_species <- unname(unlist(henriques_species[,1]))
 henriques_species <- henriques_species[!is.na(henriques_species)]
 
-if (!("henrique_species_synonyms.rds" %in% list.files(outputs_parent))) { 
+if (!("henrique_species_synonyms.rds" %in% list.files(interim_outputs))) { 
   
   henriques_species <- find_synonyms(henriques_species)
   
-  saveRDS(henriques_species, file.path(outputs_parent, "henrique_species_synonyms.rds"))
+  saveRDS(henriques_species, file.path(interim_outputs, "henrique_species_synonyms.rds"))
   
 } else {
   
   
-  henriques_species <- readRDS(file.path(outputs_parent, "henrique_species_synonyms.rds"))
+  henriques_species <- readRDS(file.path(interim_outputs, "henrique_species_synonyms.rds"))
   
 }
 
@@ -769,7 +778,7 @@ species_data <- species_data_with_sources %>%
 # amphibians <- get_ecoregions(range_directories[[3]], ecoregion_map) # works
 # mammals <- get_ecoregions(range_directories[[4]], ecoregion_map) # works
 
-if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(outputs_parent))) {
+if (!("iucn_range_map_species_with_ecoregions.rds" %in% list.files(interim_outputs))) {
   
   iucn_rangemap_database <- get_ecoregions("redlist_extinct_species_range_maps", 
                                        ecoregion_map)
@@ -799,12 +808,12 @@ for (i in seq_along(range_directories)) {
 
 iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
 
-saveRDS(iucn_rangemap_database, file = file.path(outputs_parent, 
+saveRDS(iucn_rangemap_database, file = file.path(interim_outputs, 
         "iucn_range_map_species_with_ecoregions.rds"))
 
 } else {
   
-iucn_rangemap_database <- readRDS(file.path(outputs_parent, 
+iucn_rangemap_database <- readRDS(file.path(interim_outputs, 
                               "iucn_range_map_species_with_ecoregions.rds"))
 }
 
@@ -816,7 +825,7 @@ iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregio
 
 # Get TSNs for the species from the IUCN range maps
 
-if (!("iucn_rangemap_synonyms.rds" %in% list.files(outputs_parent))) {
+if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
   
   iucn_rangemap_species <- iucn_rangemap_database %>%
                               dplyr::select(binomial) 
@@ -829,12 +838,12 @@ if (!("iucn_rangemap_synonyms.rds" %in% list.files(outputs_parent))) {
   
   iucn_rangemap_species <- find_synonyms(iucn_rangemap_species)
   
-  saveRDS(iucn_rangemap_species, file.path(outputs_parent, "iucn_rangemap_synonyms.rds"))
+  saveRDS(iucn_rangemap_species, file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
   
 } else {
   
   
-  iucn_rangemap_species <- readRDS(file.path(outputs_parent, "iucn_rangemap_synonyms.rds"))
+  iucn_rangemap_species <- readRDS(file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
   
 }
 

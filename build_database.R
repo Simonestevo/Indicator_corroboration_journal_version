@@ -32,13 +32,26 @@ library(rlist)
 
 # Set input and output locations ----
 
-inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
-outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "no"
+dev_mode <- TRUE
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+
+if (dev_mode == FALSE) {
+
+outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-06-11_parent_files"
+save_outputs <- "no"
 outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
 
+} else if (dev_mode == TRUE) {
+  
+outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_parent_files"
+save_outputs <- "yes"
+date <- Sys.Date()
+outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+  
+  
+}
 # Set output directory
 
 if (save_outputs == "yes") {
@@ -71,8 +84,8 @@ if( !dir.exists( outputs ) ) {
 #' 
 
 
-# map <- ecoregion_map
-# species_directory_name <- range_directories[[2]]
+map <- ecoregion_map
+species_directory_name <- range_directories[[2]]
 
 
 get_ecoregions <- function(species_directory_name, map) {
@@ -87,7 +100,7 @@ get_ecoregions <- function(species_directory_name, map) {
   
   ranges_ecoregions <- st_join(range_map, map)
   
-  if(!is.null(ranges_ecoregions)) {
+  if (!is.null(ranges_ecoregions)) {
     
     print(paste("st_join complete for", species_directory_name, sep = " "))
     
@@ -385,32 +398,25 @@ scale_to_1 <- function(vector){
 # Join ecoregion and country data ----
 
 ## This will allow us to subset the data by country for development or analysis
-#' TODO: Figure out why giving duplicates (probably bc same ecoregion occurs in multiple places?)
+#' TODO: Why are so many ecoregions missing countries? figure out best join method
 
 # Get the ecoregion map & subset to required variables
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 # ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry)
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
+ecoregion_map <- ecoregion_map_all %>% 
+                 dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
 
 if(!("ecoregion_country_data.rds" %in% list.files(outputs_parent))) { 
 
-country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/"))
+country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
+               rename(country_objectid = OBJECTID)
 
-#' TODO: Check how it deals with ecoregions not entirely within countries
-
-ecoregion_country_sf <-  st_join(ecoregion_map, country_map)
-
-# ecoregion_country_map <- ggplot(ecoregion_country_sf) +
-#                          geom_sf(aes(fill = ECO_NAME)) +
-#                          scale_fill_viridis_c(trans = "sqrt", alpha = .4)
-# 
-# ggsave(file.path(output_parents, "ecoregion_country_map.png", ecoregion_country_map))
+ecoregion_country_sf <-  st_join(ecoregion_map, country_map, join = st_overlaps)
 
 ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
-                                      arrange(OBJECTID) %>%
-                                      rename(country_objectid = OBJECTID)
+                                      arrange(country_objectid) 
 
 saveRDS(ecoregion_country_df, file = file.path(outputs_parent, "ecoregion_country_data.rds"))
 
@@ -502,7 +508,8 @@ wildfinder_database <-  ecoregions_species %>%
                         mutate(binomial = paste(genus, species, sep = " ")) %>%
                         mutate(source = "WildFinder") %>%
                         mutate(wwf_species_id = as.numeric(wwf_species_id)) %>%
-                        merge(wildfinder_species[c("binomial", "tsn", "accepted_name", "class")])
+                        merge(wildfinder_species[c("binomial", "tsn", 
+                                                   "accepted_name", "class")])
 
 
 # Remove un-needed tables
@@ -730,7 +737,8 @@ species_data <- species_data_with_sources %>%
                 dplyr::select(-c("source", "redlist_source", "binomial")) %>%
                 distinct(.) %>%
                 dplyr::select(tsn, accepted_name, everything()) %>%
-                rename(accepted_binomial = accepted_name)
+                rename(accepted_binomial = accepted_name) %>%
+                rename(class = class.x)
 
 
 
@@ -1194,7 +1202,7 @@ correct_order <- names(species_data)
 iucn_scraped_dataframe <- iucn_scraped_dataframe %>%
                           merge(species_data[c("tsn", "accepted_binomial", 
                                                "wwf_species_id", "genus", 
-                                               "species", "class.x", 
+                                               "species", "class", 
                                                "common_name", "ecoregion_code")], 
                           by = "accepted_binomial", all = FALSE) %>%
                           

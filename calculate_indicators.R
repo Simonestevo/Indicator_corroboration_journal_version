@@ -444,6 +444,7 @@ bhi_plants_2015_values <- bhi_plants_2015_values %>%
                           mutate(indicator = "biodiversity habitat index plants",
                                  year = 2015) %>%
                           dplyr::select(-geometry) %>%
+                          dplyr::select(indicator_columns) %>%
                           distinct(.)
                           
 

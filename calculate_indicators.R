@@ -35,9 +35,10 @@ library(GGally)
 
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-save_outputs <- "yes"
+interim_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-07-15_interim_files"
+save_outputs <- "no"
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 aggregate_timepoints <- "yes"
 
 # Set output directory
@@ -105,7 +106,7 @@ calculate_red_list_index <- function(data, timeframe){
   # weight.data <- drop_na(weight.data, .data[[RL_weight]])
   
   # Group data so the index is calculated for each taxa for each year
-  grouped.data <- weighted_data %>% group_by(class.x, redlist_assessment_year)
+  grouped.data <- weighted_data %>% group_by(class, redlist_assessment_year)
   
   # Sum category weights for each group, calculate number of species per group
   summed.weights <- summarise(grouped.data, 
@@ -152,18 +153,20 @@ return(indicator_map)
 # Get ecoregions and their attributes ----
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, 
-                                                     OBJECTID, 
-                                                     geometry)
 
-names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","objectid", "geometry")
+ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, 
+                                                     OBJECTID, ECO_ID, 
+                                                     geometry) 
+
+names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","objectid",
+                          "eco_id", "geometry")
 
 # library(rgdal)
 # data.shape<- st_read(dsn="N:/Quantitative-Ecology/Simone/extinction_test/inputs/official_teow_wwf",layer="terr_biomes")
 
 # Get ecoregion countries
 
-ecoregion_country_df <- readRDS(paste(outputs_parent, 
+ecoregion_country_df <- readRDS(paste(interim_outputs, 
                                       "ecoregion_country_data.rds", sep = "/"))
 
 ecoregion_country_df <- ecoregion_country_df %>%
@@ -197,8 +200,14 @@ species_data <- readRDS(file.path(inputs, "deakin_species_data/species_data.rds"
 #' wrangling of the species data in this script?
 
 species_data <- species_data %>%
-                drop_na(redlist_assessment_year, redlist_status) %>%
-                distinct(.)
+                drop_na(redlist_assessment_year, redlist_status, class) %>%
+                distinct(.) %>%
+                mutate(class = replace(class, class == "AMPHIBIA", "Amphibia"),
+                       class = replace(class, class == "MAMMALIA", "Mammalia"),
+                       class = replace(class, class == "FLORIDEOPHYCEAE", "Florideophycae"),
+                       class = replace(class, class == "REPTILIA", "Reptilia"),
+                       class = replace(class, class == "MAGNOLIOPSIDA", "Magnoliopsida"),
+                       class = replace(class, class == "AVES", "Aves"))
 
 # Subset by test country
 
@@ -217,7 +226,7 @@ if (!is.na(country)) {
 
 # Extinction/Risk status ----
 
-# TODO: Add in redlist proportion to indicator values for analysis
+# TODO: Fix the lowrisk proportion - not right
 
 species_by_ecoregion <- species_data %>%
                         group_by(ecoregion_code, redlist_assessment_year) %>%
@@ -259,6 +268,8 @@ extinction_values <- species_by_ecoregion %>%
 
 extinction_values <- as.data.frame(extinction_values)
 
+indicator_columns <- names(extinction_values)
+
 # Threatened status
 
 at_risk_values <- species_by_ecoregion %>%
@@ -275,10 +286,10 @@ at_risk_values <- as.data.frame(at_risk_values)
 # Split into different classes
 
 species_data_for_rli <- species_data %>%
-                        filter(class.x == "Amphibia"|class.x == "Aves"|
-                               class.x == "Mammalia")
+                        filter(class == "Amphibia"| class == "Aves"|
+                               class == "Mammalia")
 
-class_list <- split(species_data_for_rli, species_data$class.x)
+class_list <- split(species_data_for_rli, species_data_for_rli$class)
 
 # Split each class into different time points (output should be dataframes of 
 # species red list status in a nested list with levels: Class, Time point, Ecoregion)
@@ -358,7 +369,7 @@ rli_values <- do.call(rbind, classes_rli)
 
 rli_values <- rli_values %>%
               filter(RLI != 0) %>%
-              mutate(indicator = paste("red list index", class.x, sep = " ")) %>%
+              mutate(indicator = paste("red list index", class, sep = " ")) %>%
               rename(year = redlist_assessment_year) %>%
               rename(raw_indicator_value = RLI) %>%
               rename(ecoregion_code = Ecoregion_code) %>%
@@ -417,6 +428,24 @@ if (!is.na(country)) {
   hfp_by_ecoregion_2017 <- full_hfp_by_ecoregion_2017[full_hfp_by_ecoregion_2017$ecoregion_code %in% country_ecoregions, ]
   
 }
+
+# Biodiversity Habitat Index Plants 2015 ----
+
+bhi_plants_2015_all <- read.csv(file.path(inputs, 
+                                       "biodiversity_habitat_index\\BHI2015_PLANTS_BY_ECOREGION.csv"))
+
+bhi_plants_2015_values <- bhi_plants_2015_all[-1,1:2]
+
+bhi_plants_2015_values <- bhi_plants_2015_values %>%
+                          rename(eco_id = BIODIVERSITY.HABITAT.INDEX.2015,
+                                 raw_indicator_value = X) %>%
+                          merge(ecoregion_map[c("eco_id","ecoregion_code")], 
+                                by = "eco_id") %>%
+                          mutate(indicator = "biodiversity habitat index plants",
+                                 year = 2015) %>%
+                          dplyr::select(-geometry) %>%
+                          distinct(.)
+                          
 
 # Biodiversity Intactness Index 2005 ----
 
@@ -913,7 +942,7 @@ if(save_outputs == "yes") {
 ## Previous way of calculating RLI used for NESP/WWF docs ----
 
 # species_data <- species_data %>% 
-#   filter(class.x == "Aves") %>%
+#   filter(class == "Aves") %>%
 #   filter(redlist_assessment_year == 2016)
 # 
 # species_data_by_ecoregion <- split(species_data, 

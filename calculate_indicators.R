@@ -195,6 +195,7 @@ if (!is.na(country)) {
 
 species_data <- readRDS(file.path(inputs, "deakin_species_data/species_data.rds"))
 
+sp_all <- species_data
 # Remove cases without redlist status and/or assessment year
 #' TODO: this might be better done in the build_database script? So there's no
 #' wrangling of the species data in this script?
@@ -204,9 +205,11 @@ species_data <- species_data %>%
                 distinct(.) %>%
                 mutate(class = replace(class, class == "AMPHIBIA", "Amphibia"),
                        class = replace(class, class == "MAMMALIA", "Mammalia"),
-                       class = replace(class, class == "FLORIDEOPHYCEAE", "Florideophycae"),
+                       class = replace(class, class == "FLORIDEOPHYCEAE", 
+                                                       "Florideophycae"),
                        class = replace(class, class == "REPTILIA", "Reptilia"),
-                       class = replace(class, class == "MAGNOLIOPSIDA", "Magnoliopsida"),
+                       class = replace(class, class == "MAGNOLIOPSIDA", 
+                                                       "Magnoliopsida"),
                        class = replace(class, class == "AVES", "Aves"))
 
 # Subset by test country
@@ -226,36 +229,28 @@ if (!is.na(country)) {
 
 # Extinction/Risk status ----
 
-# TODO: Fix the lowrisk proportion - not right
-
 species_by_ecoregion <- species_data %>%
+                        select(-eco_objectid) %>%
+                        distinct(.) %>%
                         group_by(ecoregion_code, redlist_assessment_year) %>%
-                        summarize(number_of_species = n_distinct(tsn),
-                                  proportion_extinct = sum(redlist_status == "EX"| 
-                                                         redlist_status =="EW")/
-                                    number_of_species,
-                                  proportion_endangered = sum(redlist_status == "EN")/
-                                    number_of_species,
-                                  proportion_critical = sum(redlist_status == "CR"|
-                                                          redlist_status == "CR(PE)")/
-                                    number_of_species,
-                                  proportion_vulnerable = sum(redlist_status == "VU")/
-                                    number_of_species,
-                                  proportion_atrisk = sum(redlist_status == "EX"| 
-                                                          redlist_status =="EW"|
-                                                          redlist_status == "EN"|
-                                                          redlist_status == "CR"|
-                                                          redlist_status == "CR(PE)"|
-                                                          redlist_status == "VU")/
-                                                            number_of_species,
-                                  proportion_lowrisk = sum(redlist_status == "LC"|
-                                                            redlist_status == "NT")/
-                                    number_of_species) %>%
-                        mutate(check = proportion_extinct + 
-                                       proportion_endangered +
-                                       proportion_critical +
-                                 proportion_vulnerable +
-                                 proportion_lowrisk)
+                        mutate(number_of_species = n_distinct(tsn),
+                               number_extinct = n_distinct(tsn[redlist_status == "EX"|
+                                                               redlist_status == "EW"]),
+                               number_atrisk = n_distinct(tsn[redlist_status == "EN"|
+                                                      redlist_status == "CR"|
+                                                      redlist_status == "CR(PE)"|
+                                                      redlist_status == "VU"]),
+                               number_lowrisk = n_distinct(tsn[redlist_status == "LC"|
+                                                       redlist_status == "NT"]),
+                               number_datadeficient = n_distinct(tsn[redlist_status == "DD"]),
+                               check = number_of_species - (number_extinct +
+                                                            number_atrisk +
+                                                            number_lowrisk+
+                                                            number_datadeficient),
+                               proportion_extinct = number_extinct/number_of_species,
+                               proportion_atrisk = number_atrisk/number_of_species,
+                               proportion_lowrisk = number_lowrisk/number_of_species)
+                               
 
 # Extinctions
 

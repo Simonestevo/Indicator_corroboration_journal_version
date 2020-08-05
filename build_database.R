@@ -418,12 +418,24 @@ scale_to_1 <- function(vector){
 
 ## This will allow us to subset the data by country for development or analysis
 #' TODO: Why are so many ecoregions missing countries? figure out best join method
+#' TODO: Important - Add countries to species_data 
 
 # Get the ecoregion map & subset to required variables
 
 ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
+
+
+new_ecoregion_map <- st_read(paste(inputs,"ecoregions_2017", sep = "/"))
+ecoregions_2017 <- select(new_ecoregion_map, -geometry)
+write.csv(ecoregions_2017, file.path(inputs,"ecoregions_2017","ecoregions2017.csv"))
+
+ecoregions_2001 <- ecoregion_map_all %>%
+                   select(-geometry) %>%
+                   distinct(.)
+
+write.csv(ecoregions_2017, file.path(inputs,"official_teow_wwf","ecoregions2001.csv"))
 
 if (!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) { 
 
@@ -434,7 +446,8 @@ ecoregion_country_sf <-  st_join(ecoregion_map, country_map, join = st_overlaps)
 
 ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
-                                      arrange(country_objectid) 
+                                      arrange(country_objectid) %>%
+                                      rename(eco_objectid = OBJECTID)
 
 saveRDS(ecoregion_country_df, file = file.path(interim_outputs, "ecoregion_country_data.rds"))
 

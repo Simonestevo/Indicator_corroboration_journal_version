@@ -38,6 +38,8 @@ country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "yes"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+version <- "ecoregions_2017"
+#version <- "official_teow_wwf"
 
 if (dev_mode == FALSE) {
 
@@ -121,11 +123,11 @@ get_ecoregions <- function(rangemap_directory_path, map) {
   
   species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
                                           dplyr::select(BINOMIAL, 
-                                                        eco_code, 
+                                                        ECO_ID, 
                                                         OBJECTID)) %>%
     dplyr::select(-geometry) %>%
     rename(binomial = BINOMIAL) %>%
-    rename(ecoregion_code = eco_code) %>%
+    rename(ecoregion_id = ECO_ID) %>%
     rename(eco_objectid = OBJECTID) %>%
     mutate(source = "iucn_redlist") %>%
     mutate(redlist_status = "TBC") %>%
@@ -425,9 +427,12 @@ scale_to_1 <- function(vector){
 
 # Get the ecoregion map & subset to required variables
 
-ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+ecoregions_2001 <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+
+ecoregion_map_all <- st_read(paste(inputs,version, sep = "/"))
+
 ecoregion_map <- ecoregion_map_all %>% 
-                 dplyr::select(eco_code, ECO_NAME, geometry, OBJECTID)
+                 dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)
 
 
 new_ecoregion_map <- st_read(paste(inputs,"ecoregions_2017", sep = "/"))
@@ -472,8 +477,8 @@ ecoregion_subset <- ecoregion_country_df %>%
 
 if (!is.na(country)) {
   
-  ecoregion_map <- ecoregion_map[ecoregion_map$eco_code %in% 
-                                   ecoregion_subset$eco_code ,]  
+  ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                                   ecoregion_subset$ECO_ID ,]  
                    
   
 }
@@ -566,7 +571,7 @@ if (!is.na(country)) {
   
   full_WF_database <- wildfinder_database
   
-  country_ecoregions <- ecoregion_subset$eco_code
+  country_ecoregions <- ecoregion_subset$ECO_ID
   
   wildfinder_database <- full_WF_database[full_WF_database$ecoregion_code %in% country_ecoregions, ]
   
@@ -612,7 +617,7 @@ if (!is.na(country)) {
   
  full_cooke_database <- cooke_database
   
- country_ecoregions <- ecoregion_subset$eco_code
+ country_ecoregions <- ecoregion_subset$ECO_ID
   
  cooke_database <- full_cooke_database[full_cooke_database$ecoregion_code %in% country_ecoregions, ]
   
@@ -847,7 +852,7 @@ iucn_rangemap_database <- readRDS(file.path(outputs,
 if (!is.na(country)) {
   
 iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregion_code 
-                                                 %in% ecoregion_subset$eco_code, ]
+                                                 %in% ecoregion_subset$ECO_ID, ]
 }
 
 # Get TSNs for the species from the IUCN range maps
@@ -1292,10 +1297,10 @@ extinct_species_ecoregions <- extinct_species_ecoregions[[1]] %>%
 
 extinct_species_data <- extinct_species_data %>%
                         merge(extinct_species_ecoregions[c("accepted_binomial",
-                                  "eco_code", "OBJECTID")], 
+                                  "ECO_ID", "OBJECTID")], 
                                   by = "accepted_binomial", all = TRUE) %>%
                         dplyr::select(-ecoregion_code) %>%
-                        rename(ecoregion_code = eco_code,
+                        rename(ecoregion_code = ECO_ID,
                                eco_objectid = OBJECTID) %>%
                         mutate(redlist_status = "EX") %>%
                         select(correct_order)
@@ -1448,7 +1453,7 @@ proportion_extinct <- species_by_ecoregion %>%
 
 extinction_map_data <- inner_join(ecoregion_map, proportion_extinct[
                         c("ecoregion_code", "number_of_species_extinct")],
-                        by = c("eco_code" = "ecoregion_code"))
+                        by = c("ECO_ID" = "ecoregion_code"))
 
 extinction_map <- ggplot(extinction_map_data) +
                   geom_sf(aes(fill = number_of_species_extinct)) +
@@ -1468,7 +1473,7 @@ dev.off()
 
 species_map_data <- inner_join(ecoregion_map, species_by_ecoregion[
                     c("ecoregion_code", "number_of_species")],
-                    by = c("eco_code" = "ecoregion_code"))
+                    by = c("ECO_ID" = "ecoregion_code"))
 
 species_map <- ggplot(species_map_data) +
                geom_sf(aes(fill = number_of_species)) +

@@ -34,22 +34,23 @@ library(rlist)
 
 dev_mode <- TRUE
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "yes"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 
-#if (dev_mode == FALSE) {
+if (dev_mode == FALSE) {
 
-# interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-06-11_parent_files"
-# outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
+outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_database_output_files"
 
-#} else if (dev_mode == TRUE) {
+} else if (dev_mode == TRUE) { # Dev_mode creates brand new folders for your outputs
 
 # TODO: automate this so it copies files from previous folder  
 interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
 outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_database_output_files"
 
+}
 # date <- Sys.Date()
 # outputs_dir <- paste(date,"_database_output_files",sep = "")
 # outputs <- file.path(parent_outputs, paste(date,"_database_output_files",sep=""))
@@ -88,38 +89,40 @@ outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_da
 ## get_ecoregions: Function to load species range maps and join with the wwf ecoregion map
 #' @return a dataframe with four columns (species binomial scientific name,
 #' ecoregion, data source and red list status)
-#' @param species directory name - a string that denotes the name of the directory
-#' where the species range maps are saved
-#' @param map sf object - the global wwf_teow map
-#' 
-
+#' @param rangemap_directory_path - a string that denotes the name of the directory
+#' where the group (eg mammals) range maps are saved (should be one directory per map)
+#' @param map sf object - the map of ecoregions, will work with either 2001 or
+#' 2017 version
 
 # map <- ecoregion_map
-# species_directory_name <- range_directories[[1]]
+# rangemap_directory_path <- range_directories[[1]]
 
-
-get_ecoregions <- function(species_directory_name, map) {
+get_ecoregions <- function(rangemap_directory_path, map) {
   
-  range_map <- st_read(paste(inputs,species_directory_name, sep = "/"))
+  range_map <- st_read(rangemap_directory_path)
   
   names(range_map) <- toupper(names(range_map)) # Make column names consistent
   
-  range_map <- rename(range_map, geometry = GEOMETRY)
+  range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
   
   # Get the ecoregions for each species
   
-  ranges_ecoregions <- st_join(range_map, map)
+  ranges_ecoregions <- st_join(range_map, map, join = st_intersects)
   
   if (!is.null(ranges_ecoregions)) {
     
-    print(paste("st_join complete for", species_directory_name, sep = " "))
+    print(paste("st_join complete for", 
+                basename(rangemap_directory_path), sep = " "))
     
   }
   
   # Standardise the data so we can add it to the species data easily
   
+  
   species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
-                                        dplyr::select(BINOMIAL, eco_code, OBJECTID)) %>%
+                                          dplyr::select(BINOMIAL, 
+                                                        eco_code, 
+                                                        OBJECTID)) %>%
     dplyr::select(-geometry) %>%
     rename(binomial = BINOMIAL) %>%
     rename(ecoregion_code = eco_code) %>%
@@ -128,15 +131,15 @@ get_ecoregions <- function(species_directory_name, map) {
     mutate(redlist_status = "TBC") %>%
     mutate(ecoregion_code = as.character(ecoregion_code))
   
+  
   if(!is.null(species_w_ecoregions)) {
     
-    print(paste("finished adding ecoregions to", species_directory_name, sep = " "))
+    print(paste("finished adding ecoregions to", 
+                basename(rangemap_directory_path), sep = " "))
     
   }
   
   return(species_w_ecoregions)
-  
-
   
 }
 

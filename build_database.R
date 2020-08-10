@@ -32,7 +32,7 @@ library(rlist)
 
 # Set input and output locations ----
 
-create_new_database_version <- FALSE
+create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
@@ -412,8 +412,8 @@ get_gbif_data <- function(species, observations, polygon_map) {
 
 scale_to_1 <- function(vector){
   
-  (vector-min(vector, na.rm = TRUE))/
-    (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
+  (vector - min(vector, na.rm = TRUE))/
+    (max(vector, na.rm = TRUE) - min(vector, na.rm = TRUE))
 }
 
 # Load ecoregion data ----
@@ -422,29 +422,31 @@ scale_to_1 <- function(vector){
 #' TODO: Why are so many ecoregions missing countries? figure out best join method
 #' TODO: Important - Add countries to species_data 
 
-# Get the ecoregion map & subset to required variables
-
-#ecoregions_2001 <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+# Get the ecoregion map 
 
 ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
+
+# Pull out only required variables
 
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)
 
+#rm(ecoregion_map_all)
 
 if (!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) { 
 
 country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
                rename(country_objectid = OBJECTID)
 
-ecoregion_country_sf <-  st_join(ecoregion_map, country_map, join = st_overlaps)
+ecoregion_country_sf <-  st_join(ecoregion_map, country_map, join = st_intersects)
 
 ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
                                       arrange(country_objectid) %>%
                                       rename(eco_objectid = OBJECTID)
 
-saveRDS(ecoregion_country_df, file = file.path(interim_outputs, "ecoregion_country_data.rds"))
+saveRDS(ecoregion_country_df, file = file.path(interim_outputs, 
+                                               "ecoregion_country_data.rds"))
 
 } else {
   

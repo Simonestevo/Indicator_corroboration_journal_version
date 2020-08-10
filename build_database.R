@@ -127,8 +127,9 @@ get_ecoregions <- function(rangemap_directory_path, map) {
     rename(ecoregion_id = ECO_ID) %>%
     rename(eco_objectid = OBJECTID) %>%
     mutate(source = "iucn_redlist") %>%
-    mutate(redlist_status = "TBC") %>%
-    mutate(ecoregion_code = as.character(ecoregion_code))
+    mutate(redlist_status = "TBC") 
+  # %>%
+  #   mutate(ecoregion_id = as.character(ecoregion_id))
   
   
   if(!is.null(species_w_ecoregions)) {
@@ -438,7 +439,8 @@ if (!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) {
 country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
                rename(country_objectid = OBJECTID)
 
-ecoregion_country_sf <-  st_join(ecoregion_map, country_map, join = st_intersects)
+ecoregion_country_sf <-  st_join(ecoregion_map, country_map, 
+                                 join = st_intersects)
 
 ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       dplyr::select(-geometry) %>%
@@ -471,6 +473,97 @@ if (!is.na(country)) {
                    
   
 }
+
+# Intersect range maps with ecoregions (SLOW CODE) ----
+
+
+# To fill in missing ecoregions
+
+# If starting from here, load species data
+
+# species_data <- readRDS(file.path(outputs, "species_data_incomplete.rds"))
+
+#' TODO: Check this is working correctly - how does it cope with one species
+#' in multiple ecoregions?
+
+if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
+  
+  # range_directories <- c("redlist_reptile_range_maps",
+  #                        "redlist_amphibian_range_maps",
+  #                        "redlist_mammal_range_maps")
+  
+  range_directories <- list(file.path(inputs,"redlist_amphibian_range_maps"))
+  
+  iucn_rangemap_database <- list()
+  
+  for (i in seq_along(range_directories)) {
+    
+    iucn_rangemap_database[[i]] <- get_ecoregions(range_directories[[i]], 
+                                                  ecoregion_map)
+    
+    print(paste("processed", i, "of" , length(range_directories), 
+                "group range maps", sep = " "))
+    
+  }
+  
+  iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
+  
+  saveRDS(iucn_rangemap_database, file = file.path(outputs,
+                                                   "iucn_range_map_species_with_ecoregions.rds"))
+
+} else {
+  
+  iucn_rangemap_database <- readRDS(file.path(outputs, 
+                                              "iucn_range_map_species_with_ecoregions.rds"))
+}
+
+if (!is.na(country)) {
+  
+  iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregion_id 
+                                                   %in% ecoregion_subset$ECO_ID, ]
+}
+
+# Get TSNs for the species from the IUCN range maps
+
+if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
+  
+  iucn_rangemap_species <- iucn_rangemap_database %>%
+    dplyr::select(binomial) 
+  
+  iucn_rangemap_species$binomial <- as.character(iucn_rangemap_species$binomial)
+  
+  iucn_rangemap_species <- unname(unlist(iucn_rangemap_species[,1]))
+  
+  iucn_rangemap_species <- iucn_rangemap_species[!is.na(iucn_rangemap_species)]
+  
+  iucn_rangemap_species <- unique(iucn_rangemap_species)
+  
+  iucn_rangemap_species <- find_synonyms(iucn_rangemap_species)
+  
+
+  
+  saveRDS(iucn_rangemap_species, file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
+  
+  iucn_rangemap_database <-  iucn_rangemap_database %>%
+    merge(iucn_rangemap_species[c("binomial", "tsn", 
+                                  "found","class")], 
+          by = "binomial")
+  
+  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
+  
+} else {
+  
+  iucn_rangemap_species <- readRDS(file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
+  
+  iucn_rangemap_database <-  iucn_rangemap_database %>%
+    merge(iucn_rangemap_species[c("binomial", "tsn", 
+                                  "found", "class")], 
+          by = "binomial")
+  
+  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
+  
+}
+
 
 # Load Wildfinder database ----
 
@@ -796,90 +889,7 @@ rm(merged_databases, tables, wildfinder_database, wildfinder_species, scientific
    henriques_redlist_database, henriques_species, group_tables, amphibians,
    birds, mammals, cooke_database, cooke_species)
 
-# Get IUCN rangemaps (SLOW CODE)  ----
 
-# To fill in missing ecoregions
-
-# If starting from here, load species data
-
-# species_data <- readRDS(file.path(outputs, "species_data_incomplete.rds"))
-
-#' TODO: Check this is working correctly - how does it cope with one species
-#' in multiple ecoregions?
-
-if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
-  
-  range_directories <- c("redlist_extinct_species_range_maps",
-                         "redlist_reptile_range_maps",
-                         "redlist_amphibian_range_maps",
-                         "redlist_mammal_range_maps" )
-
-
-  iucn_rangemap_database <- list()
-
-for (i in seq_along(range_directories)) {
-
- iucn_rangemap_database[[i]] <- get_ecoregions(range_directories[[i]], 
-                                                     ecoregion_map)
-  
- print(paste("processed", i, "of" , length(range_directories), 
-             "group range maps", sep = " "))
-
-}
-
-iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
-
-saveRDS(iucn_rangemap_database, file = file.path(outputs, 
-        "iucn_range_map_species_with_ecoregions.rds"))
-
-} else {
-  
-iucn_rangemap_database <- readRDS(file.path(outputs, 
-                              "iucn_range_map_species_with_ecoregions.rds"))
-}
-
-if (!is.na(country)) {
-  
-iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregion_code 
-                                                 %in% ecoregion_subset$ECO_ID, ]
-}
-
-# Get TSNs for the species from the IUCN range maps
-
-if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
-  
-  iucn_rangemap_species <- iucn_rangemap_database %>%
-                              dplyr::select(binomial) 
-  
-  iucn_rangemap_species$binomial <- as.character(iucn_rangemap_species$binomial)
-  
-  iucn_rangemap_species <- unname(unlist(iucn_rangemap_species[,1]))
-  
-  iucn_rangemap_species <- iucn_rangemap_species[!is.na(iucn_rangemap_species)]
-  
-  iucn_rangemap_species <- find_synonyms(iucn_rangemap_species)
-  
-  saveRDS(iucn_rangemap_species, file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
-  
-  iucn_rangemap_database <-  iucn_rangemap_database %>%
-                             merge(iucn_rangemap_species[c("binomial", "tsn", 
-                                                            "found")], 
-                             by = "binomial")
-  
-  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
-  
-} else {
-  
-  iucn_rangemap_species <- readRDS(file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
-  
-  iucn_rangemap_database <-  iucn_rangemap_database %>%
-                             merge(iucn_rangemap_species[c("binomial", "tsn", 
-                                                            "found")], 
-                                    by = "binomial")
-  
-  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
-  
-}
 
 # Species data checkpoint ----
 

@@ -32,59 +32,56 @@ library(rlist)
 
 # Set input and output locations ----
 
-new_directory <- TRUE
+create_new_database_version <- FALSE
 date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "yes"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-version <- "ecoregions_2017"
-#version <- "official_teow_wwf"
+eco_version <- "ecoregions_2017"
+#eco_version <- "official_teow_wwf"
 
-if (new_directory == FALSE) {
+if (create_new_database_version == FALSE) {
 
-interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
-outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_database_output_files"
+# Find the most recent version of database output files
+  
+db_version <- tail(sort(list.files(parent_outputs)), 1)
+db_interim <- list.files(file.path(parent_outputs,db_version))[
+         grepl("interim",list.files(file.path(parent_outputs,db_version)))]
+db_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("database",list.files(file.path(parent_outputs,db_version)))]
 
-} else if (new_directory == TRUE) { # Dev_mode creates brand new folders for your outputs
+interim_outputs <- file.path(parent_outputs, db_version, db_interim)
+outputs <- file.path(parent_outputs, db_version, db_outputs)
 
-# TODO: automate this so it copies files from previous folder  
-interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
-outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_database_output_files"
+} else if (create_new_database_version == TRUE) { # Dev_mode creates brand new folders for your outputs
 
+previous_version <- tail(sort(list.files(parent_outputs)), 1)
+new_version <- as.numeric(substring(previous_version, nchar(previous_version))) + 1
+db_version <- paste("version", new_version, sep = "_")
+new_int_dir <- file.path(parent_outputs, db_version,
+                        paste(date,"_interim_output_files",sep = ""))
+
+if( !dir.exists( file.path(new_int_dir) ) ) {
+  
+  dir.create( file.path(new_int_dir), recursive = TRUE )
+  
+  print("creating new interim directory")
+  
 }
-# date <- Sys.Date()
-# outputs_dir <- paste(date,"_database_output_files",sep = "")
-# outputs <- file.path(parent_outputs, paste(date,"_database_output_files",sep=""))
-# 
-# if ( !dir.exists( outputs ) ) {
-#   
-#   dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
-#   
-#   }
-# }
 
-# Set output directory
-#' TODO: add the stuff below into the dev mode stuff above
+new_db_dir <- file.path(parent_outputs, db_version,
+                         paste(date,"_database_output_files",sep = ""))
 
-# if (save_outputs == "yes") {
-# 
-# outputs_dir <- paste(date,"_output_files",sep="")
-# outputs <- file.path(interim_outputs, paste(date,"_output_files",sep=""))
-# 
-# if( !dir.exists( outputs ) ) {
-#   
-#   dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs 
-#   
-#   }
-# 
-# } else {
-#   
-#   previous_outputs <- list.dirs(interim_outputs, recursive = FALSE)
-#   
-#   outputs <- previous_outputs[length(previous_outputs)] # get the most recent outputs folder to use
-# 
-# }
+if( !dir.exists( file.path(new_db_dir) ) ) {
+  
+  dir.create( file.path(new_db_dir), recursive = TRUE )
+  
+  print("creating new database directory")
+  
+  }
+}
+
 
 # Functions ----
 
@@ -429,7 +426,7 @@ scale_to_1 <- function(vector){
 
 #ecoregions_2001 <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 
-ecoregion_map_all <- st_read(paste(inputs,version, sep = "/"))
+ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)

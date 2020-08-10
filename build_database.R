@@ -427,23 +427,13 @@ scale_to_1 <- function(vector){
 
 # Get the ecoregion map & subset to required variables
 
-ecoregions_2001 <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+#ecoregions_2001 <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
 
 ecoregion_map_all <- st_read(paste(inputs,version, sep = "/"))
 
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)
 
-
-new_ecoregion_map <- st_read(paste(inputs,"ecoregions_2017", sep = "/"))
-ecoregions_2017 <- select(new_ecoregion_map, -geometry)
-write.csv(ecoregions_2017, file.path(inputs,"ecoregions_2017","ecoregions2017.csv"))
-
-ecoregions_2001 <- ecoregion_map_all %>%
-                   select(-geometry) %>%
-                   distinct(.)
-
-write.csv(ecoregions_2017, file.path(inputs,"official_teow_wwf","ecoregions2001.csv"))
 
 if (!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) { 
 

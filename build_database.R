@@ -34,12 +34,13 @@ library(rlist)
 
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
-country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "yes"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 eco_version <- "ecoregions_2017"
 #eco_version <- "official_teow_wwf"
+
 
 if (create_new_database_version == FALSE) {
 
@@ -486,20 +487,19 @@ if (!is.na(country)) {
 #' TODO: Check this is working correctly - how does it cope with one species
 #' in multiple ecoregions?
 
+intersect_ranges_w_ecoregions <- function(class_name, shapefile) {
+
 if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
   
-  # range_directories <- c("redlist_reptile_range_maps",
-  #                        "redlist_amphibian_range_maps",
-  #                        "redlist_mammal_range_maps")
-  
-  range_directories <- list(file.path(inputs,"redlist_amphibian_range_maps"))
+  range_directories <- list(file.path(inputs, paste("redlist", class_name,  
+                                                   "range_maps", sep = "_")))
   
   iucn_rangemap_database <- list()
   
   for (i in seq_along(range_directories)) {
     
     iucn_rangemap_database[[i]] <- get_ecoregions(range_directories[[i]], 
-                                                  ecoregion_map)
+                                                  shapefile)
     
     print(paste("processed", i, "of" , length(range_directories), 
                 "group range maps", sep = " "))
@@ -507,9 +507,10 @@ if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
   }
   
   iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
+  iucn_rangemap_database <- distinct(iucn_rangemap_database)
   
   saveRDS(iucn_rangemap_database, file = file.path(outputs,
-                                                   "iucn_range_map_species_with_ecoregions.rds"))
+                                 "iucn_range_map_species_with_ecoregions.rds"))
 
 } else {
   
@@ -525,7 +526,8 @@ if (!is.na(country)) {
 
 # Get TSNs for the species from the IUCN range maps
 
-if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
+if (!(file.path(interim_outputs, paste(class_name, "iucn_rangemap_synonyms.rds",
+                      sep = "_")) %in% list.files(interim_outputs))) {
   
   iucn_rangemap_species <- iucn_rangemap_database %>%
     dplyr::select(binomial) 
@@ -542,18 +544,25 @@ if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
   
 
   
-  saveRDS(iucn_rangemap_species, file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
+  saveRDS(iucn_rangemap_species, file.path(interim_outputs, 
+                                           paste(class_name,
+                                                 "iucn_rangemap_synonyms.rds",
+                                                 sep = "_")))
   
   iucn_rangemap_database <-  iucn_rangemap_database %>%
     merge(iucn_rangemap_species[c("binomial", "tsn", 
                                   "found","class")], 
           by = "binomial")
   
-  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
+  # saveRDS(iucn_rangemap_database, file.path(interim_outputs, paste(class_name,
+  #       "iucn_rangemap_synonyms.rds", sep = "_")))
   
 } else {
   
-  iucn_rangemap_species <- readRDS(file.path(interim_outputs, "iucn_rangemap_synonyms.rds"))
+  iucn_rangemap_species <- readRDS(file.path(interim_outputs, 
+                                             paste(class_name, 
+                                                   "iucn_rangemap_synonyms.rds",
+                                                                    sep = "_")))
   
   iucn_rangemap_database <-  iucn_rangemap_database %>%
     merge(iucn_rangemap_species[c("binomial", "tsn", 
@@ -563,6 +572,220 @@ if (!("iucn_rangemap_synonyms.rds" %in% list.files(interim_outputs))) {
   saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
   
 }
+
+# Load red list status data ----
+
+file_path <- file.path(inputs, "redlist_sergio")
+file_names <- list.files(file_path)
+file <- file_names[str_detect(file_names, class_name)]
+files <- file.path(file_path, file)
+table <- read_csv(files)
+#names(tables) <- str_remove(file_names, ".csv")
+
+# Add a column so we can identify what taxa each table contains + the source
+# reference
+
+if (class_name == "amphibian") {
+  
+matched_class <- "Amphibia"
+
+table <- table %>% 
+         mutate(class = matched_class) %>%
+         mutate(redlist_source = "Henriques etal 2020") %>% 
+         dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
+         dplyr::select(-c(Genus, Species)) %>%
+         set_names(c("2004", "2008", "class", "redlist_source", "binomial")) %>%
+         dplyr::select("binomial","class","2004", "2008", "redlist_source")
+
+}
+
+if (class_name == "mammal") {
+  
+  matched_class <- "Mammalia"
+  
+  table <- table %>% 
+           mutate(class = matched_class) %>%
+           mutate(redlist_source = "Henriques etal 2020") %>% 
+           rename(binomial = Name) %>%
+           set_names(c("binomial","1996", "2008", "class", "redlist_source")) %>%
+           dplyr::select("binomial","class","1996", "2008", "redlist_source")
+  
+}
+
+if (class_name == "reptile") {
+  
+  matched_class <- "Reptilia"
+  
+  table <- table %>% 
+           mutate(class = matched_class) %>%
+           mutate(redlist_source = "Henriques etal 2020") %>% 
+           rename(binomial = Name) %>%
+           set_names(c("binomial","1996", "2008", "class", "redlist_source")) %>%
+           dplyr::select("binomial","class","1996", "2008", "redlist_source")
+  
+}
+
+# Get synonyms for henriques species ----
+
+henriques_species <- table %>%
+                     dplyr::select(binomial) 
+
+henriques_species$binomial <- as.character(henriques_species$binomial)
+henriques_species <- unname(unlist(henriques_species[,1]))
+henriques_species <- henriques_species[!is.na(henriques_species)]
+henriques_species <- unique(henriques_species)
+
+if (!(paste(class_name,
+            "henriques_synonyms.rds",
+            sep = "_") %in% list.files(interim_outputs))) { 
+  
+  henriques_species <- find_synonyms(henriques_species)
+  
+  saveRDS(henriques_species, file.path(interim_outputs, 
+                                       paste(class_name,
+                                             "henriques_synonyms.rds",
+                                             sep = "_")))
+  
+} else {
+  
+  
+  henriques_species <- readRDS(file.path(interim_outputs, 
+                                         paste(class_name,
+                                               "henriques_synonyms.rds",
+                                               sep = "_")))
+  
+}
+
+# Order columns, drop group variable and melt in to long format
+
+redlist_status_data <- table %>%
+                       select(-class) %>%
+                       melt(.,id.vars = c("binomial",  
+                                          "redlist_source"),
+                             value.name = "redlist_status") %>%
+                       rename(redlist_assessment_year = variable) %>% 
+                       merge(henriques_species[c("binomial", "tsn", 
+                                                 "accepted_name", 
+                                                 "common_name", "class")]) %>%
+                       rename(accepted_binomial = accepted_name)
+    
+
+# Merge redlist and ecoregion data ----
+
+ecoregion_redlist_data <- redlist_status_data %>%
+                          merge(iucn_rangemap_database[c("tsn",
+                                                         "ecoregion_id",
+                                                         "eco_objectid")], 
+                                by = "tsn") %>%
+                          select(tsn, accepted_binomial, 
+                                 class, redlist_assessment_year,
+                                 redlist_status, common_name, eco_objectid,
+                                 ecoregion_id)
+
+return(ecoregion_redlist_data)
+
+saveRDS(ecoregion_redlist_data, file.path(interim_outputs, 
+                                     paste(class_name,
+                                           "species_data_1.rds",
+                                           sep = "_")))
+
+}
+
+# Intersect ranges and ecoregions for each class
+# (can put this in a loop but takes a long time to run each,
+# probably more pragmatic to split them up or parallelise)
+
+amphibians <- intersect_ranges_w_ecoregions("amphibian", ecoregion_map)
+
+mammals <- intersect_ranges_w_ecoregions("mammal", ecoregion_map)
+
+#reptiles <- intersect_ranges_w_ecoregions("reptile", ecoregion_map)
+
+# Combine into one file and save
+
+species_data <- rbind(amphibians, mammals)
+
+saveRDS(species_data, file.path(interim_outputs, 
+                                paste("species_data_1.rds",
+                                      sep = "_")))
+
+
+# old_sp_data <- readRDS(file.path(inputs, "deakin_species_data", "species_data.rds"))
+# group_tables <- list()
+# 
+# for (i in seq_along(tables)) {
+#   
+#   group_tables[[i]] <- tables[[i]] %>% 
+#     mutate(group = names(tables[i])) %>%
+#     mutate(redlist_source = "Henriques etal 2020")
+#   
+#   
+# }
+
+# Standardise column names etc. because they are inconsistent between the 
+# different taxa tables
+
+# amphibians <- group_tables[[1]]
+# 
+# amphibians <- amphibians %>% 
+#   dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
+#   dplyr::select(-c(Genus, Species)) %>%
+#   set_names(c("2004", "2008", "group", "redlist_source", "binomial")) %>%
+#   dplyr::select("binomial","group","2004", "2008", "redlist_source") 
+
+birds <- group_tables[[2]]
+
+birds <- birds %>%
+  set_names(c("binomial", "1988", "1994", "2000", "2004", "2008" , 
+              "2012" , "2016", "group", "redlist_source" )) %>%
+  dplyr::select("binomial", "group", everything())
+
+mammals <- group_tables[[5]]  
+
+mammals <- mammals %>%
+  set_names(c("binomial", "1996", "2008", "group", "redlist_source" )) %>%
+  dplyr::select("binomial", "group", everything())
+
+# Combine back into a list then dataframe
+
+group_tables <- list(birds, mammals, amphibians)
+
+#' TODO: Change name of species_redlist to henrique database?
+
+henriques_redlist_database <- do.call(bind_rows, group_tables)
+
+# Get Henriques synonyms ----
+
+henriques_species <- henriques_redlist_database %>%
+  dplyr::select(binomial) 
+
+henriques_species$binomial <- as.character(henriques_species$binomial)
+henriques_species <- unname(unlist(henriques_species[,1]))
+henriques_species <- henriques_species[!is.na(henriques_species)]
+
+if (!("henrique_species_synonyms.rds" %in% list.files(interim_outputs))) { 
+  
+  henriques_species <- find_synonyms(henriques_species)
+  
+  saveRDS(henriques_species, file.path(interim_outputs, "henrique_species_synonyms.rds"))
+  
+} else {
+  
+  
+  henriques_species <- readRDS(file.path(interim_outputs, "henrique_species_synonyms.rds"))
+  
+}
+
+# Order columns, drop group variable and melt in to long format
+
+henriques_redlist_database <- henriques_redlist_database %>%
+  dplyr::select("binomial", "1988", "1994", "1996", "2000", 
+                "2004", "2008", "2012", "2016", "redlist_source") %>%
+  melt(.,id.vars = c("binomial", "redlist_source"),
+       value.name = "redlist_status") %>%
+  rename(redlist_assessment_year = variable) %>% 
+  merge(henriques_species[c("binomial", "tsn", "accepted_name", 
+                            "common_name", "class")])
 
 
 # Load Wildfinder database ----
@@ -731,92 +954,7 @@ cooke_database <- cooke_database %>%
                                 "class", "genus", "species", "source", "tsn", "accepted_name" ) %>%
                   distinct(.) 
 
-# Load Henriques data ----
 
-file_path <- file.path(inputs, "redlist_sergio")
-file_names <- list.files(file_path)
-files <- file.path(file_path, file_names)
-tables <- lapply(files, read_csv)
-names(tables) <- str_remove(file_names, ".csv")
-
-# Add a column so we can identify what taxa each table contains + the source
-# reference
-
-group_tables <- list()
-
-for (i in seq_along(tables)) {
-  
-  group_tables[[i]] <- tables[[i]] %>% 
-                       mutate(group = names(tables[i])) %>%
-                       mutate(redlist_source = "Henriques etal 2020")
-  
-  
-}
-
-# Standardise column names etc. because they are inconsistent between the 
-# different taxa tables
-
-amphibians <- group_tables[[1]]
-
-amphibians <- amphibians %>% 
-              dplyr::mutate(binomial = paste(Genus, Species, sep = " ")) %>%
-              dplyr::select(-c(Genus, Species)) %>%
-              set_names(c("2004", "2008", "group", "redlist_source", "binomial")) %>%
-              dplyr::select("binomial","group","2004", "2008", "redlist_source") 
-
-birds <- group_tables[[2]]
-
-birds <- birds %>%
-         set_names(c("binomial", "1988", "1994", "2000", "2004", "2008" , 
-                     "2012" , "2016", "group", "redlist_source" )) %>%
-         dplyr::select("binomial", "group", everything())
-
-mammals <- group_tables[[5]]  
-
-mammals <- mammals %>%
-           set_names(c("binomial", "1996", "2008", "group", "redlist_source" )) %>%
-           dplyr::select("binomial", "group", everything())
-
-# Combine back into a list then dataframe
-
-group_tables <- list(birds, mammals, amphibians)
-
-#' TODO: Change name of species_redlist to henrique database?
-
-henriques_redlist_database <- do.call(bind_rows, group_tables)
-
-# Get Henriques synonyms ----
-
-henriques_species <- henriques_redlist_database %>%
-                   dplyr::select(binomial) 
-
-henriques_species$binomial <- as.character(henriques_species$binomial)
-henriques_species <- unname(unlist(henriques_species[,1]))
-henriques_species <- henriques_species[!is.na(henriques_species)]
-
-if (!("henrique_species_synonyms.rds" %in% list.files(interim_outputs))) { 
-  
-  henriques_species <- find_synonyms(henriques_species)
-  
-  saveRDS(henriques_species, file.path(interim_outputs, "henrique_species_synonyms.rds"))
-  
-} else {
-  
-  
-  henriques_species <- readRDS(file.path(interim_outputs, "henrique_species_synonyms.rds"))
-  
-}
-
-# Order columns, drop group variable and melt in to long format
-
-henriques_redlist_database <- henriques_redlist_database %>%
-                   dplyr::select("binomial", "1988", "1994", "1996", "2000", 
-                                "2004", "2008", "2012", "2016", "redlist_source") %>%
-                   melt(.,id.vars = c("binomial", "redlist_source"),
-                        value.name = "redlist_status") %>%
-                   rename(redlist_assessment_year = variable) %>% 
-                   merge(henriques_species[c("binomial", "tsn", "accepted_name", 
-                                           "common_name", "class")])
 # Merge databases ----
 
 # Combine Cooke and Wildfinder

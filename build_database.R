@@ -32,7 +32,7 @@ library(rlist)
 
 # Set input and output locations ----
 
-dev_mode <- TRUE
+new_directory <- TRUE
 date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
@@ -41,12 +41,12 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 version <- "ecoregions_2017"
 #version <- "official_teow_wwf"
 
-if (dev_mode == FALSE) {
+if (new_directory == FALSE) {
 
 interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"
 outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-16_database_output_files"
 
-} else if (dev_mode == TRUE) { # Dev_mode creates brand new folders for your outputs
+} else if (new_directory == TRUE) { # Dev_mode creates brand new folders for your outputs
 
 # TODO: automate this so it copies files from previous folder  
 interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/2020-07-15_interim_files"

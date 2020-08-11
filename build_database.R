@@ -498,8 +498,8 @@ ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in%
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {
   
 
-if (!(paste(class_name, location, "iucn_rangemap_database.rds", sep = "_") %in% 
-      list.files(interim_outputs))) {
+if (!(paste(class_name, location, "iucn_range_map_species_with_ecoregions.rds", 
+            sep = "_") %in% list.files(interim_outputs))) {
   
   range_directories <- list(file.path(inputs, paste("redlist", class_name,  
                                                    "range_maps", sep = "_")))
@@ -712,7 +712,7 @@ ecoregion_redlist_data <- redlist_status_data %>%
                           merge(iucn_rangemap_database[c("tsn",
                                                          "ecoregion_id",
                                                          "eco_objectid")], 
-                                by = "tsn") %>%
+                                by = "tsn", all = TRUE) %>%
                           select(tsn, accepted_binomial, 
                                  class, redlist_assessment_year,
                                  redlist_status, common_name, eco_objectid,
@@ -751,6 +751,38 @@ species_data <- rbind(amphibians, mammals)
 saveRDS(species_data, file.path(interim_outputs, 
                                 paste(location, "species_data_1.rds",
                                       sep = "_")))
+
+summarise_species_data <- function(data, number) {
+  
+    out1 <- data %>%
+            group_by(ecoregion_id, redlist_status) %>%
+            summarise(spp_number_w_status = n())
+    
+    out2 <- data %>%
+            group_by(ecoregion_id) %>%
+            summarise(number_spp_in_ecoregion = 
+                        n_distinct(tsn))
+    
+    class_ecoregion_summary <- out1 %>%
+           merge(out2, by = "ecoregion_id") %>%
+           mutate(class = data$class[1])
+    
+    class_redlist_summary <- data %>%
+                             group_by(redlist_status) %>%
+                             summarise(redlist_count = n()) %>%
+                             mutate(class = data$class[1])
+    
+    out <- list(class_ecoregion_summary, class_redlist_summary)
+    
+    saveRDS(out, file.path(outputs, paste(number,
+                                          data$class[1],location,
+                                          "data_summary.rds",
+                                          sep = "_")))
+    
+}
+
+amphibian_summary <- summarise_species_data(amphibians, 1)
+mammal_summary <- summarise_species_data(mammals, 1)
 
 
 # old_sp_data <- readRDS(file.path(inputs, "deakin_species_data", "species_data.rds"))

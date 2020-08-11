@@ -36,10 +36,20 @@ create_new_database_version <- FALSE # Only set to true if you want to create an
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
-save_outputs <- "yes"
+save_outputs <- "no"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 eco_version <- "ecoregions_2017"
 #eco_version <- "official_teow_wwf"
+
+if (!is.na(country)) {
+  
+  location <- tolower(country)
+  
+} else {
+  
+  location <- "global"
+  
+}
 
 
 if (create_new_database_version == FALSE) {
@@ -74,7 +84,7 @@ if( !dir.exists( file.path(new_int_dir) ) ) {
 new_db_dir <- file.path(parent_outputs, db_version,
                          paste(date,"_database_output_files",sep = ""))
 
-if( !dir.exists( file.path(new_db_dir) ) ) {
+if (!dir.exists( file.path(new_db_dir))) {
   
   dir.create( file.path(new_db_dir), recursive = TRUE )
   
@@ -435,7 +445,7 @@ ecoregion_map <- ecoregion_map_all %>%
 
 #rm(ecoregion_map_all)
 
-if (!("ecoregion_country_data.rds" %in% list.files(interim_outputs))) { 
+if (!("ecoregion_country_data.rds" %in% list.files(outputs))) { 
 
 country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
                rename(country_objectid = OBJECTID)
@@ -448,12 +458,13 @@ ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
                                       arrange(country_objectid) %>%
                                       rename(eco_objectid = OBJECTID)
 
-saveRDS(ecoregion_country_df, file = file.path(interim_outputs, 
+saveRDS(ecoregion_country_df, file = file.path(outputs, 
                                                "ecoregion_country_data.rds"))
 
 } else {
   
-ecoregion_country_df <- readRDS(paste(interim_outputs, "ecoregion_country_data.rds", sep = "/"))
+ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", 
+                                      sep = "/"))
 
 }
 
@@ -469,8 +480,8 @@ ecoregion_subset <- ecoregion_country_df %>%
 
 if (!is.na(country)) {
   
-  ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
-                                   ecoregion_subset$ECO_ID ,]  
+ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                               ecoregion_subset$ECO_ID ,]  
                    
   
 }
@@ -484,12 +495,11 @@ if (!is.na(country)) {
 
 # species_data <- readRDS(file.path(outputs, "species_data_incomplete.rds"))
 
-#' TODO: Check this is working correctly - how does it cope with one species
-#' in multiple ecoregions?
+intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {
+  
 
-intersect_ranges_w_ecoregions <- function(class_name, shapefile) {
-
-if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
+if (!(paste(class_name, location, "iucn_rangemap_database.rds", sep = "_") %in% 
+      list.files(interim_outputs))) {
   
   range_directories <- list(file.path(inputs, paste("redlist", class_name,  
                                                    "range_maps", sep = "_")))
@@ -509,25 +519,33 @@ if (!("iucn_rangemap_database.rds" %in% list.files(outputs))) {
   iucn_rangemap_database <- do.call(rbind, iucn_rangemap_database)
   iucn_rangemap_database <- distinct(iucn_rangemap_database)
   
-  saveRDS(iucn_rangemap_database, file = file.path(outputs,
-                                 "iucn_range_map_species_with_ecoregions.rds"))
+  saveRDS(iucn_rangemap_database, 
+          file = file.path(interim_outputs, paste(class_name,
+          location,"iucn_range_map_species_with_ecoregions.rds",
+          sep = "_")))
 
 } else {
   
-  iucn_rangemap_database <- readRDS(file.path(outputs, 
-                                              "iucn_range_map_species_with_ecoregions.rds"))
+  iucn_rangemap_database <- readRDS(file.path(interim_outputs, 
+                                    paste(class_name,
+                                          location,
+                                    "iucn_range_map_species_with_ecoregions.rds",
+                                    sep = "_")))
 }
 
 if (!is.na(country)) {
   
-  iucn_rangemap_database <- iucn_rangemap_database[iucn_rangemap_database$ecoregion_id 
-                                                   %in% ecoregion_subset$ECO_ID, ]
+  iucn_rangemap_database <- iucn_rangemap_database[
+                            iucn_rangemap_database$ecoregion_id %in% 
+                            ecoregion_subset$ECO_ID, ]
 }
 
 # Get TSNs for the species from the IUCN range maps
 
-if (!(file.path(interim_outputs, paste(class_name, "iucn_rangemap_synonyms.rds",
-                      sep = "_")) %in% list.files(interim_outputs))) {
+if (!(file.path(outputs, paste(class_name, location, "iucn_rangemap_synonyms.rds",
+                      sep = "_")) %in% list.files(outputs))) {
+  
+  # pull out unique species names only
   
   iucn_rangemap_species <- iucn_rangemap_database %>%
     dplyr::select(binomial) 
@@ -540,36 +558,54 @@ if (!(file.path(interim_outputs, paste(class_name, "iucn_rangemap_synonyms.rds",
   
   iucn_rangemap_species <- unique(iucn_rangemap_species)
   
+  # search for synonyms and add taxonomic serial number (slow)
+  
   iucn_rangemap_species <- find_synonyms(iucn_rangemap_species)
   
-
+  # save synonyms for this groups of species
   
-  saveRDS(iucn_rangemap_species, file.path(interim_outputs, 
+  saveRDS(iucn_rangemap_species, file.path(outputs, 
                                            paste(class_name,
+                                                 location,
                                                  "iucn_rangemap_synonyms.rds",
                                                  sep = "_")))
+  
+  # add the synonyms and taxonomic info to the ecoregion-species data
   
   iucn_rangemap_database <-  iucn_rangemap_database %>%
     merge(iucn_rangemap_species[c("binomial", "tsn", 
                                   "found","class")], 
           by = "binomial")
   
-  # saveRDS(iucn_rangemap_database, file.path(interim_outputs, paste(class_name,
-  #       "iucn_rangemap_synonyms.rds", sep = "_")))
+  # save the species with ecoregions data
+  
+  saveRDS(iucn_rangemap_database, file.path(interim_outputs, 
+                                            paste(class_name,
+                                                  location,
+                                            "iucn_rangemap_database.rds", 
+                                            sep = "_")))
   
 } else {
   
-  iucn_rangemap_species <- readRDS(file.path(interim_outputs, 
-                                             paste(class_name, 
+  # Read in the synonyms previously stored
+  
+  iucn_rangemap_species <- readRDS(file.path(outputs, 
+                                             paste(class_name,
+                                                   location,
                                                    "iucn_rangemap_synonyms.rds",
-                                                                    sep = "_")))
+                                                    sep = "_")))
+  
+  # Merge with ecoregion data
   
   iucn_rangemap_database <-  iucn_rangemap_database %>%
     merge(iucn_rangemap_species[c("binomial", "tsn", 
                                   "found", "class")], 
           by = "binomial")
   
-  saveRDS(iucn_rangemap_database, file.path(outputs, "iucn_rangemap_database.rds"))
+  saveRDS(iucn_rangemap_database, file.path(interim_outputs, paste(class_name,
+                                                           location,
+                                            "iucn_rangemap_database.rds", 
+                                            sep = "_")))
   
 }
 
@@ -641,7 +677,7 @@ if (!(paste(class_name,
   
   henriques_species <- find_synonyms(henriques_species)
   
-  saveRDS(henriques_species, file.path(interim_outputs, 
+  saveRDS(henriques_species, file.path(outputs, 
                                        paste(class_name,
                                              "henriques_synonyms.rds",
                                              sep = "_")))
@@ -649,7 +685,7 @@ if (!(paste(class_name,
 } else {
   
   
-  henriques_species <- readRDS(file.path(interim_outputs, 
+  henriques_species <- readRDS(file.path(outputs, 
                                          paste(class_name,
                                                "henriques_synonyms.rds",
                                                sep = "_")))
@@ -680,14 +716,19 @@ ecoregion_redlist_data <- redlist_status_data %>%
                           select(tsn, accepted_binomial, 
                                  class, redlist_assessment_year,
                                  redlist_status, common_name, eco_objectid,
-                                 ecoregion_id)
+                                 ecoregion_id) %>% 
+                          merge(data[c("ECO_ID", "CNTRY_NAME")], 
+                                by.x = "ecoregion_id", by.y =  "ECO_ID" ) %>%
+                          rename(country = "CNTRY_NAME")
 
-return(ecoregion_redlist_data)
 
 saveRDS(ecoregion_redlist_data, file.path(interim_outputs, 
                                      paste(class_name,
+                                           location,
                                            "species_data_1.rds",
                                            sep = "_")))
+
+return(ecoregion_redlist_data)
 
 }
 
@@ -695,9 +736,11 @@ saveRDS(ecoregion_redlist_data, file.path(interim_outputs,
 # (can put this in a loop but takes a long time to run each,
 # probably more pragmatic to split them up or parallelise)
 
-amphibians <- intersect_ranges_w_ecoregions("amphibian", ecoregion_map)
+amphibians <- intersect_ranges_w_ecoregions("amphibian", location, 
+                                            ecoregion_map, ecoregion_country_df)
 
-mammals <- intersect_ranges_w_ecoregions("mammal", ecoregion_map)
+mammals <- intersect_ranges_w_ecoregions("mammal", location, 
+                                         ecoregion_map, ecoregion_country_df)
 
 #reptiles <- intersect_ranges_w_ecoregions("reptile", ecoregion_map)
 
@@ -706,7 +749,7 @@ mammals <- intersect_ranges_w_ecoregions("mammal", ecoregion_map)
 species_data <- rbind(amphibians, mammals)
 
 saveRDS(species_data, file.path(interim_outputs, 
-                                paste("species_data_1.rds",
+                                paste(location, "species_data_1.rds",
                                       sep = "_")))
 
 

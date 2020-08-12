@@ -468,6 +468,13 @@ ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds",
 
 }
 
+# Add countries to the ecoregion map
+
+ecoregion_map <- ecoregion_map %>%
+                 merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+                       by = "ECO_ID") %>%
+                 filter(ECO_ID != 0)
+
 # If subsetting by country, get the ecoregion IDs you want to work with 
 
 if (!is.na(country)) {
@@ -480,8 +487,8 @@ ecoregion_subset <- ecoregion_country_df %>%
 
 if (!is.na(country)) {
   
-ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
-                               ecoregion_subset$ECO_ID ,]  
+ecoregion_map <- ecoregion_map %>%
+                 filter(CNTRY_NAME == country)
                    
   
 }

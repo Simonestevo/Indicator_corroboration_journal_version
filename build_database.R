@@ -111,9 +111,9 @@ get_ecoregions <- function(rangemap_directory_path, map) {
   
   range_map <- st_read(rangemap_directory_path)
   
-  names(range_map) <- toupper(names(range_map)) # Make column names consistent
+  names(range_map) <- c(toupper(names(range_map)[1:27]), names(range_map[28])) # Make column names consistent
   
-  range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
+  #range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
   
   # Get the ecoregions for each species
   
@@ -472,8 +472,9 @@ ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds",
 
 ecoregion_map <- ecoregion_map %>%
                  merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
-                       by = "ECO_ID") %>%
-                 filter(ECO_ID != 0)
+                       by = "ECO_ID") 
+#%>%
+                 #filter(ECO_ID != 0) # Remove rock and ice because it gets allocated to multiple ocuntries
 
 # If subsetting by country, get the ecoregion IDs you want to work with 
 

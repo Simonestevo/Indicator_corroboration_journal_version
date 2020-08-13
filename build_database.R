@@ -107,9 +107,9 @@ if (!dir.exists( file.path(new_db_dir))) {
 # map <- ecoregion_map
 # rangemap_directory_path <- range_directories[[1]]
 
-get_ecoregions <- function(rangemap, rangemap_directory_path, map) {
+get_ecoregions <- function(range_map, rangemap_directory_path, map, interim_outputs, location, class_name) {
   
-  names(range_map) <- c(toupper(names(range_map)[1:27]), names(range_map[28])) # Make column names consistent
+  names(range_map) <- c(toupper(names(range_map)[1:3]), names(range_map[4])) # Make column names consistent
   
   #range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
   
@@ -148,6 +148,9 @@ get_ecoregions <- function(rangemap, rangemap_directory_path, map) {
     
   }
   
+  saveRDS(species_w_ecoregions, file.path(interim_outputs, 
+                                          paste(location,class_name, 
+                                                "ecoregions.rds", sep = "_")))
   return(species_w_ecoregions)
   
 }
@@ -466,13 +469,18 @@ ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds",
 
 }
 
-# Add countries to the ecoregion map
+# # Add countries to the ecoregion map
+# 
+# ecoregion_map_og <- ecoregion_map %>%
+#                  merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+#                        by = "ECO_ID") 
 
-ecoregion_map <- ecoregion_map %>%
-                 merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
-                       by = "ECO_ID") 
-#%>%
-                 #filter(ECO_ID != 0) # Remove rock and ice because it gets allocated to multiple ocuntries
+# Simplify the geometry of the ecoregion map slightly to speed up joins
+
+
+ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
 
 # If subsetting by country, get the ecoregion IDs you want to work with 
 
@@ -494,12 +502,106 @@ ecoregion_map <- ecoregion_map %>%
 
 # Intersect range maps with ecoregions (SLOW CODE) ----
 
+# Process by each class of rangemaps.  Could put it all in a loop but 
+# it's very slow, safer to do class by class.
 
-# To fill in missing ecoregions
+# Amphibians ----
 
-# If starting from here, load species data
+## elapsed time for below 9559.55 s
 
-# species_data <- readRDS(file.path(outputs, "species_data_incomplete.rds"))
+amphibian_rangemap_dir <- file.path(inputs, "redlist_amphibian_range_maps")
+
+# Read in the rangemap
+
+amphibian_ranges <- st_read(amphibian_rangemap_dir)
+
+# Simplify geometry slightly to improve processing time
+
+amphibian_ranges_simple <- st_simplify(amphibian_ranges, 
+                                       preserveTopology = TRUE,
+                           dTolerance = 0.1)
+
+# Remove unneccessary columns as well
+
+amphibian_ranges_simple <- amphibian_ranges_simple %>%
+                           select(id_no, binomial, presence, geometry)
+
+
+# Match amphibian ranges to ecoregions
+
+system.time(amphibian_ecoregions <- get_ecoregions(amphibian_ranges_simple, 
+                                       amphibian_rangemap_dir, 
+                                       ecoregion_map_simple,
+                                       interim_outputs,
+                                       location,
+                                       "amphibian"))
+
+head(amphibian_ecoregions)
+
+# Mammals ----
+
+mammal_rangemap_dir <- file.path(inputs, "redlist_mammal_range_maps")
+
+# Read in the rangemap
+
+mammal_ranges <- st_read(mammal_rangemap_dir)
+
+# Simplify geometry slightly to improve processing time
+
+mammal_ranges_simple <- st_simplify(mammal_ranges, 
+                                    preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
+# Remove unneccessary columns as well
+
+mammal_ranges_simple <- mammal_ranges_simple %>%
+                        select(id_no, 
+                               binomial, 
+                               presence, 
+                               geometry)
+
+
+# Match mammal ranges to ecoregions
+
+system.time(mammal_ecoregions <- get_ecoregions(mammal_ranges_simple, 
+                                                mammal_rangemap_dir, 
+                                                ecoregion_map_simple,
+                                                interim_outputs,
+                                                location,
+                                                "mammal"))
+
+# Reptiles ----
+
+reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
+
+# Read in the rangemap
+
+reptile_ranges <- st_read(reptile_rangemap_dir)
+
+# Simplify geometry slightly to improve processing time
+
+reptile_ranges_simple <- st_simplify(reptile_ranges, 
+                                    preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
+# Remove unneccessary columns as well
+
+reptile_ranges_simple <- reptile_ranges_simple %>%
+                         select(id_no, 
+                                 binomial, 
+                                 presence, 
+                                 geometry)
+
+
+# Match reptile ranges to ecoregions
+
+system.time(reptile_ecoregions <- get_ecoregions(reptile_ranges_simple, 
+                                                 reptile_rangemap_dir, 
+                                                 ecoregion_map_simple,
+                                                 interim_outputs,
+                                                 location,
+                                                  "mammal"))
+
 
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {
   

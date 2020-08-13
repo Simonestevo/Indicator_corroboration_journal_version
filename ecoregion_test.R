@@ -1,11 +1,15 @@
 
+library(pryr)
+library(dplyr)
+library(sf)
+
 get_ecoregions <- function(rangemap_directory_path, map) {
   
   range_map <- st_read(rangemap_directory_path)
   
-  names(range_map) <- toupper(names(range_map)) # Make column names consistent
+  names(range_map) <- c(toupper(names(range_map)[1:27]), names(range_map[28])) # Make column names consistent
   
-  range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
+  #range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
   
   # Get the ecoregions for each species
   
@@ -20,20 +24,21 @@ get_ecoregions <- function(rangemap_directory_path, map) {
   
   # Standardise the data so we can add it to the species data easily
   
-
+  
   species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
                                           dplyr::select(BINOMIAL, 
-                                                        eco_code, 
+                                                        ECO_ID, 
                                                         OBJECTID)) %>%
     dplyr::select(-geometry) %>%
     rename(binomial = BINOMIAL) %>%
-    rename(ecoregion_code = eco_code) %>%
+    rename(ecoregion_id = ECO_ID) %>%
     rename(eco_objectid = OBJECTID) %>%
     mutate(source = "iucn_redlist") %>%
-    mutate(redlist_status = "TBC") %>%
-    mutate(ecoregion_code = as.character(ecoregion_code))
+    mutate(redlist_status = "TBC") 
+  # %>%
+  #   mutate(ecoregion_id = as.character(ecoregion_id))
   
-
+  
   if(!is.null(species_w_ecoregions)) {
     
     print(paste("finished adding ecoregions to", 
@@ -45,6 +50,50 @@ get_ecoregions <- function(rangemap_directory_path, map) {
   
 }
 
+get_simple_ecoregions <- function(rangemap, rangemap_directory_path, map) {
+  
+  names(range_map) <- c(toupper(names(range_map)[1:27]), names(range_map[28])) # Make column names consistent
+  
+  #range_map <- rename(range_map, geometry = GEOMETRY) # Convert geometry back tho
+  
+  # Get the ecoregions for each species
+  
+  ranges_ecoregions <- st_join(range_map, map, join = st_intersects)
+  
+  if (!is.null(ranges_ecoregions)) {
+    
+    print(paste("st_join complete for", 
+                basename(rangemap_directory_path), sep = " "))
+    
+  }
+  
+  # Standardise the data so we can add it to the species data easily
+  
+  
+  species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
+                                          dplyr::select(BINOMIAL, 
+                                                        ECO_ID, 
+                                                        OBJECTID)) %>%
+    dplyr::select(-geometry) %>%
+    rename(binomial = BINOMIAL) %>%
+    rename(ecoregion_id = ECO_ID) %>%
+    rename(eco_objectid = OBJECTID) %>%
+    mutate(source = "iucn_redlist") %>%
+    mutate(redlist_status = "TBC") 
+  # %>%
+  #   mutate(ecoregion_id = as.character(ecoregion_id))
+  
+  
+  if(!is.null(species_w_ecoregions)) {
+    
+    print(paste("finished adding ecoregions to", 
+                basename(rangemap_directory_path), sep = " "))
+    
+  }
+  
+  return(species_w_ecoregions)
+  
+}
 
 get_redlist_data <- function(species) {
   
@@ -303,25 +352,301 @@ eco_maps <- eco_maps %>%
 
 write.csv(eco_maps, file.path(interim_outputs, "ecoregion_join_changes.csv"))
 
-# Subset the species data to only species found in the area we are looking at
-# included in the ecoregion 2001 map
+# Get_ecoregions performance testing ----
 
-species_data <- species_data[species_data$ecoregion_code %in% 
-                               eco_map_2001$eco_code , ]
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+eco_version <- "ecoregions_2017"
+country <- "Australia"
 
-sp_data <- species_data %>%
-  select(tsn, accepted_binomial, eco_objectid, ecoregion_code) %>%
-  distinct(.)
+db_version <- tail(sort(list.files(parent_outputs)), 1)
+db_interim <- list.files(file.path(parent_outputs,db_version))[
+  grepl("interim",list.files(file.path(parent_outputs,db_version)))]
+db_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("database",list.files(file.path(parent_outputs,db_version)))]
 
-# sp_data <- species_data[1:100,]
-# 
-# sp_data <- sp_data %>% 
-#   select(tsn, accepted_binomial, ecoregion_code) %>%
-#   distinct(.)
-# 
-# sp_map_2001 <- right_join(ecoregion_map, sp_data, by = "ecoregion_code")
+interim_outputs <- file.path(parent_outputs, db_version, db_interim)
+outputs <- file.path(parent_outputs, db_version, db_outputs)
 
-# sp_map_2017 <- st_join(sp_map_2001, eco_map_2017)
+if (!is.na(country)) {
+  
+  location <- tolower(country)
+  
+} else {
+  
+  location <- "global"
+  
+}
+
+# Get the ecoregion map 
+
+ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
+
+# Pull out only required variables
+
+ecoregion_map <- ecoregion_map_all %>% 
+  dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)
+
+#rm(ecoregion_map_all)
+
+if (!("ecoregion_country_data.rds" %in% list.files(outputs))) { 
+  
+  country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
+    rename(country_objectid = OBJECTID)
+  
+  ecoregion_country_sf <-  st_join(ecoregion_map, country_map, 
+                                   join = st_intersects)
+  
+  ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
+    dplyr::select(-geometry) %>%
+    arrange(country_objectid) %>%
+    rename(eco_objectid = OBJECTID)
+  
+  saveRDS(ecoregion_country_df, file = file.path(outputs, 
+                                                 "ecoregion_country_data.rds"))
+  
+} else {
+  
+  ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", 
+                                        sep = "/"))
+  
+}
+
+# Add countries to the ecoregion map
+
+ecoregion_map <- ecoregion_map %>%
+  merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+        by = "ECO_ID") 
+#%>%
+#filter(ECO_ID != 0) # Remove rock and ice because it gets allocated to multiple ocuntries
+
+# If subsetting by country, get the ecoregion IDs you want to work with 
+
+if (!is.na(country)) {
+  
+  ecoregion_subset <- ecoregion_country_df %>%
+    filter(CNTRY_NAME == country) %>%
+    unique(.)
+  
+}
+
+if (!is.na(country)) {
+  
+  ecoregion_map <- ecoregion_map %>%
+    filter(CNTRY_NAME == country)
+  
+  
+}
+
+# Review object size of subset (Australian) ecoregion_map
+
+object_size(ecoregion_map)
+
+# Check number of vertices
+
+pts_ecoregion_map <- st_cast(ecoregion_map$geometry, "MULTIPOINT")
+cnt_ecoregion_map <- sapply(pts_ecoregion_map, length)
+sum(cnt_ecoregion_map)
+
+# Simplify the map
+
+ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
+# Check it's not too simple
+
+plot(st_geometry(ecoregion_map))
+
+plot(st_geometry(ecoregion_map_simple), border = "red")
+
+# Review object size of simplifed ecoregion map
+
+object_size(ecoregion_map)
+
+object_size(ecoregion_map_simple)
+
+# Check number of vertices
+
+pts_ecoregion_map_simple <- st_cast(ecoregion_map_simple$geometry, "MULTIPOINT")
+cnt_ecoregion_map_simple <- sapply(pts_ecoregion_map_simple, length)
+sum(cnt_ecoregion_map_simple)
+
+# Simplify the rangemap
+
+range_map <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps")
+
+range_map <- st_simplify(range_map, preserveTopology = TRUE,
+                         dTolerance = 0.1)
+
+# Compare processing time for normal and simplified ecoregion maps
+
+normal_time <- system.time(amphibians <- get_ecoregions("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps",
+                                         ecoregion_map))
+
+simple_time <- system.time(amphibians_simple <- get_ecoregions("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps",
+                                         ecoregion_map_simple))
+
+simple_range_time <- system.time(amphibians_simple_ranges <- 
+                                 get_simple_ecoregions(rangemap,
+                                                       "N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps",
+                                 ecoregion_map_simple))
+
+# combine into named vector
+
+times <- c(normal = normal_time[3], simple = simple_time[3],
+           simple_ranges = simple_range_time[3])
+
+# Get quickest
+
+which.min(times)
+
+# Get slowest
+which.max(times)
+
+# Compare the outputs
+
+## Remove non aus spp
+
+amphibians <- amphibians %>%
+              filter(!is.na(ecoregion_id))
+
+amphibians_simple <- amphibians_simple %>%
+                     filter(!is.na(ecoregion_id))
+
+amphibians_simple_ranges <- amphibians_simple_ranges %>%
+                            filter(!is.na(ecoregion_id))
+# Compare number of individual species
+
+spp_no <- c(normal = length(unique(amphibians$binomial)), 
+            simple = length(unique(amphibians_simple$binomial)),
+            simple_ranges = length(unique(amphibians_simple_ranges$binomial)))
+
+# Check we have same number of spp (should be 0)
+
+spp_no[1] - spp_no[2]
+
+spp_no[1] - spp_no[3]
+
+# Check we have same spp in each (should be TRUE)
+
+identical(unique(amphibians$binomial), 
+          unique(amphibians_simple$binomial),
+          unique(amphibians_simple_ranges$binomial))
+
+normal_ecos <- split(amphibians, amphibians$ecoregion_id)
+simple_ecos <- split(amphibians_simple, amphibians_simple$ecoregion_id)
+ranges_ecos <- split(amphibians_simple_ranges, amphibians_simple_ranges$ecoregion_id)
+
+quantities <- list()
+problems <- list()
+
+for (i in seq_along(normal_ecos)) {
+  
+  outcome <- identical(unique(normal_ecos[[i]]$binomial), 
+                       unique(simple_ecos[[i]]$binomial))
+  
+  # Get logical vector of whether spp are the same or not
+  
+  x <- normal_ecos[[i]]$binomial %in% simple_ecos[[i]]$binomial
+ 
+  # Number of different spp
+  y <- length(x[x == FALSE]) 
+  
+  # Number of same spp
+  z <- length(x[x = TRUE])
+  
+  # Number of species total
+  
+  total <- length(x)
+  
+  eco_num <- normal_ecos[[i]]$ecoregion_id[1]
+  
+  df <- data.frame(ecoregion_id = eco_num, num_spp = total,
+                   num_diff = y, num_same = z)
+  
+  quantities[[i]] <- df
+  
+  
+  if (outcome == FALSE) {
+    
+    different <- list(normal_ecos[[i]], simple_ecos[[i]])
+    
+    problems[[i]] <- different
+    
+  } else {
+    
+    eco_num <- normal_ecos[[i]]$ecoregion_id[1]
+    print(paste("normal ecoregion", eco_num, 
+          "contains the same species as simplified ecoregion", 
+          eco_num, sep = " "))
+  }
+  
+  problems <- list.clean(problems)
+  
+}
+
+simple_quantities_df <- do.call(rbind, quantities)
+
+sum(simple_quantities_df$num_diff)/sum(simple_quantities_df$num_spp)
+
+ranges_quantities <- list()
+ranges_problems <- list()
+
+for (i in seq_along(normal_ecos)) {
+  
+  outcome <- identical(unique(normal_ecos[[i]]$binomial), 
+                       unique(ranges_ecos[[i]]$binomial))
+  
+  # Get logical vector of whether spp are the same or not
+  
+  x <- normal_ecos[[i]]$binomial %in% ranges_ecos[[i]]$binomial
+  
+  # Number of different spp
+  y <- length(x[x == FALSE]) 
+  
+  # Number of same spp
+  z <- length(x[x = TRUE])
+  
+  # Number of species total
+  
+  total <- length(x)
+  
+  eco_num <- normal_ecos[[i]]$ecoregion_id[1]
+  
+  df <- data.frame(ecoregion_id = eco_num, num_spp = total,
+                   num_diff = y, num_same = z)
+  
+  ranges_quantities[[i]] <- df
+  
+  
+  if (outcome == FALSE) {
+    
+    different <- list(normal_ecos[[i]], ranges_ecos[[i]])
+    
+    ranges_problems[[i]] <- different
+    
+  } else {
+    
+    eco_num <- normal_ecos[[i]]$ecoregion_id[1]
+    print(paste("normal ecoregion", eco_num, 
+                "contains the same species as simplified ranges and ecoregions", 
+                eco_num, sep = " "))
+  }
+  
+  ranges_problems <- list.clean(ranges_problems)
+  
+}
+
+ranges_quantities_df <- do.call(rbind, ranges_quantities)
+
+# Calculate percentage difference between two
+
+sum(ranges_quantities_df$num_diff)/sum(ranges_quantities_df$num_spp)
+
+
+
+
+
 
 
 

@@ -107,9 +107,7 @@ if (!dir.exists( file.path(new_db_dir))) {
 # map <- ecoregion_map
 # rangemap_directory_path <- range_directories[[1]]
 
-get_ecoregions <- function(rangemap_directory_path, map) {
-  
-  range_map <- st_read(rangemap_directory_path)
+get_ecoregions <- function(rangemap, rangemap_directory_path, map) {
   
   names(range_map) <- c(toupper(names(range_map)[1:27]), names(range_map[28])) # Make column names consistent
   

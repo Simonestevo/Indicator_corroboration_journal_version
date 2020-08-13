@@ -643,6 +643,61 @@ ranges_quantities_df <- do.call(rbind, ranges_quantities)
 
 sum(ranges_quantities_df$num_diff)/sum(ranges_quantities_df$num_spp)
 
+# Compare looping over a list with single map ----
+
+# Simplify full ecoregion map
+
+ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
+# Simplify range map
+
+range_map <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps")
+
+range_map <- st_simplify(range_map, preserveTopology = TRUE,
+                         dTolerance = 0.1)
+
+# Make subset ecoregion list
+
+eco_list <- split(ecoregion_map_simple, ecoregion_map_simple$CNTRY_NAME)
+
+eco_list <- list(eco_list[[1]], eco_list[[2]])
+
+# Remove rock and ice
+
+ecoregion_map_simple <- ecoregion_map_simple %>%
+                        filter(ECO_ID != 0) %>%
+                        arrange(CNTRY_NAME)
+
+# Make subset ecoregion map
+
+eco_map_subset <- ecoregion_map_simple %>%
+                  filter(CNTRY_NAME == "Afghanistan"|
+                           CNTRY_NAME == "Albania")
+
+# Time on list
+
+list_outputs <- list()
+
+list_time <- system.time(
+  
+  for (i in seq_along(eco_list)) {
+                      
+  list_outputs[[i]] <- get_simple_ecoregions(rangemap,
+                       "N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps",
+                       eco_list[[i]])
+  })
+
+# Time on subset map
+
+map_time <- system.time(get_simple_ecoregions(rangemap,
+                        "N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\redlist_amphibian_range_maps",
+                        eco_map_subset))
+
+test_time <- c(list_time = list_time[3],
+               map_time = map_time[3])
+
+which.min(test_time)
 
 
 

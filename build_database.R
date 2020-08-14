@@ -34,7 +34,7 @@ library(rlist)
 
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia"#NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "no"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
@@ -507,7 +507,7 @@ ecoregion_map <- ecoregion_map %>%
 
 # Amphibians ----
 
-## elapsed time for below 9559.55 s
+## elapsed time for below 9559.55 s (~ 3 hrs)
 
 amphibian_rangemap_dir <- file.path(inputs, "redlist_amphibian_range_maps")
 
@@ -536,9 +536,9 @@ system.time(amphibian_ecoregions <- get_ecoregions(amphibian_ranges_simple,
                                        location,
                                        "amphibian"))
 
-head(amphibian_ecoregions)
-
 # Mammals ----
+
+## elapsed time for below 14264.58 s (~ 4 hrs)
 
 mammal_rangemap_dir <- file.path(inputs, "redlist_mammal_range_maps")
 
@@ -572,6 +572,8 @@ system.time(mammal_ecoregions <- get_ecoregions(mammal_ranges_simple,
 
 # Reptiles ----
 
+## elapsed time for below 15089.72  s (~ 4 hrs)
+
 reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
 
 # Read in the rangemap
@@ -600,7 +602,66 @@ system.time(reptile_ecoregions <- get_ecoregions(reptile_ranges_simple,
                                                  ecoregion_map_simple,
                                                  interim_outputs,
                                                  location,
-                                                  "mammal"))
+                                                  "reptile"))
+
+
+
+# Birds ----
+
+## Note that bird maps come from birdlife international, not iucn, so
+## they are stored in a geodatabase and contain land and sea birds, so
+## require a couple of extra steps to process
+
+bird_rangemap_dir <- file.path(inputs, "birdlife_avian_range_maps","BOTW.gdb")
+
+# Read in the rangemap
+
+bird_ranges <- st_read(bird_rangemap_dir, layer = "All_Species")
+
+# Remove unneccessary columns 
+
+bird_ranges <- bird_ranges %>%
+               select(SISID,
+                      SCINAME, 
+                      PRESENCE, 
+                      Shape)
+
+# bird_ranges contains both multipolygon and multisurface
+# geometry types, which means other st functions won't work.
+
+# Get only multisurface geoms
+
+bird_ranges_ms <- bird_ranges %>%
+                  filter(st_geometry_type(Shape) == "MULTISURFACE")
+
+# Get only multipolygon geoms
+
+bird_ranges <- bird_ranges %>%
+                  filter(st_geometry_type(Shape) == "MULTIPOLYGON")
+
+# Try to cast the ms geoms but probably won't work
+
+test <- st_cast(bird_ranges_ms, "MULTIPOLYGON")
+
+# Simplify geometry slightly to improve processing time
+
+bird_ranges_simple <- st_simplify(bird_ranges_small, 
+                                  preserveTopology = TRUE,
+                                  dTolerance = 0.1)
+
+# Read in land polygons so we can clip to only land before doing the join
+
+land_boundaries <- st_read(inputs, "land-polygons-complete-4326")
+
+# Simplify their geometry too because they are very detailed
+
+land_boundaries_simple <- st_simplify(land_boundaries, 
+                                      preserveTopology = TRUE,
+                                      dTolerance = 0.1)
+
+# Clip the bird ranges to only land 
+
+bird_ranges_simple_land <- st_intersection()
 
 
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {

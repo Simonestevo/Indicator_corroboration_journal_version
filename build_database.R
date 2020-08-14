@@ -12,6 +12,18 @@
 
 #' TODO: Remove objects when they are no longer needed
 #' TODO: Important - use packrat or something to save version of taxizedb
+#'
+# install.packages("raster") 
+# install.packages("tidyverse")
+# install.packages("reshape2")
+# install.packages("sf")
+# install.packages("spData")
+# install.packages("devtools")
+# devtools::install_github("ropensci/taxizedb") # version 0.1.9.9130
+# install.packages("rredlist")
+# install.packages("rgbif")
+# install.packages("rlist")
+# install.packages("pryr")
 
 # Load packages ----
 
@@ -21,14 +33,14 @@ library(stringr)
 library(reshape2)
 library(sf)
 library(spData)
-#library(taxize)
-# devtools::install_github("ropensci/taxizedb") # version 0.1.9.9130
 library(taxizedb)
 library(functionaltraits)
 library(broom)
 library(rredlist)
 library(rgbif)
 library(rlist)
+library(pryr) # Can probably remove this when finished
+
 
 # Set input and output locations ----
 
@@ -107,7 +119,8 @@ if (!dir.exists( file.path(new_db_dir))) {
 # map <- ecoregion_map
 # rangemap_directory_path <- range_directories[[1]]
 
-get_ecoregions <- function(range_map, rangemap_directory_path, map, interim_outputs, location, class_name) {
+get_ecoregions <- function(range_map, rangemap_directory_path, map, 
+                           interim_outputs, location, class_name) {
   
   names(range_map) <- c(toupper(names(range_map)[1:3]), names(range_map[4])) # Make column names consistent
   
@@ -126,6 +139,19 @@ get_ecoregions <- function(range_map, rangemap_directory_path, map, interim_outp
   
   # Standardise the data so we can add it to the species data easily
   
+  if (class_name == "bird") {
+    
+    species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
+                                            dplyr::select(SCINAME, 
+                                                          ECO_ID)) %>%
+      dplyr::select(-Shape) %>%
+      rename(binomial = SCINAME) %>%
+      rename(ecoregion_id = ECO_ID) %>%
+      mutate(eco_objectid = NA) %>%
+      mutate(source = "birdlife_international") %>%
+      mutate(redlist_status = "TBC") 
+    
+  } else {
   
   species_w_ecoregions <- as.data.frame(ranges_ecoregions %>%
                                           dplyr::select(BINOMIAL, 
@@ -137,9 +163,8 @@ get_ecoregions <- function(range_map, rangemap_directory_path, map, interim_outp
     rename(eco_objectid = OBJECTID) %>%
     mutate(source = "iucn_redlist") %>%
     mutate(redlist_status = "TBC") 
-  # %>%
-  #   mutate(ecoregion_id = as.character(ecoregion_id))
-  
+
+  }
   
   if(!is.null(species_w_ecoregions)) {
     
@@ -494,10 +519,9 @@ ecoregion_subset <- ecoregion_country_df %>%
 
 if (!is.na(country)) {
   
-ecoregion_map <- ecoregion_map %>%
-                 filter(CNTRY_NAME == country)
-                   
-  
+ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                               ecoregion_subset$ECO_ID,] 
+               
 }
 
 # Intersect range maps with ecoregions (SLOW CODE) ----
@@ -630,6 +654,7 @@ bird_ranges <- bird_ranges %>%
 # geometry types, which means other st functions won't work.
 
 # Get only multisurface geoms
+#' TODO: Figure out how to recast these birds
 
 bird_ranges_ms <- bird_ranges %>%
                   filter(st_geometry_type(Shape) == "MULTISURFACE")
@@ -637,31 +662,31 @@ bird_ranges_ms <- bird_ranges %>%
 # Get only multipolygon geoms
 
 bird_ranges <- bird_ranges %>%
-                  filter(st_geometry_type(Shape) == "MULTIPOLYGON")
+               filter(st_geometry_type(Shape) == "MULTIPOLYGON")
 
-# Try to cast the ms geoms but probably won't work
-
-test <- st_cast(bird_ranges_ms, "MULTIPOLYGON")
 
 # Simplify geometry slightly to improve processing time
 
-bird_ranges_simple <- st_simplify(bird_ranges_small, 
+bird_ranges_simple <- st_simplify(bird_ranges, 
                                   preserveTopology = TRUE,
                                   dTolerance = 0.1)
 
-# Read in land polygons so we can clip to only land before doing the join
+object_size(bird_ranges_simple)
 
-land_boundaries <- st_read(inputs, "land-polygons-complete-4326")
+saveRDS(bird_ranges_simple, file.path(interim_outputs, "all_bird_ranges_simplified.rds"))
 
-# Simplify their geometry too because they are very detailed
 
-land_boundaries_simple <- st_simplify(land_boundaries, 
-                                      preserveTopology = TRUE,
-                                      dTolerance = 0.1)
+#bird_ranges_simple <- readRDS(file.path(interim_outputs, "all_bird_ranges_simplified.rds"))
 
-# Clip the bird ranges to only land 
+# Match bird ranges to ecoregions
+# bird_ranges_simple <- bird_ranges_simple[1:5,]
 
-bird_ranges_simple_land <- st_intersection()
+system.time(bird_ecoregions <- get_ecoregions(bird_ranges_simple, 
+                                              bird_rangemap_dir, 
+                                                 ecoregion_map_simple,
+                                                 interim_outputs,
+                                                 location,
+                                                 "bird"))
 
 
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {

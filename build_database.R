@@ -669,7 +669,49 @@ reptile_ecoregions <- get_ecoregions(reptile_ranges_simple,
                                                   "reptile")
 rm(reptile_ranges_simple)
 
+# Add in the point data
+
+reptile_points <- read.csv(file.path(inputs, "redlist_reptile_range_maps",
+                                     "REPTILES_points.csv"))
+# Select necessary columns
+
+reptile_points <- reptile_points %>%
+                  dplyr::select(binomial, latitude, longitude, category) 
+
+# Convert to sf object and set crs
+
+reptile_points_sf <- st_as_sf(reptile_points, coords = c('longitude', 
+                                                         'latitude'), 
+                              crs = st_crs(ecoregion_map_simple))
+
+# Get ecoregions the points fall within
+
+reptile_point_ecoregions <- st_intersection(reptile_points_sf, 
+                                            ecoregion_map_simple)
+# Format to match polygon outputs
+
+reptile_point_ecoregions <- reptile_point_ecoregions %>%
+                            mutate(source = "iucn_redlist_point_data") %>%
+                            dplyr::select(binomial, ECO_ID, 
+                                          OBJECTID, source, category) %>%
+                            rename(ecoregion_id = ECO_ID,
+                                   eco_objectid = OBJECTID,
+                                   redlist_status = category) %>%
+                            st_drop_geometry(.)
+
+# Bind the two
+
+reptile_ecoregions <- rbind(reptile_ecoregions, reptile_point_ecoregions)
+
+# Save new version
+
+saveRDS(reptile_ecoregions, file.path(interim_outputs, 
+                                        paste(location,"reptile", 
+                                              "ecoregions.rds", sep = "_")))
+
 }
+
+ 
 
 # Birds ----
 

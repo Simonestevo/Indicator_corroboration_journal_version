@@ -533,6 +533,15 @@ ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in%
 
 ## elapsed time for below 9559.55 s (~ 3 hrs)
 
+if ((paste(location, "amphibian", "ecoregions.rds", 
+            sep = "_") %in% list.files(interim_outputs))) {
+
+amphibian_ecoregions <- readRDS(file.path(interim_outputs, 
+                                          paste(location, 
+                                                "amphibian", "ecoregions.rds", 
+                                                sep = "_" )))
+} else {
+
 amphibian_rangemap_dir <- file.path(inputs, "redlist_amphibian_range_maps")
 
 # Read in the rangemap
@@ -545,6 +554,8 @@ amphibian_ranges_simple <- st_simplify(amphibian_ranges,
                                        preserveTopology = TRUE,
                            dTolerance = 0.1)
 
+rm(amphibian_ranges)
+
 # Remove unneccessary columns as well
 
 amphibian_ranges_simple <- amphibian_ranges_simple %>%
@@ -553,16 +564,28 @@ amphibian_ranges_simple <- amphibian_ranges_simple %>%
 
 # Match amphibian ranges to ecoregions
 
-system.time(amphibian_ecoregions <- get_ecoregions(amphibian_ranges_simple, 
+amphibian_ecoregions <- get_ecoregions(amphibian_ranges_simple, 
                                        amphibian_rangemap_dir, 
                                        ecoregion_map_simple,
                                        interim_outputs,
                                        location,
-                                       "amphibian"))
+                                       "amphibian")
+rm(amphibian_ranges_simple)
+
+}
 
 # Mammals ----
 
 ## elapsed time for below 14264.58 s (~ 4 hrs)
+
+if ((paste(location, "mammal", "ecoregions.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  amphibian_ecoregions <- readRDS(file.path(interim_outputs, 
+                                            paste(location, 
+                                                  "mammal", "ecoregions.rds", 
+                                                  sep = "_" )))
+} else {
 
 mammal_rangemap_dir <- file.path(inputs, "redlist_mammal_range_maps")
 
@@ -576,6 +599,8 @@ mammal_ranges_simple <- st_simplify(mammal_ranges,
                                     preserveTopology = TRUE,
                                     dTolerance = 0.1)
 
+rm(mammal_ranges)
+
 # Remove unneccessary columns as well
 
 mammal_ranges_simple <- mammal_ranges_simple %>%
@@ -587,16 +612,29 @@ mammal_ranges_simple <- mammal_ranges_simple %>%
 
 # Match mammal ranges to ecoregions
 
-system.time(mammal_ecoregions <- get_ecoregions(mammal_ranges_simple, 
+mammal_ecoregions <- get_ecoregions(mammal_ranges_simple, 
                                                 mammal_rangemap_dir, 
                                                 ecoregion_map_simple,
                                                 interim_outputs,
                                                 location,
-                                                "mammal"))
+                                                "mammal")
+
+rm(mammal_ranges_simple)
+
+}
 
 # Reptiles ----
 
 ## elapsed time for below 15089.72  s (~ 4 hrs)
+
+if ((paste(location, "reptile", "ecoregions.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+reptile_ecoregions <- readRDS(file.path(interim_outputs, 
+                                        paste(location, 
+                                        "reptile", "ecoregions.rds", 
+                                        sep = "_" )))
+} else {
 
 reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
 
@@ -610,6 +648,8 @@ reptile_ranges_simple <- st_simplify(reptile_ranges,
                                     preserveTopology = TRUE,
                                     dTolerance = 0.1)
 
+rm(reptile_ranges)
+
 # Remove unneccessary columns as well
 
 reptile_ranges_simple <- reptile_ranges_simple %>%
@@ -621,22 +661,32 @@ reptile_ranges_simple <- reptile_ranges_simple %>%
 
 # Match reptile ranges to ecoregions
 
-system.time(reptile_ecoregions <- get_ecoregions(reptile_ranges_simple, 
+reptile_ecoregions <- get_ecoregions(reptile_ranges_simple, 
                                                  reptile_rangemap_dir, 
                                                  ecoregion_map_simple,
                                                  interim_outputs,
                                                  location,
-                                                  "reptile"))
+                                                  "reptile")
+rm(reptile_ranges_simple)
 
-
+}
 
 # Birds ----
 
-## elapsed time for below 58943.19 (~16 hours)
+## elapsed time for below 58943.19 s (~16 hours)
 
 ## Note that bird maps come from birdlife international, not iucn, so
-## they are stored in a geodatabase and contain land and sea birds, so
+## they are stored in a geodatabase with slightly different geometry types, so
 ## require a couple of extra steps to process
+
+if ((paste(location, "bird", "ecoregions.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+bird_ecoregions <- readRDS(file.path(interim_outputs, 
+                                     paste(location, 
+                                     "bird", "ecoregions.rds", 
+                                     sep = "_" )))
+} else {
 
 bird_rangemap_dir <- file.path(inputs, "birdlife_avian_range_maps","BOTW.gdb")
 
@@ -656,7 +706,7 @@ bird_ranges <- bird_ranges %>%
 # geometry types, which means other st functions won't work.
 
 # Get only multisurface geoms
-#' TODO: Figure out how to recast these birds
+#' TODO: Figure out how to recast these to multipolygons
 
 bird_ranges_ms <- bird_ranges %>%
                   filter(st_geometry_type(Shape) == "MULTISURFACE")
@@ -673,22 +723,22 @@ bird_ranges_simple <- st_simplify(bird_ranges,
                                   preserveTopology = TRUE,
                                   dTolerance = 0.1)
 
-object_size(bird_ranges_simple)
+rm(bird_ranges)
 
 # saveRDS(bird_ranges_simple, file.path(interim_outputs, "all_bird_ranges_simplified.rds"))
-
-
 # bird_ranges_simple <- readRDS(file.path(interim_outputs, "all_bird_ranges_simplified.rds"))
 
 # Match bird ranges to ecoregions
 
-ystem.time(bird_ecoregions <- get_ecoregions(bird_ranges_simple, 
+bird_ecoregions <- get_ecoregions(bird_ranges_simple, 
                                               bird_rangemap_dir, 
                                                  ecoregion_map_simple,
                                                  interim_outputs,
                                                  location,
-                                                 "bird"))
+                                                 "bird")
+rm(bird_ranges_simple)
 
+}
 
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {
   

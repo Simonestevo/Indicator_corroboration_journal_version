@@ -635,99 +635,6 @@ rm(mammal_ranges_simple)
 
 }
 
-# Reptiles ----
-
-## elapsed time for below 15089.72  s (~ 4 hrs)
-
-if ((paste(location, "reptile", "ecoregions.rds", 
-           sep = "_") %in% list.files(interim_outputs))) {
-  
-reptile_ecoregions <- readRDS(file.path(interim_outputs, 
-                                        paste(location, 
-                                        "reptile", "ecoregions.rds", 
-                                        sep = "_" )))
-} else {
-
-reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
-
-# Read in the rangemap
-
-reptile_ranges <- st_read(reptile_rangemap_dir)
-
-# Subset to terrestrial only
-
-reptile_ranges <- reptile_ranges %>%
-                  filter(terrestial == "true") #spelling error is in the sf column
-
-# Simplify geometry slightly to improve processing time
-
-reptile_ranges_simple <- st_simplify(reptile_ranges, 
-                                    preserveTopology = TRUE,
-                                    dTolerance = 0.1)
-
-rm(reptile_ranges)
-
-# Remove unneccessary columns as well
-
-reptile_ranges_simple <- reptile_ranges_simple %>%
-                         select(id_no, 
-                                 binomial, 
-                                 presence, 
-                                 geometry)
-
-
-# Match reptile ranges to ecoregions
-
-reptile_ecoregions <- get_ecoregions(reptile_ranges_simple, 
-                                                 reptile_rangemap_dir, 
-                                                 ecoregion_map_simple,
-                                                 interim_outputs,
-                                                 location,
-                                                  "reptile")
-rm(reptile_ranges_simple)
-
-# Add in the point data
-
-reptile_points <- read.csv(file.path(inputs, "redlist_reptile_range_maps",
-                                     "REPTILES_points.csv"))
-# Select necessary columns
-
-reptile_points <- reptile_points %>%
-                  dplyr::select(binomial, latitude, longitude, category) 
-
-# Convert to sf object and set crs
-
-reptile_points_sf <- st_as_sf(reptile_points, coords = c('longitude', 
-                                                         'latitude'), 
-                              crs = st_crs(ecoregion_map_simple))
-
-# Get ecoregions the points fall within
-
-reptile_point_ecoregions <- st_intersection(reptile_points_sf, 
-                                            ecoregion_map_simple)
-# Format to match polygon outputs
-
-reptile_point_ecoregions <- reptile_point_ecoregions %>%
-                            mutate(source = "iucn_redlist_point_data") %>%
-                            dplyr::select(binomial, ECO_ID, 
-                                          OBJECTID, source, category) %>%
-                            rename(ecoregion_id = ECO_ID,
-                                   eco_objectid = OBJECTID,
-                                   redlist_status = category) %>%
-                            st_drop_geometry(.)
-
-# Bind the two
-
-reptile_ecoregions <- rbind(reptile_ecoregions, reptile_point_ecoregions)
-
-# Save new version
-
-saveRDS(reptile_ecoregions, file.path(interim_outputs, 
-                                        paste(location,"reptile", 
-                                              "ecoregions.rds", sep = "_")))
-
-}
-
 # Birds ----
 
 ## elapsed time for below 58943.19 s (~16 hours)
@@ -797,17 +704,120 @@ rm(bird_ranges_simple)
 
 }
 
-# Get synonyms for each class ----
+# Reptiles ----
+
+## elapsed time for below 15089.72  s (~ 4 hrs)
+
+if ((paste(location, "reptile", "ecoregions.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  reptile_ecoregions <- readRDS(file.path(interim_outputs, 
+                                          paste(location, 
+                                                "reptile", "ecoregions.rds", 
+                                                sep = "_" )))
+} else {
+  
+  reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
+  
+  # Read in the rangemap
+  
+  reptile_ranges <- st_read(reptile_rangemap_dir)
+  
+  # Subset to terrestrial only
+  
+  reptile_ranges <- reptile_ranges %>%
+    filter(terrestial == "true") #spelling error is in the sf column
+  
+  # Simplify geometry slightly to improve processing time
+  
+  reptile_ranges_simple <- st_simplify(reptile_ranges, 
+                                       preserveTopology = TRUE,
+                                       dTolerance = 0.1)
+  
+  rm(reptile_ranges)
+  
+  # Remove unneccessary columns as well
+  
+  reptile_ranges_simple <- reptile_ranges_simple %>%
+    select(id_no, 
+           binomial, 
+           presence, 
+           geometry)
+  
+  
+  # Match reptile ranges to ecoregions
+  
+  reptile_ecoregions <- get_ecoregions(reptile_ranges_simple, 
+                                       reptile_rangemap_dir, 
+                                       ecoregion_map_simple,
+                                       interim_outputs,
+                                       location,
+                                       "reptile")
+  rm(reptile_ranges_simple)
+  
+  # Add in the point data
+  
+  reptile_points <- read.csv(file.path(inputs, "redlist_reptile_range_maps",
+                                       "REPTILES_points.csv"))
+  # Select necessary columns
+  
+  reptile_points <- reptile_points %>%
+    dplyr::select(binomial, latitude, longitude, category) 
+  
+  # Convert to sf object and set crs
+  
+  reptile_points_sf <- st_as_sf(reptile_points, coords = c('longitude', 
+                                                           'latitude'), 
+                                crs = st_crs(ecoregion_map_simple))
+  
+  # Get ecoregions the points fall within
+  
+  reptile_point_ecoregions <- st_intersection(reptile_points_sf, 
+                                              ecoregion_map_simple)
+  # Format to match polygon outputs
+  
+  reptile_point_ecoregions <- reptile_point_ecoregions %>%
+    mutate(source = "iucn_redlist_point_data") %>%
+    dplyr::select(binomial, ECO_ID, 
+                  OBJECTID, source, category) %>%
+    rename(ecoregion_id = ECO_ID,
+           eco_objectid = OBJECTID,
+           redlist_status = category) %>%
+    st_drop_geometry(.)
+  
+  # Bind the two
+  
+  reptile_ecoregions <- rbind(reptile_ecoregions, reptile_point_ecoregions)
+  
+  # Save new version
+  
+  saveRDS(reptile_ecoregions, file.path(interim_outputs, 
+                                        paste(location,"reptile", 
+                                              "ecoregions.rds", sep = "_")))
+  
+}
+
+
+# Get rangemap synonyms ----
 
 # Amphibians
 
 amphibian_rangemap_binomials <- get_binomial_list(amphibian_ecoregions)
 
-system.time(amphibian_rangemap_synonyms <- find_synonyms(amphibian_iucn_binomials))
+system.time(amphibian_rangemap_synonyms <- find_synonyms(amphibian_rangemap_binomials))
 
 saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs, 
                                       paste(location,"amphibian", 
                                             "rangemap_synonyms.rds", sep = "_")))
+
+# Join the synonyms and tsn to the rangemap data
+
+amphibian_ecoregions <- amphibian_ecoregions %>%
+                        merge(amphibian_rangemap_synonyms[c("tsn", "binomial", 
+                                                            "accepted_name")],
+                        by = "binomial") %>%
+                        dplyr::select(accepted_name, tsn, ecoregion_id, 
+                                      eco_objectid, source, redlist_status)
 
 # Mammals
 
@@ -841,6 +851,80 @@ saveRDS(bird_rangemap_synonyms, file.path(interim_outputs,
 
 
 # Get red list status' ----
+
+# Amphibians ----
+
+# Read in Henriques data which gives history of species' red list status
+
+amphibian_redlist_data <- read_csv(file.path(inputs, 
+                                            "henriques_redlist_history",
+                                            "RLTS_amphibian_data_organised.csv"))
+
+# Format and melt
+
+amphibian_redlist_data <- amphibian_redlist_data %>% 
+                          mutate(class = "amphibia") %>%
+                          mutate(redlist_source = "Henriques etal 2020") %>% 
+                          dplyr::mutate(binomial = paste(Genus, Species, 
+                                                         sep = " ")) %>%
+                          dplyr::select(-c(Genus, Species)) %>%
+                          set_names(c("2004", "2008", "class", "redlist_source", 
+                                      "binomial")) %>%
+                          dplyr::select("binomial","class","2004", "2008", 
+                                        "redlist_source") %>%
+                          melt(.,id.vars = c("binomial", "class", 
+                                             "redlist_source"), 
+                             value.name = "redlist_status",
+                             variable.name = "redlist_assessment_year")
+
+# Get the synonyms for this data source
+
+amphibian_redlist_binomials <- get_binomial_list(amphibian_redlist_data)
+
+system.time(amphibian_redlist_synonyms <- find_synonyms(amphibian_redlist_binomials))
+
+saveRDS(amphibian_redlist_synonyms, file.path(interim_outputs, 
+                                               paste(location,"amphibian", 
+                                                     "redlist_synonyms.rds", 
+                                                     sep = "_")))
+
+# Join the synonyms and tsn to the redlist data
+
+amphibian_redlist_data <- amphibian_redlist_data %>%
+                          merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
+                                                        "accepted_name")],
+                          by = "binomial") %>%
+                          dplyr::select(accepted_name, tsn, 
+                                        redlist_assessment_year, 
+                                        redlist_status, redlist_status, 
+                                        redlist_source)
+
+# Join ecoregion and redlist data together
+
+amphibian_ecoregion_redlist <- amphibian_ecoregions %>%
+                               select(-redlist_status) %>%
+                               merge(amphibian_redlist_data[c("tsn", 
+                                                              "redlist_assessment_year",
+                                                             "redlist_status", 
+                                                             "redlist_source")],
+                                    by = "tsn") %>%
+                               rename(location_source = source) %>%
+                               mutate(class = "Amphibia") %>%
+                               merge(ecoregion_country_df[c("ECO_ID", 
+                                                            "CNTRY_NAME")],
+                                     by.x = "ecoregion_id",
+                                     by.y = "ECO_ID") %>%
+                               filter(ecoregion_id != 0)
+
+
+saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs, 
+                                              paste(location,"amphibian", 
+                                                    "ecoregion_redlist.rds", 
+                                                    sep = "_")))
+
+
+
+
 
 # Reptiles
 
@@ -910,11 +994,7 @@ start <- start +
          length(unique(reptile_redlist_data_3$binomial))
 
 }
-# Add taxonomic serial number 
 
-reptile_redlist_data_1 <- reptile_redlist_data
-
-y <- reptile_redlist_data[1:200]
 
 x <- y %>%
      merge(reptile_rangemap_synonyms[c("binomial", "accepted", "tsn")],

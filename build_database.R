@@ -829,6 +829,15 @@ saveRDS(mammal_rangemap_synonyms, file.path(interim_outputs,
                                       paste(location,"mammal", 
                                             "rangemap_synonyms.rds", sep = "_")))
 
+# Join the synonyms and tsn to the rangemap data
+
+mammal_ecoregions <- mammal_ecoregions %>%
+  merge(mammal_rangemap_synonyms[c("tsn", "binomial", 
+                                      "accepted_name")],
+        by = "binomial") %>%
+  dplyr::select(accepted_name, tsn, ecoregion_id, 
+                eco_objectid, source, redlist_status)
+
 # Reptiles
 
 reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
@@ -839,6 +848,15 @@ saveRDS(reptile_rangemap_synonyms, file.path(interim_outputs,
                                       paste(location,"reptile", 
                                             "rangemap_synonyms.rds", sep = "_")))
 
+# Join the synonyms and tsn to the rangemap data
+
+reptile_ecoregions <- reptile_ecoregions %>%
+  merge(reptile_rangemap_synonyms[c("tsn", "binomial", 
+                                      "accepted_name")],
+        by = "binomial") %>%
+  dplyr::select(accepted_name, tsn, ecoregion_id, 
+                eco_objectid, source, redlist_status)
+
 # Birds
 
 bird_rangemap_binomials <- get_binomial_list(bird_ecoregions)
@@ -848,7 +866,14 @@ system.time(bird_rangemap_synonyms <- find_synonyms(bird_rangemap_binomials))
 saveRDS(bird_rangemap_synonyms, file.path(interim_outputs, 
                                       paste(location,"reptile", 
                                             "rangemap_synonyms.rds", sep = "_")))
+# Join the synonyms and tsn to the rangemap data
 
+bird_ecoregions <- bird_ecoregions %>%
+                   merge(bird_rangemap_synonyms[c("tsn", "binomial", 
+                                                        "accepted_name")],
+                          by = "binomial") %>%
+                   dplyr::select(accepted_name, tsn, ecoregion_id, 
+                                  eco_objectid, source, redlist_status)
 
 # Get red list status' ----
 
@@ -921,6 +946,145 @@ saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs,
                                               paste(location,"amphibian", 
                                                     "ecoregion_redlist.rds", 
                                                     sep = "_")))
+
+# Mammals ----
+
+# Read in Henriques data which gives history of species' red list status
+
+mammal_redlist_data <- read_csv(file.path(inputs, 
+                                             "henriques_redlist_history",
+                                             "RLTS_mammal_data_organised.csv"))
+
+# Format and melt
+
+mammal_redlist_data <-  mammal_redlist_data %>% 
+                        mutate(class = "Mammalia") %>%
+                        mutate(redlist_source = "Henriques etal 2020") %>% 
+                        rename(binomial = Name) %>%
+                        set_names(c("binomial","1996", "2008", "class", "redlist_source")) %>%
+                        dplyr::select("binomial","class","1996", "2008", "redlist_source") %>%
+                        melt(.,id.vars = c("binomial", "class", 
+                                           "redlist_source"), 
+                             value.name = "redlist_status",
+                             variable.name = "redlist_assessment_year")
+
+# Get the synonyms for this data source
+
+mammal_redlist_binomials <- get_binomial_list(mammal_redlist_data)
+
+system.time(mammal_redlist_synonyms <- find_synonyms(mammal_redlist_binomials))
+
+saveRDS(mammal_redlist_synonyms, file.path(interim_outputs, 
+                                              paste(location,"mammal", 
+                                                    "redlist_synonyms.rds", 
+                                                    sep = "_")))
+
+# Join the synonyms and tsn to the redlist data
+
+mammal_redlist_data <- mammal_redlist_data %>%
+  merge(mammal_redlist_synonyms[c("tsn", "binomial", 
+                                     "accepted_name")],
+        by = "binomial") %>%
+  dplyr::select(accepted_name, tsn, 
+                redlist_assessment_year, 
+                redlist_status, redlist_status, 
+                redlist_source)
+
+# Join ecoregion and redlist data together
+
+mammal_ecoregion_redlist <- mammal_ecoregions %>%
+                            select(-redlist_status) %>%
+                            merge(mammal_redlist_data[c("tsn", 
+                                                           "redlist_assessment_year",
+                                                           "redlist_status", 
+                                                           "redlist_source")],
+                                  by = "tsn") %>%
+                            rename(location_source = source) %>%
+                            mutate(class = "Mammalia") %>%
+                            merge(ecoregion_country_df[c("ECO_ID", 
+                                                         "CNTRY_NAME")],
+                                  by.x = "ecoregion_id",
+                                  by.y = "ECO_ID") %>%
+                            filter(ecoregion_id != 0)
+
+
+saveRDS(mammal_ecoregion_redlist, file.path(interim_outputs, 
+                                               paste(location,"mammal", 
+                                                     "ecoregion_redlist.rds", 
+                                                     sep = "_")))
+
+# Birds ----
+
+# Read in Henriques data which gives history of species' red list status
+
+bird_redlist_data <- read_csv(file.path(inputs, 
+                                          "henriques_redlist_history",
+                                          "RLTS_bird_data_organised.csv"))
+
+# Format and melt
+
+bird_redlist_data <-  bird_redlist_data %>% 
+                      mutate(class = "Aves") %>%
+                      mutate(redlist_source = "Henriques etal 2020") %>% 
+                      set_names(c("binomial", "1988", "1994", "2000", "2004",
+                                  "2008", "2012", "2016", "class", "redlist_source")) %>%
+                      dplyr::select("binomial","class","1988", "1994", "2000", "2004",
+                                    "2008", "2012", "2016", "redlist_source") %>%
+                      melt(.,id.vars = c("binomial", "class", 
+                                         "redlist_source"), 
+                           value.name = "redlist_status",
+                           variable.name = "redlist_assessment_year")
+
+# Get the synonyms for this data source
+
+bird_redlist_binomials <- get_binomial_list(bird_redlist_data)
+
+system.time(bird_redlist_synonyms <- find_synonyms(bird_redlist_binomials))
+
+saveRDS(bird_redlist_synonyms, file.path(interim_outputs, 
+                                           paste(location,"bird", 
+                                                 "redlist_synonyms.rds", 
+                                                 sep = "_")))
+
+# Join the synonyms and tsn to the redlist data
+
+bird_redlist_data <- bird_redlist_data %>%
+                     merge(bird_redlist_synonyms[c("tsn", "binomial", 
+                                                    "accepted_name")],
+                          by = "binomial") %>%
+                     dplyr::select(accepted_name, tsn, 
+                                  redlist_assessment_year, 
+                                  redlist_status, redlist_status, 
+                                  redlist_source)
+
+# Join ecoregion and redlist data together
+
+bird_ecoregion_redlist <- bird_ecoregions %>%
+                          select(-redlist_status) %>%
+                          merge(bird_redlist_data[c("tsn", 
+                                                      "redlist_assessment_year",
+                                                      "redlist_status", 
+                                                      "redlist_source")],
+                                by = "tsn") %>%
+                          rename(location_source = source) %>%
+                          mutate(class = "Amphibia") %>%
+                          merge(ecoregion_country_df[c("ECO_ID", 
+                                                       "CNTRY_NAME")],
+                                by.x = "ecoregion_id",
+                                by.y = "ECO_ID") %>%
+                          filter(ecoregion_id != 0)
+
+saveRDS(bird_ecoregion_redlist, file.path(interim_outputs, 
+                                            paste(location,"bird", 
+                                                  "ecoregion_redlist.rds", 
+                                                  sep = "_")))
+
+
+
+
+
+
+
 
 
 

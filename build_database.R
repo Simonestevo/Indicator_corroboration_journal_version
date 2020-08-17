@@ -847,50 +847,8 @@ saveRDS(bird_rangemap_synonyms, file.path(interim_outputs,
 reptile_binomials_all <- unique(reptile_rangemap_synonyms$binomial)
 all <- reptile_binomials_all
 
-# reptile_binomials_all <- reptile_binomials_all[1:2]
-
-# Split into chunks because iucn only allow ~260 calls at a time
-
-#reptile_binomials_list <- split(d, ceiling(seq_along(d)/20))
-
-reptile_redlist_list <- list()
-
-for (i in seq_along(reptile_binomials_all)) {
-
-reptile <- reptile_binomials_all[i]
-
-reptile_redlist <- rl_history(reptile, parse = TRUE)[[2]] 
-
-if (length(reptile_redlist) == 0) { # if there are no results create dummy dataframe
-
-reptile_redlist <- data.frame(year = NA, code = NA, binomial = reptile,
-                              category = NA,
-                              class = "reptile")
-
-print(paste("red list history not available for", reptile, sep = " "))
-  
-} else { # otherwise create results dataframe
-
-reptile_redlist <- reptile_redlist %>%
-                   mutate(binomial = reptile,
-                          class = "reptile")
-
-print(paste("red list history retrieved for", reptile, sep = " "))
-
-}
-
-reptile_redlist_list[[i]] <- reptile_redlist
-
-Sys.sleep(3) # Make loop pause before next, otherwise iucn web access cuts out
-
-}
-
-reptile_redlist_data_1 <- do.call(rbind, reptile_redlist_list)
-
-# Start again
-
-# reptile_binomials_all <- reptile_binomials_all[length(reptile_redlist_list):
-#                                                  length(reptile_binomials_all)]
+# Function to get redlist history, because iucn limit how many calls you can
+# make, so have to break the full list of reptiles up into chunks
 
 get_redlist_history <- function(names) {
   
@@ -910,7 +868,7 @@ for (i in seq_along(reptile_binomials_all)) {
     
     print(paste("red list history not available for", reptile, sep = " "))
     
-  } else { # otherwise create results dataframe
+  } else {# otherwise create results dataframe
     
     reptile_redlist <- reptile_redlist %>%
       mutate(binomial = reptile,
@@ -922,7 +880,7 @@ for (i in seq_along(reptile_binomials_all)) {
   
   reptile_redlist_list[[i]] <- reptile_redlist
   
-  Sys.sleep(2) # Make loop pause before next, otherwise iucn web access cuts out
+  Sys.sleep(3) # Make loop pause before next, otherwise iucn web access cuts out
   
 }
 
@@ -944,9 +902,9 @@ reptile_redlist_data_2 <- get_redlist_history(reptile_binomials_all[start:end])
 start <- start +
          length(unique(reptile_redlist_data_2$binomial))
 
-if (start < length(reptile_binomials_all)) {
+} if (start < length(reptile_binomials_all)) {
 
-reptile_redlist_data_3 <- get_redlist_history(reptile_binomials_all[start:end])
+reptile_redlist_data_3 <- get_redlist_history(reptile_binomials_all[450:700])
 
 start <- start +
          length(unique(reptile_redlist_data_3$binomial))

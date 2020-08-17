@@ -454,6 +454,18 @@ scale_to_1 <- function(vector){
     (max(vector, na.rm = TRUE) - min(vector, na.rm = TRUE))
 }
 
+get_binomial_list <- function(data) {
+  
+  data$binomial <- as.character(data$binomial)
+  
+  data <- unname(unlist(data[,1]))
+  
+  data <- data[!is.na(data)]
+  
+  binomial_list <- unique(data)
+  
+}
+
 # Load ecoregion data ----
 
 ## This will allow us to subset the data by country for development or analysis
@@ -524,7 +536,7 @@ ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in%
                
 }
 
-# Intersect range maps with ecoregions (SLOW CODE) ----
+# Assign species to ecoregions using range maps (SLOW CODE) ----
 
 # Process by each class of rangemaps.  Could put it all in a loop but 
 # it's very slow, safer to do class by class.
@@ -581,7 +593,7 @@ rm(amphibian_ranges_simple)
 if ((paste(location, "mammal", "ecoregions.rds", 
            sep = "_") %in% list.files(interim_outputs))) {
   
-  amphibian_ecoregions <- readRDS(file.path(interim_outputs, 
+  mammal_ecoregions <- readRDS(file.path(interim_outputs, 
                                             paste(location, 
                                                   "mammal", "ecoregions.rds", 
                                                   sep = "_" )))
@@ -641,6 +653,11 @@ reptile_rangemap_dir <- file.path(inputs, "redlist_reptile_range_maps")
 # Read in the rangemap
 
 reptile_ranges <- st_read(reptile_rangemap_dir)
+
+# Subset to terrestrial only
+
+reptile_ranges <- reptile_ranges %>%
+                  filter(terrestial == "true") #spelling error is in the sf column
 
 # Simplify geometry slightly to improve processing time
 
@@ -711,8 +728,6 @@ saveRDS(reptile_ecoregions, file.path(interim_outputs,
 
 }
 
- 
-
 # Birds ----
 
 ## elapsed time for below 58943.19 s (~16 hours)
@@ -781,6 +796,178 @@ bird_ecoregions <- get_ecoregions(bird_ranges_simple,
 rm(bird_ranges_simple)
 
 }
+
+# Get synonyms for each class ----
+
+# Amphibians
+
+amphibian_rangemap_binomials <- get_binomial_list(amphibian_ecoregions)
+
+system.time(amphibian_rangemap_synonyms <- find_synonyms(amphibian_iucn_binomials))
+
+saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs, 
+                                      paste(location,"amphibian", 
+                                            "rangemap_synonyms.rds", sep = "_")))
+
+# Mammals
+
+mammal_rangemap_binomials <- get_binomial_list(mammal_ecoregions)
+
+system.time(mammal_rangemap_synonyms <- find_synonyms(mammal_rangemap_binomials))
+
+saveRDS(mammal_rangemap_synonyms, file.path(interim_outputs, 
+                                      paste(location,"mammal", 
+                                            "rangemap_synonyms.rds", sep = "_")))
+
+# Reptiles
+
+reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
+
+system.time(reptile_rangemap_synonyms <- find_synonyms(reptile_rangemap_binomials))
+
+saveRDS(reptile_rangemap_synonyms, file.path(interim_outputs, 
+                                      paste(location,"reptile", 
+                                            "rangemap_synonyms.rds", sep = "_")))
+
+# Birds
+
+bird_rangemap_binomials <- get_binomial_list(bird_ecoregions)
+
+system.time(bird_rangemap_synonyms <- find_synonyms(bird_rangemap_binomials))
+
+saveRDS(bird_rangemap_synonyms, file.path(interim_outputs, 
+                                      paste(location,"reptile", 
+                                            "rangemap_synonyms.rds", sep = "_")))
+
+
+# Get red list status' ----
+
+# Reptiles
+
+reptile_binomials_all <- unique(reptile_rangemap_synonyms$binomial)
+all <- reptile_binomials_all
+
+# reptile_binomials_all <- reptile_binomials_all[1:2]
+
+# Split into chunks because iucn only allow ~260 calls at a time
+
+#reptile_binomials_list <- split(d, ceiling(seq_along(d)/20))
+
+reptile_redlist_list <- list()
+
+for (i in seq_along(reptile_binomials_all)) {
+
+reptile <- reptile_binomials_all[i]
+
+reptile_redlist <- rl_history(reptile, parse = TRUE)[[2]] 
+
+if (length(reptile_redlist) == 0) { # if there are no results create dummy dataframe
+
+reptile_redlist <- data.frame(year = NA, code = NA, binomial = reptile,
+                              category = NA,
+                              class = "reptile")
+
+print(paste("red list history not available for", reptile, sep = " "))
+  
+} else { # otherwise create results dataframe
+
+reptile_redlist <- reptile_redlist %>%
+                   mutate(binomial = reptile,
+                          class = "reptile")
+
+print(paste("red list history retrieved for", reptile, sep = " "))
+
+}
+
+reptile_redlist_list[[i]] <- reptile_redlist
+
+Sys.sleep(3) # Make loop pause before next, otherwise iucn web access cuts out
+
+}
+
+reptile_redlist_data_1 <- do.call(rbind, reptile_redlist_list)
+
+# Start again
+
+# reptile_binomials_all <- reptile_binomials_all[length(reptile_redlist_list):
+#                                                  length(reptile_binomials_all)]
+
+get_redlist_history <- function(names) {
+  
+reptile_redlist_list <- list()
+
+for (i in seq_along(reptile_binomials_all)) {
+  
+  reptile <- reptile_binomials_all[i]
+  
+  reptile_redlist <- rl_history(reptile, parse = TRUE)[[2]] 
+  
+  if (length(reptile_redlist) == 0) { # if there are no results create dummy dataframe
+    
+    reptile_redlist <- data.frame(year = NA, code = NA, binomial = reptile,
+                                  category = NA,
+                                  class = "reptile")
+    
+    print(paste("red list history not available for", reptile, sep = " "))
+    
+  } else { # otherwise create results dataframe
+    
+    reptile_redlist <- reptile_redlist %>%
+      mutate(binomial = reptile,
+             class = "reptile")
+    
+    print(paste("red list history retrieved for", reptile, sep = " "))
+    
+  }
+  
+  reptile_redlist_list[[i]] <- reptile_redlist
+  
+  Sys.sleep(2) # Make loop pause before next, otherwise iucn web access cuts out
+  
+}
+
+reptile_redlist_data <- do.call(rbind, reptile_redlist_list)
+
+return(reptile_redlist_data)
+
+}
+
+reptile_redlist_data_1 <- get_redlist_history(reptile_binomials_all)
+
+if (length(reptile_redlist_data_1) < length(reptile_binomials_all)) {
+
+start <- length(unique(reptile_redlist_data_1$binomial)) 
+end <- length(reptile_binomials_all)
+
+reptile_redlist_data_2 <- get_redlist_history(reptile_binomials_all[start:end])
+
+start <- start +
+         length(unique(reptile_redlist_data_2$binomial))
+
+if (start < length(reptile_binomials_all)) {
+
+reptile_redlist_data_3 <- get_redlist_history(reptile_binomials_all[start:end])
+
+start <- start +
+         length(unique(reptile_redlist_data_3$binomial))
+
+}
+# Add taxonomic serial number 
+
+reptile_redlist_data_1 <- reptile_redlist_data
+
+y <- reptile_redlist_data[1:200]
+
+x <- y %>%
+     merge(reptile_rangemap_synonyms[c("binomial", "accepted", "tsn")],
+           by = "binomial")
+
+saveRDS(reptile_redlist_data, file.path(interim_outputs, 
+                                        paste(location,"reptile", 
+                                                "redlist_data.rds", sep = "_")))
+
+
+
 
 intersect_ranges_w_ecoregions <- function(class_name, location, shapefile, data) {
   

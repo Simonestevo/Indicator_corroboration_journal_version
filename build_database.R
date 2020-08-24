@@ -929,8 +929,8 @@ saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs,
 amphibian_ecoregions <- amphibian_ecoregions %>%
                         merge(amphibian_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
-                        by = "binomial", all = TRUE) %>%
-                        dplyr::select(accepted_name, tsn, ecoregion_id, 
+                        by = "binomial") %>%
+                        dplyr::select(binomial, tsn, ecoregion_id, 
                                       eco_objectid, source, redlist_status)
 
 # * Mammals  ----
@@ -958,12 +958,11 @@ saveRDS(mammal_rangemap_synonyms, file.path(interim_outputs,
 # Join the synonyms and tsn to the rangemap data
 
 mammal_ecoregions <- mammal_ecoregions %>%
-                      merge(mammal_rangemap_synonyms[c("tsn", "binomial", 
-                                                          "accepted_name")],
-                            by = "binomial",
-                            all = TRUE) %>%
-                      dplyr::select(accepted_name, tsn, ecoregion_id, 
-                                    eco_objectid, source, redlist_status)
+                     merge(mammal_rangemap_synonyms[c("tsn", "binomial", 
+                                                    "accepted_name")],
+                            by = "binomial") %>%
+                     dplyr::select(binomial, tsn, ecoregion_id, 
+                                   eco_objectid, source, redlist_status)
 
 # * Reptiles ----
 
@@ -1087,32 +1086,62 @@ saveRDS(amphibian_redlist_synonyms, file.path(interim_outputs,
 }
 # Join the synonyms and tsn to the redlist data
 
-amphibian_redlist_data <- amphibian_redlist_data %>%
-                          merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
-                                                             "accepted_name")],
+# Because we want to delete any false NAs (where a species actually does have a 
+# redlist status, but because it has several synonyms it shows up more than once
+# sometimes with redlist status, and also without). We want to remove those NA
+# values because they aren't true NAs and will inflate the NA count and send you
+# on a goose chase looking for the redlist data that you actually already have
+
+amphibians_multi_tsn <- amphibian_redlist_data %>%
+                        merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
+                                                           "accepted_name")],
+                                                    by = "binomial",
+                                                    all = TRUE) %>%
+                        dplyr::select(binomial, tsn, redlist_assessment_year, 
+                                      redlist_status, redlist_source) %>%
+                        distinct(tsn, redlist_assessment_year, redlist_status,  
+                                  redlist_source, .keep_all = TRUE) %>%
+                                  group_by(tsn) %>%
+                                  filter(n() > 1) %>%
+                                  ungroup(.) %>%
+                        filter(!is.na(redlist_status)) 
+
+# But if there's only one name for that species and it is listed as NA, then
+# it's truly NA and we want to keep it.  Annoying I can't work out how to 
+# satisfy both conditions in one pipe
+
+amphibians_single_tsn <- amphibian_redlist_data %>%
+                         merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
+                                                            "accepted_name")],
                                 by = "binomial",
                                 all = TRUE) %>%
-                          dplyr::select(accepted_name, tsn, 
-                                        redlist_assessment_year, 
-                                        redlist_status, redlist_status, 
-                                        redlist_source)
+                         dplyr::select(binomial, tsn, redlist_assessment_year, 
+                                        redlist_status, redlist_source) %>%
+                         distinct(tsn, redlist_assessment_year, redlist_status,  
+                                   redlist_source, .keep_all = TRUE) %>%
+                         group_by(tsn) %>%
+                         filter(n() == 1) %>%
+                         ungroup(.)
+
+amphibian_redlist_data <- rbind(amphibians_single_tsn, amphibians_multi_tsn)
 
 # Join ecoregion and redlist data together
 
 amphibian_ecoregion_redlist <- amphibian_ecoregions %>%
-  select(-redlist_status) %>%
-  merge(amphibian_redlist_data[c("tsn", 
-                                 "redlist_assessment_year",
-                                 "redlist_status", 
-                                 "redlist_source")],
-        by = "tsn") %>%
-  rename(location_source = source) %>%
-  mutate(class = "Amphibia") %>%
-  merge(ecoregion_country_df[c("ECO_ID", 
-                               "CNTRY_NAME")],
-        by.x = "ecoregion_id",
-        by.y = "ECO_ID") %>%
-  filter(ecoregion_id != 0)
+                               select(-redlist_status) %>%
+                               merge(amphibian_redlist_data[c("tsn", 
+                                                               "redlist_assessment_year",
+                                                               "redlist_status", 
+                                                               "redlist_source")],
+                                      by = "tsn",
+                                     all = TRUE) %>%
+                                rename(location_source = source) %>%
+                                mutate(class = "Amphibia") %>%
+                                merge(ecoregion_country_df[c("ECO_ID", 
+                                                             "CNTRY_NAME")],
+                                      by.x = "ecoregion_id",
+                                      by.y = "ECO_ID") %>%
+                                filter(ecoregion_id != 0)
 
 
 saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs, 
@@ -1123,7 +1152,8 @@ saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs,
 
 # Summarise to check for data gaps
 
-amphibian_summaries <- summarise_species_data(amphibian_ecoregion_redlist, "1", "amphibian")
+amphibian_summaries <- summarise_species_data(amphibian_ecoregion_redlist, "1", 
+                                              "amphibian")
 amphibian_redlist_by_ecoregion <- amphibian_summaries[[1]]
 amphibian_redlist_global <- amphibian_summaries[[2]]
 
@@ -1183,14 +1213,44 @@ saveRDS(mammal_redlist_synonyms, file.path(interim_outputs,
 
 # Join the synonyms and tsn to the redlist data
 
-mammal_redlist_data <- mammal_redlist_data %>%
-                       merge(mammal_redlist_synonyms[c("tsn", "binomial", 
-                                                           "accepted_name")],
-                              by = "binomial", all = TRUE) %>%
-                       dplyr::select(accepted_name, tsn, 
-                                      redlist_assessment_year, 
-                                      redlist_status, redlist_status, 
-                                      redlist_source)
+# Because we want to delete any false NAs (where a species actually does have a 
+# redlist status, but because it has several synonyms it shows up more than once
+# sometimes with redlist status, and also without). We want to remove those NA
+# values because they aren't true NAs and will inflate the NA count and send you
+# on a goose chase looking for the redlist data that you actually already have
+
+mammal_multi_tsn <- mammal_redlist_data %>%
+                    merge(mammal_redlist_synonyms[c("tsn", "binomial", 
+                                                       "accepted_name")],
+                          by = "binomial",
+                          all = TRUE) %>%
+                    dplyr::select(binomial, tsn, redlist_assessment_year, 
+                                  redlist_status, redlist_source) %>%
+                    distinct(tsn, redlist_assessment_year, redlist_status,  
+                             redlist_source, .keep_all = TRUE) %>%
+                    group_by(tsn) %>%
+                    filter(n() > 1) %>%
+                    ungroup(.) %>%
+                    filter(!is.na(redlist_status)) 
+
+# But if there's only one name for that species and it is listed as NA, then
+# it's truly NA and we want to keep it.  Annoying I can't work out how to 
+# satisfy both conditions in one pipe
+
+mammal_single_tsn <- mammal_redlist_data %>%
+                     merge(mammal_redlist_synonyms[c("tsn", "binomial", 
+                                                       "accepted_name")],
+                          by = "binomial",
+                          all = TRUE) %>%
+                     dplyr::select(binomial, tsn, redlist_assessment_year, 
+                                  redlist_status, redlist_source) %>%
+                     distinct(tsn, redlist_assessment_year, redlist_status,  
+                             redlist_source, .keep_all = TRUE) %>%
+                     group_by(tsn) %>%
+                     filter(n() == 1) %>%
+                     ungroup(.)
+
+mammal_redlist_data <- rbind(mammal_single_tsn, mammal_multi_tsn)
 
 # Join ecoregion and redlist data together
 

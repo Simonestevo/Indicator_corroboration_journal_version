@@ -34,30 +34,49 @@ library(mapview)
 
 # Set input and output locations ----
 
-inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
-outputs_parent <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
-interim_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-07-15_interim_files"
-save_outputs <- "no"
+create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
-country <- NA # If not subsetting, set as NA, e.g. country <- NA
-aggregate_timepoints <- "yes"
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+save_outputs <- "no"
+parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+eco_version <- "ecoregions_2017"
+#eco_version <- "official_teow_wwf"
+
+if (!is.na(country)) {
+  
+  location <- tolower(country)
+  
+} else {
+  
+  location <- "global"
+  
+}
 
 # Set output directory
 
-if (save_outputs == "yes") {
+db_version <- tail(sort(list.files(parent_outputs)), 1)
+db_interim <- list.files(file.path(parent_outputs,db_version))[
+  grepl("interim",list.files(file.path(parent_outputs,db_version)))]
+db_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("database",list.files(file.path(parent_outputs,db_version)))]
+ind_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("indicator",list.files(file.path(parent_outputs,db_version)))]
 
-  outputs_dir <- paste(date,"_indicator_output_files",sep="")
-  outputs <- file.path(outputs_parent, paste(date,"_indicator_output_files",sep=""))
+interim_outputs <- file.path(parent_outputs, db_version, db_interim)
+outputs <- file.path(parent_outputs, db_version, db_outputs)
 
-  if( !dir.exists( outputs ) ) {
+if( (length(ind_outputs)) == 0 ) {
+  
+indicator_outputs <- file.path(parent_outputs, db_version, paste(date,
+                               "_indicator_output_files",sep="") )
 
-    dir.create( outputs, recursive = TRUE ) # create a new directory for today's outputs
+dir.create( indicator_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-  }
 
 } else {
 
-  outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-06-11_output_files\\"
+indicator_outputs <- file.path(parent_outputs, db_version, ind_outputs)
 
 }
 

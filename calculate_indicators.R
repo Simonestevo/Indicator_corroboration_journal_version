@@ -36,7 +36,7 @@ library(mapview)
 
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
-country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "no"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
@@ -173,52 +173,74 @@ return(indicator_map)
 
 # Get ecoregions and their attributes ----
 
-ecoregion_map_all <- st_read(paste(inputs,"official_teow_wwf", sep = "/"))
+ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 
 ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, 
                                                      OBJECTID, ECO_ID, 
                                                      geometry) 
 
-names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","eco_objectid",
-                          "eco_id", "geometry")
+# Pull out only required variables
+
+ecoregion_map <- ecoregion_map_all %>% 
+                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, geometry)
+
+# names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","eco_objectid",
+#                            "geometry")
 
 # library(rgdal)
 # data.shape<- st_read(dsn="N:/Quantitative-Ecology/Simone/extinction_test/inputs/official_teow_wwf",layer="terr_biomes")
 
 # Get ecoregion countries
+if (!("ecoregion_country_data.rds" %in% list.files(outputs))) { 
+  
+  country_map <- st_read(paste(inputs,"countries_WGS84", sep = "/")) %>%
+    rename(country_objectid = OBJECTID)
+  
+  ecoregion_country_sf <-  st_join(ecoregion_map, country_map, 
+                                   join = st_intersects)
+  
+  ecoregion_country_df <- as.data.frame(ecoregion_country_sf) %>%
+    dplyr::select(-geometry) %>%
+    arrange(country_objectid) %>%
+    rename(eco_objectid = OBJECTID)
+  
+  saveRDS(ecoregion_country_df, file = file.path(outputs, 
+                                                 "ecoregion_country_data.rds"))
+  
+} else {
+  
+  ecoregion_country_df <- readRDS(paste(outputs, "ecoregion_country_data.rds", 
+                                        sep = "/"))
+  
+}
 
-ecoregion_country_df <- readRDS(paste(interim_outputs, 
-                                      "ecoregion_country_data.rds", sep = "/"))
+# # Add countries to the ecoregion map
+# 
+# ecoregion_map_og <- ecoregion_map %>%
+#                  merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+#                        by = "ECO_ID") 
 
-ecoregion_country_df <- ecoregion_country_df %>%
-                        rename(ecoregion_code = eco_code,
-                               country_name = CNTRY_NAME) %>%
-                        mutate(ecoregion_code = as.character(ecoregion_code)) %>%
-                        na.omit(.) %>%
-                        distinct(.)
+# Simplify the geometry of the ecoregion map slightly to speed up joins
 
-# Add country to ecoregion map
-#' TODO: Figure out why some ecoregion polygons don't have countries attached
 
-# ecoregion_map <- left_join(ecoregion_map, ecoregion_country_df[c("eco_objectid",
-#                                                          "country_name")],
-#                  by = "eco_objectid")
+# ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
+#                                     dTolerance = 0.1)
+
+
+# If subsetting by country, get the ecoregion IDs you want to work with 
 
 if (!is.na(country)) {
   
-    ecoregion_subset <- ecoregion_country_df %>%
-    filter(country_name == country) %>%
-    unique(.) 
+  ecoregion_subset <- ecoregion_country_df %>%
+    filter(CNTRY_NAME == country) %>%
+    unique(.)
+  
 }
 
 if (!is.na(country)) {
   
-  countries <- st_read(paste(inputs, "countries_WGS84", sep = "/"))
-  
-  country_sf <- countries %>% filter(CNTRY_NAME == country)
-  
-  ecoregion_map <- ecoregion_map %>% 
-    filter(st_intersects(country_sf, ., sparse = FALSE))
+  ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                                   ecoregion_subset$ECO_ID,] 
   
 }
   

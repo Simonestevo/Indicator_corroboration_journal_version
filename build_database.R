@@ -1419,16 +1419,24 @@ bird_redlist_global <- bird_summaries[[2]]
 
 # * Reptiles ----
 
-## Gateway always times out before completion
+## Get list of names to search (search all synonyms)
+# all <- reptile_binomials_all
 
 reptile_binomials_all <- unique(reptile_rangemap_synonyms$binomial)
 
-# all <- reptile_binomials_all
+# Remove names that have extra quotation marks because they stop the function working
+
+reptile_binomials_all <- reptile_binomials_all[-grep("'", reptile_binomials_all)]
+
+# Because the IUCN server is a bit unpredictable, split the list into sections 
+# so we can get the redlist history data in a loop and save progress iteratively
 
 reptile_binomial_list <- split(reptile_binomials_all, 
                                ceiling(seq_along(reptile_binomials_all)/50))
 
 # reptile_binomial_list_all <- reptile_binomial_list
+
+# Create a sub-directory for the outputs so they will be easy to collate later
 
 if( !dir.exists( file.path(interim_outputs, "reptile_redlist_history") ) ) {
   
@@ -1437,9 +1445,10 @@ if( !dir.exists( file.path(interim_outputs, "reptile_redlist_history") ) ) {
   
   reptile_redlist_directory <- file.path(interim_outputs, 
                                          "reptile_redlist_history")
-  
-  
 }
+
+# Loop through the names and get redlist history data, saving the output in
+# sections
 
 out <- list()
 
@@ -1448,10 +1457,10 @@ for (i in seq_along(reptile_binomial_list)) {
   section_list <- reptile_binomial_list[[i]]
   
   section_out <- retry(get_redlist_history(section_list, "reptile"),
-                                           maxErrors = 1000, sleep = 300)
+                                           maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
   df <- do.call(rbind, section_out)
   
-  saveRDS(df, file.path(reptile_redlist_directory, paste("section", i, 
+  saveRDS(df, file.path(reptile_redlist_directory, paste("section", (i + 98), # Remove plus 98
                                                 "reptile_redlist_history.rds", 
                                                 sep = "_")))
   out[[i]] <- df

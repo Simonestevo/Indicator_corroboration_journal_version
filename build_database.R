@@ -466,6 +466,32 @@ get_binomial_list <- function(data) {
   
 }
 
+library(futile.logger)
+library(utils)
+
+retry <- function(expr, isError=function(x) "try-error" %in% class(x), 
+                  maxErrors=5, sleep=0) {
+  attempts = 0
+  retval = try(eval(expr))
+  while (isError(retval)) {
+    attempts = attempts + 1
+    if (attempts >= maxErrors) {
+      msg = sprintf("retry: too many retries [[%s]]", capture.output(str(retval)))
+      flog.fatal(msg)
+      stop(msg)
+    } else {
+      msg = sprintf("retry: error in attempt %i/%i [[%s]]", attempts, maxErrors, 
+                    capture.output(str(retval)))
+      flog.error(msg)
+      warning(msg)
+    }
+    if (sleep > 0) Sys.sleep(sleep)
+    retval = try(eval(expr))
+  }
+  return(retval)
+}
+
+
 # Function to get redlist history, because iucn limit how many calls you can
 # make, so have to break the full list of reptiles up into chunks
 
@@ -478,6 +504,8 @@ get_redlist_history <- function(names, class_name) {
     species_name <- names[i]
     
     species_redlist_history <- rl_history(species_name, parse = TRUE)[[2]] 
+    
+    Sys.sleep(4) # Make loop pause before next, otherwise iucn web access cuts out
     
     if (length(species_redlist_history) == 0) { # if there are no results create dummy dataframe
       
@@ -499,36 +527,13 @@ get_redlist_history <- function(names, class_name) {
     
     redlist_history_list[[i]] <- species_redlist_history
     
-    Sys.sleep(3) # Make loop pause before next, otherwise iucn web access cuts out
-    
   }
+  
+  return(redlist_history_list)
   
 }
 
 
-library(futile.logger)
-library(utils)
-
-retry <- function(expr, isError=function(x) "try-error" %in% class(x), maxErrors=5, sleep=0) {
-  attempts = 0
-  retval = try(eval(expr))
-  while (isError(retval)) {
-    attempts = attempts + 1
-    if (attempts >= maxErrors) {
-      msg = sprintf("retry: too many retries [[%s]]", capture.output(str(retval)))
-      flog.fatal(msg)
-      stop(msg)
-    } else {
-      msg = sprintf("retry: error in attempt %i/%i [[%s]]", attempts, maxErrors, 
-                    capture.output(str(retval)))
-      flog.error(msg)
-      warning(msg)
-    }
-    if (sleep > 0) Sys.sleep(sleep)
-    retval = try(eval(expr))
-  }
-  return(retval)
-}
 
 summarise_species_data <- function(data, number, class_name) {
     
@@ -977,7 +982,7 @@ if ((paste(location,"reptile",
                                                          "rangemap_synonyms.rds", sep = "_")))
 } else {
 
-  reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
+reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
 
 system.time(reptile_rangemap_synonyms <- find_synonyms(reptile_rangemap_binomials))
 
@@ -990,9 +995,8 @@ saveRDS(reptile_rangemap_synonyms, file.path(interim_outputs,
 reptile_ecoregions <- reptile_ecoregions %>%
                       merge(reptile_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
-                              by = "binomial",
-                            all = TRUE) %>%
-                      dplyr::select(accepted_name, tsn, ecoregion_id, 
+                              by = "binomial") %>%
+                      dplyr::select(binomial, tsn, ecoregion_id, 
                                       eco_objectid, source, redlist_status)
 
 # * Birds ----
@@ -1260,7 +1264,8 @@ mammal_ecoregion_redlist <- mammal_ecoregions %>%
                                                            "redlist_assessment_year",
                                                            "redlist_status", 
                                                            "redlist_source")],
-                                  by = "tsn") %>%
+                                  by = "tsn",
+                                  all = TRUE) %>%
                             rename(location_source = source) %>%
                             mutate(class = "Mammalia") %>%
                             merge(ecoregion_country_df[c("ECO_ID", 
@@ -1339,14 +1344,44 @@ saveRDS(bird_redlist_synonyms, file.path(interim_outputs,
 
 # Join the synonyms and tsn to the redlist data
 
-bird_redlist_data <- bird_redlist_data %>%
-                     merge(bird_redlist_synonyms[c("tsn", "binomial", 
-                                                    "accepted_name")],
-                          by = "binomial", all = TRUE) %>%
-                     dplyr::select(accepted_name, tsn, 
-                                  redlist_assessment_year, 
-                                  redlist_status, redlist_status, 
-                                  redlist_source)
+# Because we want to delete any false NAs (where a species actually does have a 
+# redlist status, but because it has several synonyms it shows up more than once
+# sometimes with redlist status, and also without). We want to remove those NA
+# values because they aren't true NAs and will inflate the NA count and send you
+# on a goose chase looking for the redlist data that you actually already have
+
+bird_multi_tsn <- bird_redlist_data %>%
+                  merge(bird_redlist_synonyms[c("tsn", "binomial", 
+                                                  "accepted_name")],
+                        by = "binomial",
+                        all = TRUE) %>%
+                  dplyr::select(binomial, tsn, redlist_assessment_year, 
+                                redlist_status, redlist_source) %>%
+                  distinct(tsn, redlist_assessment_year, redlist_status,  
+                           redlist_source, .keep_all = TRUE) %>%
+                  group_by(tsn) %>%
+                  filter(n() > 1) %>%
+                  ungroup(.) %>%
+                  filter(!is.na(redlist_status)) 
+
+# But if there's only one name for that species and it is listed as NA, then
+# it's truly NA and we want to keep it.  Annoying I can't work out how to 
+# satisfy both conditions in one pipe
+
+bird_single_tsn <- bird_redlist_data %>%
+  merge(bird_redlist_synonyms[c("tsn", "binomial", 
+                                  "accepted_name")],
+        by = "binomial",
+        all = TRUE) %>%
+  dplyr::select(binomial, tsn, redlist_assessment_year, 
+                redlist_status, redlist_source) %>%
+  distinct(tsn, redlist_assessment_year, redlist_status,  
+           redlist_source, .keep_all = TRUE) %>%
+  group_by(tsn) %>%
+  filter(n() == 1) %>%
+  ungroup(.)
+
+bird_redlist_data <- rbind(bird_single_tsn, bird_multi_tsn)
 
 # Join ecoregion and redlist data together
 
@@ -1356,7 +1391,8 @@ bird_ecoregion_redlist <- bird_ecoregions %>%
                                                       "redlist_assessment_year",
                                                       "redlist_status", 
                                                       "redlist_source")],
-                                by = "tsn", all = TRUE) %>%
+                                by = "tsn",
+                                all = TRUE) %>%
                           rename(location_source = source) %>%
                           mutate(class = "Aves") %>%
                           merge(ecoregion_country_df[c("ECO_ID", 
@@ -1385,9 +1421,43 @@ bird_redlist_global <- bird_summaries[[2]]
 
 ## Gateway always times out before completion
 
-# reptile_binomials_all <- unique(reptile_rangemap_synonyms$binomial)
+reptile_binomials_all <- unique(reptile_rangemap_synonyms$binomial)
+
 # all <- reptile_binomials_all
-# reptile_redlist_data <- get_redlist_history(reptile_binomials_all)
+
+reptile_binomial_list <- split(reptile_binomials_all, 
+                               ceiling(seq_along(reptile_binomials_all)/50))
+
+# reptile_binomial_list_all <- reptile_binomial_list
+
+if( !dir.exists( file.path(interim_outputs, "reptile_redlist_history") ) ) {
+  
+  dir.create( file.path(interim_outputs, "reptile_redlist_history"), 
+              recursive = TRUE )
+  
+  reptile_redlist_directory <- file.path(interim_outputs, 
+                                         "reptile_redlist_history")
+  
+  
+}
+
+out <- list()
+
+for (i in seq_along(reptile_binomial_list)) {
+  
+  section_list <- reptile_binomial_list[[i]]
+  
+  section_out <- retry(get_redlist_history(section_list, "reptile"),
+                                           maxErrors = 1000, sleep = 300)
+  df <- do.call(rbind, section_out)
+  
+  saveRDS(df, file.path(reptile_redlist_directory, paste("section", i, 
+                                                "reptile_redlist_history.rds", 
+                                                sep = "_")))
+  out[[i]] <- df
+}
+
+
 
 # Summarise to check for data gaps
 

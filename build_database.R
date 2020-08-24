@@ -929,7 +929,7 @@ saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs,
 amphibian_ecoregions <- amphibian_ecoregions %>%
                         merge(amphibian_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
-                        by = "binomial") %>%
+                        by = "binomial", all = TRUE) %>%
                         dplyr::select(accepted_name, tsn, ecoregion_id, 
                                       eco_objectid, source, redlist_status)
 
@@ -960,7 +960,8 @@ saveRDS(mammal_rangemap_synonyms, file.path(interim_outputs,
 mammal_ecoregions <- mammal_ecoregions %>%
                       merge(mammal_rangemap_synonyms[c("tsn", "binomial", 
                                                           "accepted_name")],
-                            by = "binomial") %>%
+                            by = "binomial",
+                            all = TRUE) %>%
                       dplyr::select(accepted_name, tsn, ecoregion_id, 
                                     eco_objectid, source, redlist_status)
 
@@ -976,7 +977,8 @@ if ((paste(location,"reptile",
                                                    paste(location,"reptile", 
                                                          "rangemap_synonyms.rds", sep = "_")))
 } else {
-reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
+
+  reptile_rangemap_binomials <- get_binomial_list(reptile_ecoregions)
 
 system.time(reptile_rangemap_synonyms <- find_synonyms(reptile_rangemap_binomials))
 
@@ -989,7 +991,8 @@ saveRDS(reptile_rangemap_synonyms, file.path(interim_outputs,
 reptile_ecoregions <- reptile_ecoregions %>%
                       merge(reptile_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
-                              by = "binomial") %>%
+                              by = "binomial",
+                            all = TRUE) %>%
                       dplyr::select(accepted_name, tsn, ecoregion_id, 
                                       eco_objectid, source, redlist_status)
 
@@ -1046,22 +1049,33 @@ amphibian_redlist_data <- read_csv(file.path(inputs,
 # Format and melt
 
 amphibian_redlist_data <- amphibian_redlist_data %>% 
-  mutate(class = "amphibia") %>%
-  mutate(redlist_source = "Henriques etal 2020") %>% 
-  dplyr::mutate(binomial = paste(Genus, Species, 
-                                 sep = " ")) %>%
-  dplyr::select(-c(Genus, Species)) %>%
-  set_names(c("2004", "2008", "class", "redlist_source", 
-              "binomial")) %>%
-  dplyr::select("binomial","class","2004", "2008", 
-                "redlist_source") %>%
-  melt(.,id.vars = c("binomial", "class", 
-                     "redlist_source"), 
-       value.name = "redlist_status",
-       variable.name = "redlist_assessment_year")
+                          mutate(class = "amphibia") %>%
+                          mutate(redlist_source = "Henriques etal 2020") %>% 
+                          dplyr::mutate(binomial = paste(Genus, Species, 
+                                                         sep = " ")) %>%
+                          dplyr::select(-c(Genus, Species)) %>%
+                          set_names(c("2004", "2008", "class", "redlist_source", 
+                                      "binomial")) %>%
+                          dplyr::select("binomial","class","2004", "2008", 
+                                        "redlist_source") %>%
+                          melt(.,id.vars = c("binomial", "class", 
+                                             "redlist_source"), 
+                               value.name = "redlist_status",
+                               variable.name = "redlist_assessment_year")
 
 # Get the synonyms for this data source
 
+if ((paste(location, "amphibian", "redlist_synonyms.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+
+amphibian_redlist_synonyms <- readRDS(file.path(interim_outputs,
+                                        paste(location, "amphibian", "redlist_synonyms.rds", 
+                                        sep = "_")))
+
+amphibian_redlist_binomials <- get_binomial_list(amphibian_redlist_data)
+  
+} else {
+  
 amphibian_redlist_binomials <- get_binomial_list(amphibian_redlist_data)
 
 system.time(amphibian_redlist_synonyms <- find_synonyms(amphibian_redlist_binomials))
@@ -1070,16 +1084,18 @@ saveRDS(amphibian_redlist_synonyms, file.path(interim_outputs,
                                               paste(location,"amphibian", 
                                                     "redlist_synonyms.rds", 
                                                     sep = "_")))
+}
 # Join the synonyms and tsn to the redlist data
 
 amphibian_redlist_data <- amphibian_redlist_data %>%
-  merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
-                                     "accepted_name")],
-        by = "binomial") %>%
-  dplyr::select(accepted_name, tsn, 
-                redlist_assessment_year, 
-                redlist_status, redlist_status, 
-                redlist_source)
+                          merge(amphibian_redlist_synonyms[c("tsn", "binomial", 
+                                                             "accepted_name")],
+                                by = "binomial",
+                                all = TRUE) %>%
+                          dplyr::select(accepted_name, tsn, 
+                                        redlist_assessment_year, 
+                                        redlist_status, redlist_status, 
+                                        redlist_source)
 
 # Join ecoregion and redlist data together
 
@@ -1143,6 +1159,18 @@ mammal_redlist_data <-  mammal_redlist_data %>%
 
 # Get the synonyms for this data source
 
+if ((paste(location, "mammal", "redlist_synonyms.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  mammal_redlist_synonyms <- readRDS(file.path(interim_outputs,
+                                                  paste(location, "mammal", 
+                                                        "redlist_synonyms.rds", 
+                                                        sep = "_")))
+  
+  mammal_redlist_binomials <- get_binomial_list(mammal_redlist_data)
+  
+} else {
+
 mammal_redlist_binomials <- get_binomial_list(mammal_redlist_data)
 
 system.time(mammal_redlist_synonyms <- find_synonyms(mammal_redlist_binomials))
@@ -1150,18 +1178,19 @@ system.time(mammal_redlist_synonyms <- find_synonyms(mammal_redlist_binomials))
 saveRDS(mammal_redlist_synonyms, file.path(interim_outputs, 
                                               paste(location,"mammal", 
                                                     "redlist_synonyms.rds", 
-                                                    sep = "_")))
+                                                sep = "_")))
+}
 
 # Join the synonyms and tsn to the redlist data
 
 mammal_redlist_data <- mammal_redlist_data %>%
-  merge(mammal_redlist_synonyms[c("tsn", "binomial", 
-                                     "accepted_name")],
-        by = "binomial") %>%
-  dplyr::select(accepted_name, tsn, 
-                redlist_assessment_year, 
-                redlist_status, redlist_status, 
-                redlist_source)
+                       merge(mammal_redlist_synonyms[c("tsn", "binomial", 
+                                                           "accepted_name")],
+                              by = "binomial", all = TRUE) %>%
+                       dplyr::select(accepted_name, tsn, 
+                                      redlist_assessment_year, 
+                                      redlist_status, redlist_status, 
+                                      redlist_source)
 
 # Join ecoregion and redlist data together
 
@@ -1226,6 +1255,18 @@ bird_redlist_data <-  bird_redlist_data %>%
 
 # Get the synonyms for this data source
 
+if ((paste(location, "bird", "redlist_synonyms.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  bird_redlist_synonyms <- readRDS(file.path(interim_outputs,
+                                               paste(location, "bird", 
+                                                     "redlist_synonyms.rds", 
+                                                     sep = "_")))
+  
+  bird_redlist_binomials <- get_binomial_list(bird_redlist_data)
+  
+} else {
+
 bird_redlist_binomials <- get_binomial_list(bird_redlist_data)
 
 system.time(bird_redlist_synonyms <- find_synonyms(bird_redlist_binomials))
@@ -1234,6 +1275,7 @@ saveRDS(bird_redlist_synonyms, file.path(interim_outputs,
                                            paste(location,"bird", 
                                                  "redlist_synonyms.rds", 
                                                  sep = "_")))
+}
 
 # Join the synonyms and tsn to the redlist data
 
@@ -1256,7 +1298,7 @@ bird_ecoregion_redlist <- bird_ecoregions %>%
                                                       "redlist_source")],
                                 by = "tsn", all = TRUE) %>%
                           rename(location_source = source) %>%
-                          mutate(class = "Amphibia") %>%
+                          mutate(class = "Aves") %>%
                           merge(ecoregion_country_df[c("ECO_ID", 
                                                        "CNTRY_NAME")],
                                 by.x = "ecoregion_id",

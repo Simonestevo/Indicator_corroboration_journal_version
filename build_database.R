@@ -931,6 +931,8 @@ saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs,
 
 # Join the synonyms and tsn to the rangemap data
 
+
+
 amphibian_ecoregions <- amphibian_ecoregions %>%
                         merge(amphibian_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
@@ -1064,7 +1066,8 @@ amphibian_redlist_data <- amphibian_redlist_data %>%
                           melt(.,id.vars = c("binomial", "class", 
                                              "redlist_source"), 
                                value.name = "redlist_status",
-                               variable.name = "redlist_assessment_year")
+                               variable.name = "redlist_assessment_year") 
+                          
 
 # Get the synonyms for this data source
 
@@ -1189,7 +1192,9 @@ mammal_redlist_data <-  mammal_redlist_data %>%
                         melt(.,id.vars = c("binomial", "class", 
                                            "redlist_source"), 
                              value.name = "redlist_status",
-                             variable.name = "redlist_assessment_year")
+                             variable.name = "redlist_assessment_year") %>%
+                        mutate(redlist_status = ifelse(redlist_status == "CR(PE)",
+                                                       "CR", redlist_status))
 
 # Get the synonyms for this data source
 
@@ -1420,7 +1425,7 @@ bird_redlist_global <- bird_summaries[[2]]
 if ((paste(location, "reptile", "ecoregion_redlist.rds", 
            sep = "_") %in% list.files(interim_outputs))) {
   
-  reptile_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
+reptile_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
                                               paste(location, 
                                                     "reptile", "ecoregion_redlist.rds", 
                                                     sep = "_" )))
@@ -1480,11 +1485,40 @@ for (i in seq_along(reptile_binomial_list)) {
 
 reptile_redlist_data <- do.call(rbind, out)
 
-reptile_redlist_data <- reptile_redlist_data %>%
-                        rename(redlist_assessment_year = year,
-                              redlist_status = code) %>%
-                        mutate(redlist_source = "IUCN API") 
-     
+status_list <- reptile_redlist_data %>%
+               dplyr::select(code, category) %>%
+               distinct(.)
+
+#' TODO: Important - check how 'equivalent' the older Red List categories 
+#' are with the new ones. Might have to turf the older time points
+
+reptile_redlist_data<- reptile_redlist_data %>%
+                        rename(redlist_assessment_year = year) %>%
+                        mutate(redlist_source = "IUCN API") %>%
+                        mutate(redlist_status = ifelse(category == "Data Deficient"|
+                                                       category == "Indeterminate"|
+                                                       category == "Insufficiently known"|
+                                                       category == "Rare",
+                                                       "DD",
+                                                ifelse(category == "Least Concern"|
+                                                       category == "Lower risk/least concern",
+                                                       "LC",
+                                                ifelse(category == "Near Threatened"|
+                                                       category == "Lower Risk/near threatened",
+                                                       "NT",
+                                                ifelse(category == "Vulnerable"|
+                                                       category == "Lower Risk/near threatened",
+                                                       "VU",
+                                                ifelse(category == "Endangered",
+                                                       "EN",
+                                                ifelse(category == "Critically endangered",
+                                                       "CR",
+                                                ifelse(category == "Extinct in the wild",
+                                                       "EW",
+                                                ifelse(category == "Extinct",
+                                                              "EX", NA ))))))))) %>%
+                          dplyr::select(-code,-category)
+    
 # We don't need to get the synonyms for this data source because it's the same
 # as the rangemap data source
 

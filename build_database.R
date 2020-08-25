@@ -539,7 +539,7 @@ summarise_species_data <- function(data, number, class_name) {
     
     out1 <- data %>%
       group_by(ecoregion_id, redlist_status) %>%
-      summarise(spp_number_w_status = n())
+      summarise(spp_number_w_status = n_distinct())
     
     out2 <- data %>%
       group_by(ecoregion_id) %>%
@@ -1415,9 +1415,16 @@ bird_summaries <- summarise_species_data(bird_ecoregion_redlist, "1", "bird")
 bird_redlist_by_ecoregion <- bird_summaries[[1]]
 bird_redlist_global <- bird_summaries[[2]]
 
-
-
 # * Reptiles ----
+
+if ((paste(location, "reptile", "ecoregion_redlist.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  reptile_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
+                                              paste(location, 
+                                                    "reptile", "ecoregion_redlist.rds", 
+                                                    sep = "_" )))
+} else {
 
 ## Get list of names to search (search all synonyms)
 # all <- reptile_binomials_all
@@ -1466,13 +1473,106 @@ for (i in seq_along(reptile_binomial_list)) {
   out[[i]] <- df
 }
 
+# Convert list of redlist data back into a nice dataframe 
 
+# all_reptile_out <- list.files(reptile_redlist_directory)
+# out <- lapply(file.path(reptile_redlist_directory, all_reptile_out), readRDS)
+
+reptile_redlist_data <- do.call(rbind, out)
+
+reptile_redlist_data <- reptile_redlist_data %>%
+                        rename(redlist_assessment_year = year,
+                              redlist_status = code) %>%
+                        mutate(redlist_source = "IUCN API") 
+     
+# We don't need to get the synonyms for this data source because it's the same
+# as the rangemap data source
+
+reptile_redlist_synonyms <- reptile_rangemap_synonyms
+
+# Join the synonyms and tsn to the redlist data
+
+# Because we want to delete any false NAs (where a species actually does have a 
+# redlist status, but because it has several synonyms it shows up more than once
+# sometimes with redlist status, and also without). We want to remove those NA
+# values because they aren't true NAs and will inflate the NA count and send you
+# on a goose chase looking for the redlist data that you actually already have
+
+reptile_multi_tsn <- reptile_redlist_data %>%
+  merge(reptile_redlist_synonyms[c("tsn", "binomial", 
+                                "accepted_name")],
+        by = "binomial",
+        all = TRUE) %>%
+  dplyr::select(binomial, tsn, redlist_assessment_year, 
+                redlist_status, redlist_source) %>%
+  distinct(tsn, redlist_assessment_year, redlist_status,  
+           redlist_source, .keep_all = TRUE) %>%
+  group_by(tsn) %>%
+  filter(n() > 1) %>%
+  ungroup(.) %>%
+  filter(!is.na(redlist_status)) 
+
+# But if there's only one name for that species and it is listed as NA, then
+# it's truly NA and we want to keep it.  Annoying I can't work out how to 
+# satisfy both conditions in one pipe
+
+reptile_single_tsn <- reptile_redlist_data %>%
+  merge(reptile_redlist_synonyms[c("tsn", "binomial", 
+                                "accepted_name")],
+        by = "binomial",
+        all = TRUE) %>%
+  dplyr::select(binomial, tsn, redlist_assessment_year, 
+                redlist_status, redlist_source) %>%
+  distinct(tsn, redlist_assessment_year, redlist_status,  
+           redlist_source, .keep_all = TRUE) %>%
+  group_by(tsn) %>%
+  filter(n() == 1) %>%
+  ungroup(.)
+
+reptile_redlist_data <- rbind(reptile_single_tsn, reptile_multi_tsn)
+
+# Join ecoregion and redlist data together
+
+reptile_ecoregion_redlist <- reptile_ecoregions %>%
+  select(-redlist_status) %>%
+  merge(reptile_redlist_data[c("tsn", 
+                            "redlist_assessment_year",
+                            "redlist_status", 
+                            "redlist_source")],
+        by = "tsn",
+        all = TRUE) %>%
+  rename(location_source = source) %>%
+  mutate(class = "Reptilia") %>%
+  merge(ecoregion_country_df[c("ECO_ID", 
+                               "CNTRY_NAME")],
+        by.x = "ecoregion_id",
+        by.y = "ECO_ID") %>%
+  filter(ecoregion_id != 0)
+
+saveRDS(reptile_ecoregion_redlist, file.path(interim_outputs, 
+                                          paste(location,"reptile", 
+                                                "ecoregion_redlist.rds", 
+                                                sep = "_")))
+
+
+}
+
+# Combine to create species data
+
+species_data <- rbind(amphibian_ecoregion_redlist,
+                      mammal_ecoregion_redlist,
+                      bird_ecoregion_redlist,
+                      reptile_ecoregion_redlist)
+
+saveRDS(species_data, file.path(interim_outputs, paste(db_version, 
+                                                       "species_data_v1.rds",
+                                                       sep = "_")))
 
 # Summarise to check for data gaps
 
-# reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1")
-# reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
-# reptile_redlist_global <- reptile_summaries[[2]]
+reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1", "reptile")
+reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
+reptile_redlist_global <- reptile_summaries[[2]]
 
 
 # Check data for gaps ----

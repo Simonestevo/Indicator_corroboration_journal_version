@@ -539,7 +539,7 @@ summarise_species_data <- function(data, number, class_name) {
     
     out1 <- data %>%
       group_by(ecoregion_id, redlist_status) %>%
-      summarise(spp_number_w_status = n())
+      summarise(spp_number_w_status = n_distinct())
     
     out2 <- data %>%
       group_by(ecoregion_id) %>%
@@ -1557,17 +1557,22 @@ saveRDS(reptile_ecoregion_redlist, file.path(interim_outputs,
 
 }
 
+# Combine to create species data
+
+species_data <- rbind(amphibian_ecoregion_redlist,
+                      mammal_ecoregion_redlist,
+                      bird_ecoregion_redlist,
+                      reptile_ecoregion_redlist)
+
+saveRDS(species_data, file.path(interim_outputs, paste(db_version, 
+                                                       "species_data_v1.rds",
+                                                       sep = "_")))
+
 # Summarise to check for data gaps
 
-bird_summaries <- summarise_species_data(bird_ecoregion_redlist, "1", "bird")
-bird_redlist_by_ecoregion <- bird_summaries[[1]]
-bird_redlist_global <- bird_summaries[[2]]
-
-# Summarise to check for data gaps
-
-# reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1")
-# reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
-# reptile_redlist_global <- reptile_summaries[[2]]
+reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1", "reptile")
+reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
+reptile_redlist_global <- reptile_summaries[[2]]
 
 
 # Check data for gaps ----

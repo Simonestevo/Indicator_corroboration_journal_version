@@ -1321,7 +1321,11 @@ bird_redlist_data <-  bird_redlist_data %>%
                       melt(.,id.vars = c("binomial", "class", 
                                          "redlist_source"), 
                            value.name = "redlist_status",
-                           variable.name = "redlist_assessment_year")
+                           variable.name = "redlist_assessment_year") %>%
+                      mutate(redlist_status = ifelse(redlist_status == "CR(PE)"|
+                                                     redlist_status == "CR (PE)"|
+                                                     redlist_status == "CR(PEW)",
+                                 "CR", redlist_status))
 
 # Get the synonyms for this data source
 

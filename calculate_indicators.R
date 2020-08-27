@@ -92,7 +92,9 @@ scale_to_1 <- function(vector){
 
 # Funciton to calculate the Red List Index
 
-calculate_red_list_index <- function(data, timeframe){
+test_data <- class_time_list[[1]][[1]][[1]]
+
+calculate_red_list_index <- function(data){
   
   require(tidyverse)
   
@@ -131,7 +133,8 @@ calculate_red_list_index <- function(data, timeframe){
   # Sum category weights for each group, calculate number of species per group
   summed.weights <- summarise(grouped.data, 
                               total.weight = sum(RL_weight, na.rm = TRUE), # calc sum of all weights
-                              total.count = n()) # calc number of species
+                              total.count = n(),
+                              .groups = "drop_last") # calc number of species
   
   # Calculate RLI scores for each group, rounded to 3 decimal places
   
@@ -175,9 +178,6 @@ return(indicator_map)
 
 ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 
-ecoregion_map <- ecoregion_map_all %>% dplyr::select(eco_code, ECO_NAME, 
-                                                     OBJECTID, ECO_ID, 
-                                                     geometry) 
 
 # Pull out only required variables
 
@@ -244,11 +244,14 @@ if (!is.na(country)) {
   
 }
   
-# Read in species data
+# Load species data ----
 
 
 species_data <- readRDS(file.path(interim_outputs, 
                                   "global_amphibian_ecoregion_redlist.rds"))
+
+# species_data <- readRDS(file.path(interim_outputs, 
+#                                   "version_3_species_data_v1.rds"))
 
 # Remove cases without redlist status and/or assessment year
 #' TODO: this might be better done in the build_database script? So there's no
@@ -349,8 +352,6 @@ for (i in seq_along(class_list)) {
   
   # Split by different assessment timepoints
   
-  i  + 1
-  
   class_timestep <- split(class_list[[i]], 
                           class_list[[i]]$redlist_assessment_year)
   
@@ -407,7 +408,12 @@ for (i in seq_along(class_time_list)) {
   
   class_all_timepoints_df <- do.call(rbind, class_all_timepoints)
   
+  timepoints <- unique(class_all_timepoints_df$redlist_assessment_year)
+  taxa <- class_all_timepoints_df$class[1]
+  
   classes_rli[[i]] <- class_all_timepoints_df # Put the list of time points into a class
+  
+  print(paste("Finished processing timepoints", timepoints, "for class", taxa))
   
 }
 
@@ -435,7 +441,6 @@ rli_values <- rli_values %>%
                   #                              pmin(pmax(RLI,
                   #                       quantile(RLI, .05, na.rm = TRUE))))) %>%
                   # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
-
 
 # Human Footprint Index 2017 ----
 
@@ -513,6 +518,8 @@ lpi_data <- read.csv(file.path(inputs,
 # reading in prepped bii data for development, but put the below chunk back on 
 # when doing the real deal analysis
 
+## WARNING - SLOW CODE - bii richness time elapsed 50753.13 (~ 14 hrs)
+
 if (!(paste(location, "richness_bii_2005_ecoregion_map.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
 
@@ -536,12 +543,12 @@ bii_rich_ecoregion_map <- readRDS(file.path(outputs,
     
   }
   
-bii_rich_ecoregion_map <- ecoregion_map %>%
+system.time(bii_rich_ecoregion_map <- ecoregion_map %>%
                           mutate(raw_indicator_value = 
                                  raster::extract(bii_2005_rich_data,
                                                   ecoregion_map,
                                                   fun = mean, 
-                                                 na.rm = TRUE))
+                                                 na.rm = TRUE)))
 
 saveRDS(bii_rich_ecoregion_map, file.path(outputs, paste(location, 
                                           "richness_bii_2005_ecoregion_map.rds",

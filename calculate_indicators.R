@@ -36,7 +36,7 @@ library(mapview)
 
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
-country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
 save_outputs <- "no"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
@@ -91,8 +91,6 @@ scale_to_1 <- function(vector){
 }
 
 # Funciton to calculate the Red List Index
-
-test_data <- class_time_list[[1]][[1]][[1]]
 
 calculate_red_list_index <- function(data){
   
@@ -173,7 +171,6 @@ return(indicator_map)
 
 }
 
-
 # Get ecoregions and their attributes ----
 
 ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
@@ -183,6 +180,10 @@ ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, geometry)
+
+# Check geometry and fix if needed
+
+ecoregion_map <- st_make_valid(ecoregion_map)
 
 # names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","eco_objectid",
 #                            "geometry")
@@ -442,6 +443,91 @@ rli_values <- rli_values %>%
                   #                       quantile(RLI, .05, na.rm = TRUE))))) %>%
                   # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
 
+# Human Fooprint Index 1993 ----
+
+if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+  hfp_1993_ecoregion_map <- readRDS(file.path(indicator_outputs, 
+                                              paste(location, 
+                                                    "hfp_1993_ecoregion_map.rds",
+                                                    sep = "_"))) 
+} else {
+  
+
+  hfp_1993_data <- raster(file.path(inputs,
+                                    "human_footprint_index\\HFP1993.tif"))
+  
+  #Reproject some how
+    
+
+  # system.time(hfp_1993_ecoregion_map <- ecoregion_map %>%
+  #               mutate(raw_indicator_value = 
+  #                        raster::extract(hfp_1993,
+  #                                        ecoregion_map,
+  #                                        fun = mean, 
+  #                                        na.rm = TRUE)))
+  # 
+  # saveRDS(hfp_1993_ecoregion_map, file.path(indicator_outputs, paste(location, 
+  #                                           "hfp_1993_ecoregion_map.rds",
+  #                                            sep = "_")))
+}
+
+# Create indicator values dataframe
+
+hfp_1993_values <- hfp_1993_ecoregion_map %>%
+                   st_set_geometry(NULL) %>%
+                   mutate(indicator = "human footprint index") %>%
+                   mutate(year = "1993") %>%
+                   rename(ecoregion_id = ECO_ID) %>%
+                   select(names(rli_values)) %>%
+                   drop_na()
+
+# Human Fooprint Index 2009 ----
+
+if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+  hfp_2009_ecoregion_map <- readRDS(file.path(indicator_outputs, 
+                                              paste(location, 
+                                                    "hfp_2009_ecoregion_map.rds",
+                                                    sep = "_"))) 
+} else {
+  
+  
+  hfp_2009_data <- raster(file.path(inputs,
+                                    "human_footprint_index\\HFP2009.tif"))
+  
+  #Reproject some how
+  
+  
+  # system.time(hfp_2009_ecoregion_map <- ecoregion_map %>%
+  #               mutate(raw_indicator_value = 
+  #                        raster::extract(hfp_2009,
+  #                                        ecoregion_map,
+  #                                        fun = mean, 
+  #                                        na.rm = TRUE)))
+  # 
+  # saveRDS(hfp_2009_ecoregion_map, file.path(indicator_outputs, paste(location, 
+  #                                           "hfp_2009_ecoregion_map.rds",
+  #                                            sep = "_")))
+}
+
+# Create indicator values dataframe
+
+hfp_2009_values <- hfp_2009_ecoregion_map %>%
+  st_set_geometry(NULL) %>%
+  mutate(indicator = "human footprint index") %>%
+  mutate(year = "2009") %>%
+  rename(ecoregion_id = ECO_ID) %>%
+  select(names(rli_values)) %>%
+  drop_na()
+
+
 # Human Footprint Index 2017 ----
 
 # Read in the Human Footprint Index data 
@@ -510,7 +596,32 @@ bhi_plants_2015_values <- bhi_plants_2015_values %>%
 lpi_data <- read.csv(file.path(inputs, 
                                "living_planet_index\\LPR2018data_public.csv"))
 
-                          
+## Assign species to ecoregions
+
+# Get coordinates
+
+lpi_coordinates <- lpi_data %>%
+                   select(Binomial, Latitude, Longitude) %>%
+                   distinct(.) %>%
+                   filter(complete.cases(Latitude, Longitude))
+
+# Convert into simple features
+
+lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude', 
+                                                'Latitude'), 
+                       crs = st_crs(ecoregion_map))
+
+lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
+lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)   
+
+lpi_inputs <- lpi_data %>%
+              merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")], 
+                    by = "Binomial")
+
+lpi_input_summary <- lpi_inputs %>%
+                     group_by(ECO_ID) %>%
+                     summarise(number_of_records = n_distinct(Binomial),
+                               .groups = "drop_last")
 
 # Richness Biodiversity Intactness Index 2005 ----
 
@@ -525,7 +636,7 @@ if (!(paste(location, "richness_bii_2005_ecoregion_map.rds", sep = "_") %in%
 
 #' TODO: Work out why this is producing so many NaNs
 
-bii_rich_ecoregion_map <- readRDS(file.path(outputs, 
+bii_rich_ecoregion_map <- readRDS(file.path(indicator_outputs, 
                                             paste(location, 
                                             "richness_bii_2005_ecoregion_map.rds",
                                              sep = "_"))) 
@@ -550,7 +661,7 @@ system.time(bii_rich_ecoregion_map <- ecoregion_map %>%
                                                   fun = mean, 
                                                  na.rm = TRUE)))
 
-saveRDS(bii_rich_ecoregion_map, file.path(outputs, paste(location, 
+saveRDS(bii_rich_ecoregion_map, file.path(indicator_outputs, paste(location, 
                                           "richness_bii_2005_ecoregion_map.rds",
                                           sep = "_")))
 }
@@ -561,9 +672,9 @@ saveRDS(bii_rich_ecoregion_map, file.path(outputs, paste(location,
 
 bii_richness_values <- bii_rich_ecoregion_map %>%
                       st_set_geometry(NULL) %>%
-                      mutate(indicator = "biodiversity intactness index") %>%
+                      mutate(indicator = "richness biodiversity intactness index") %>%
                       mutate(year = "2005") %>%
-                      #rename(ecoregion_code = eco_code) %>%
+                      rename(ecoregion_id = ECO_ID) %>%
                       select(names(rli_values)) %>%
                       drop_na()
 
@@ -578,7 +689,7 @@ if (!(paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in%
   
   #' TODO: Work out why this is producing so many NaNs
   
-  bii_abundance_ecoregion_map <- readRDS(file.path(outputs, 
+  bii_abundance_ecoregion_map <- readRDS(file.path(indicator_outputs, 
                                               paste(location, 
                                                     "abundance_bii_2005_ecoregion_map.rds",
                                                     sep = "_"))) 
@@ -587,23 +698,23 @@ if (!(paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in%
   if (!is.na(country)) {
     
   bii_2005_abundance_data <- raster(file.path(inputs,
-                                           "biodiversity_intactness_index\\bii_rich_2005_aus.tif"))
+                                           "biodiversity_intactness_index\\bii_abund_2005_aus.tif"))
     
   } else {
     
   bii_2005_abundance_data <- raster(file.path(inputs,
-                                    "biodiversity_intactness_index\\final-rich-abund-isl-main.tif"))
+                                    "biodiversity_intactness_index\\final-abund-bii-isl-main.tif"))
     
   }
   
   bii_abundance_ecoregion_map <- ecoregion_map %>%
     mutate(raw_indicator_value = 
            raster::extract(bii_2005_abundance_data,
-                             ecoregion_map,
-                             fun = mean, 
-                             na.rm = TRUE))
+                           ecoregion_map,
+                           fun = mean, 
+                           na.rm = TRUE))
   
-  saveRDS(bii_abundance_ecoregion_map, file.path(outputs, paste(location, 
+  saveRDS(bii_abundance_ecoregion_map, file.path(indicator_outputs, paste(location, 
                                        "abundance_bii_2005_ecoregion_map.rds",
                                         sep = "_")))
 }

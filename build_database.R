@@ -589,6 +589,8 @@ ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 ecoregion_map <- ecoregion_map_all %>% 
                  dplyr::select(ECO_ID, ECO_NAME, geometry, OBJECTID)
 
+ecoregion_map <- st_make_valid(ecoregion_map)
+
 #rm(ecoregion_map_all)
 
 if (!("ecoregion_country_data.rds" %in% list.files(outputs))) { 
@@ -931,8 +933,6 @@ saveRDS(amphibian_rangemap_synonyms, file.path(interim_outputs,
 
 # Join the synonyms and tsn to the rangemap data
 
-
-
 amphibian_ecoregions <- amphibian_ecoregions %>%
                         merge(amphibian_rangemap_synonyms[c("tsn", "binomial", 
                                                             "accepted_name")],
@@ -1156,6 +1156,151 @@ saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs,
                                                      "ecoregion_redlist.rds", 
                                                      sep = "_")))
 }
+
+
+# Check what species we still don't have red list data for
+
+# amphibians_missing_data <- amphibian_rangemap_synonyms[!
+#                            amphibian_rangemap_synonyms$tsn %in%
+#                            amphibian_redlist_synonyms$tsn,]
+# 
+# amphibian_binomials <- unique(get_binomial_list(amphibians_missing_data))
+# 
+# amphibian_binomials <- amphibian_binomials[-grep("'", 
+#                                amphibian_binomials)]
+
+# Create a sub-directory for the outputs so they will be easy to collate later
+
+# if( !dir.exists( file.path(interim_outputs, "amphibian_redlist_history") ) ) {
+#   
+#   dir.create( file.path(interim_outputs, "amphibian_redlist_history"), 
+#               recursive = TRUE )
+#   
+#   amphibian_redlist_directory <- file.path(interim_outputs, 
+#                                          "amphibian_redlist_history")
+# }
+# 
+# # Loop through the names and get redlist history data, saving the output in
+# # sections
+# 
+# amphibian_binomials <- unique(c(amphibian_rangemap_binomials, 
+#                                 amphibian_redlist_binomials))
+# 
+# amphibian_binomial_list <- split(amphibian_binomials, 
+#                                  ceiling(seq_along(amphibian_binomials)/50))
+# 
+# out <- list()
+# 
+# for (i in seq_along(amphibian_binomial_list)) {
+#   
+#   section_list <- amphibian_binomial_list[[i]]
+#   
+#   section_out <- retry(get_redlist_history(section_list, "amphibian"),
+#                        maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+#   
+#   df <- do.call(rbind, section_out)
+#   
+#   saveRDS(df, file.path(amphibian_redlist_directory, paste("section", i, 
+#                                                          "amphibian_redlist_history.rds", 
+#                                                          sep = "_")))
+#   out[[i]] <- df
+# 
+# }
+# 
+# amphibian_redlist_history <- do.call(rbind, out)
+# 
+# saveRDS(amphibian_redlist_history, file.path(interim_outputs, paste(location,
+#   "amphibian_redlist_history.rds", sep = "_")))
+# 
+# # Compare
+# frog <- 125270 
+# amphibian_redlist_data %>% filter(tsn == frog)
+# amphibian_redlist_history %>% filter(tsn == frog)
+# all_amphibian_synonyms %>% filter(tsn == frog)
+# 
+# amphibian_binomials[grep("robinsoni", amphibian_binomials)]
+# 
+# # Because we want to delete any false NAs (where a species actually does have a 
+# # redlist status, but because it has several synonyms it shows up more than once
+# # sometimes with redlist status, and also without). We want to remove those NA
+# # values because they aren't true NAs and will inflate the NA count and send you
+# # on a goose chase looking for the redlist data that you actually already have
+# 
+# all_amphibian_synonyms <- rbind(amphibian_rangemap_synonyms, amphibian_redlist_synonyms)
+# 
+# all_amphibian_synonyms <- distinct(all_amphibian_synonyms)
+# 
+# amphibians_multi_tsn_iucn <- amphibian_redlist_history %>%
+#                              merge(all_amphibian_synonyms[c("tsn", "binomial", 
+#                                                                  "accepted_name")],
+#                                     by = "binomial",
+#                                     all = TRUE) %>%
+#                              rename(redlist_assessment_year = year,
+#                                     redlist_status = code) %>%
+#                              mutate(redlist_source = "IUCN_API") %>%
+#                              dplyr::select(binomial, tsn, redlist_assessment_year, 
+#                                             redlist_status, redlist_source) %>%
+#                              distinct(tsn, redlist_assessment_year, redlist_status,  
+#                                        redlist_source, .keep_all = TRUE) %>%
+#                              group_by(tsn) %>%
+#                              filter(n() > 1) %>%
+#                              ungroup(.) %>%
+#                              filter(!is.na(redlist_status)) 
+# 
+# # But if there's only one name for that species and it is listed as NA, then
+# # it's truly NA and we want to keep it.  Annoying I can't work out how to 
+# # satisfy both conditions in one pipe
+# 
+# amphibians_single_tsn_iucn <- amphibian_redlist_history %>%
+#                               merge(all_amphibian_synonyms[c("tsn", "binomial", 
+#                                                                  "accepted_name")],
+#                                     by = "binomial",
+#                                     all = TRUE) %>%
+#                               rename(redlist_assessment_year = year,
+#                                      redlist_status = code) %>%
+#                               mutate(redlist_source = "IUCN_API") %>%
+#                               dplyr::select(binomial, tsn, redlist_assessment_year, 
+#                                             redlist_status, redlist_source) %>%
+#                               distinct(tsn, redlist_assessment_year, redlist_status,  
+#                                        redlist_source, .keep_all = TRUE) %>%
+#                               group_by(tsn) %>%
+#                               filter(n() == 1) %>%
+#                               ungroup(.)
+# 
+# amphibian_redlist_data_iucn <- rbind(amphibians_single_tsn_iucn, amphibians_multi_tsn_iucn)
+# 
+# 
+# amphibian_ecoregion_redlist_iucn <- amphibian_ecoregions %>%
+#   select(-redlist_status) %>%
+#   merge(amphibian_redlist_data_iucn[c("tsn", 
+#                                  "redlist_assessment_year",
+#                                  "redlist_status", 
+#                                  "redlist_source")],
+#         by = "tsn",
+#         all = TRUE) %>%
+#   rename(location_source = source) %>%
+#   mutate(class = "Amphibia") %>%
+#   merge(ecoregion_country_df[c("ECO_ID", 
+#                                "CNTRY_NAME")],
+#         by.x = "ecoregion_id",
+#         by.y = "ECO_ID") %>%
+#   filter(ecoregion_id != 0)
+# 
+# 
+# saveRDS(amphibian_ecoregion_redlist_iucn, file.path(interim_outputs, 
+#                                                paste(location,"amphibian", 
+#                                                      "ecoregion_redlist_iucn.rds", 
+#                                                      sep = "_")))
+# 
+# # Compare
+# frog <- 8313 
+# amphibian_redlist_data %>% filter(tsn == frog)
+# amphibian_redlist_data_iucn %>% filter(tsn == frog)
+# all_amphibian_synonyms %>% filter(tsn == frog)
+# 
+# output <- jsonlite::fromJSON(rl_search_("Amphiuma tridactylum"))
+
+## UP TO HERE ....
 
 # Summarise to check for data gaps
 
@@ -1595,22 +1740,181 @@ saveRDS(reptile_ecoregion_redlist, file.path(interim_outputs,
 
 }
 
-# Combine to create species data
-
-species_data <- rbind(amphibian_ecoregion_redlist,
-                      mammal_ecoregion_redlist,
-                      bird_ecoregion_redlist,
-                      reptile_ecoregion_redlist)
-
-saveRDS(species_data, file.path(interim_outputs, paste(db_version, 
-                                                       "species_data_v1.rds",
-                                                       sep = "_")))
 
 # Summarise to check for data gaps
 
 reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1", "reptile")
 reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
 reptile_redlist_global <- reptile_summaries[[2]]
+
+# * Extinct species ----
+
+# Get extinct species data from IUCN website ----
+
+#' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
+#'
+
+if ((paste(location, "extinction", "ecoregion_redlist.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+  extinction_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
+                                                   paste(location, 
+                                                         "extinction", 
+                                                         "ecoregion_redlist.rds", 
+                                                         sep = "_" )))
+} else {
+  
+  iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
+  iucn_scraped_ew_species <- rl_sp_category("EW", key = NULL, parse = TRUE)
+  
+  # Put names into a vector and clean it (names that don't follow the binomial
+  # 'genus species' format will break the next loop)
+  
+  extinct_species_names <- unique(c(iucn_scraped_extinct_species[[3]]$scientific_name,
+                                    iucn_scraped_ew_species[[3]]$scientific_name))
+  
+  extinct_species_names <- word(extinct_species_names, 1, 2)
+  extinct_species_names <- unique(extinct_species_names)
+  
+  # Feed the names back to the iucn website to get the other variables we need
+  
+  extinct_species_data_list <- list()
+  leftovers <- list()
+  
+  for (i in seq_along(extinct_species_names)) {
+    
+    temp <- rl_search(extinct_species_names[i], parse = FALSE)
+    
+    if (is.list(temp[[2]]) && (length(temp[[2]]) != 0)) {
+      
+      tsn <- temp[[2]][[1]]$taxonid
+      accepted_binomial <- temp[[2]][[1]]$scientific_name
+      wwf_species_id <- NA
+      genus <- temp[[2]][[1]]$genus
+      species <- tail(accepted_binomial, n = 1)
+      class <- temp[[2]][[1]]$class
+      redlist_assessment_year <- temp[[2]][[1]]$published_year
+      redlist_status <- "EX"
+      common_name <- NA
+      ecoregion_code <- NA
+      df <- cbind(tsn, accepted_binomial, wwf_species_id, genus, species,
+                  class, redlist_assessment_year, redlist_status, common_name, ecoregion_code)
+      
+      extinct_species_data_list[[i]] <- df
+      
+    } else {
+      
+      leftovers[[i]] <- temp[[1]]
+      
+    }
+    
+  }
+  
+  extinct_species_data <- as.data.frame(do.call(rbind, extinct_species_data_list))
+  
+  extinct_species_data$class <- as.character(extinct_species_data$class)
+  extinct_species_data$accepted_binomial <- as.character(extinct_species_data$accepted_binomial)
+  
+  # Subset to the classes we are looking for
+  
+  # extinct_species_data <- extinct_species_data %>%
+  #                         filter(class == c("REPTILIA", "AVES", "MAMMALIA",
+  #                                          "AMPHIBIA"))
+  
+  # Get ecoregions for the extinct species
+  
+  extinct_species_names <- extinct_species_data %>%
+    dplyr::select(accepted_binomial) %>%
+    pull(.) %>%
+    unique(.)
+  
+  #'TODO: SEARCH SYNONYMS FOR EXTINCT SPECIES
+  
+  extinct_species_synonyms <- find_synonyms(extinct_species_names)
+  
+  saveRDS(extinct_species_synonyms, file.path(interim_outputs, 
+                                    paste(location,"extinct_species_synonyms.rds", 
+                                          sep = "_")))
+  
+  new <- get_binomial_list(extinct_species_synonyms)
+  accepted <- as.vector(unique(extinct_species_synonyms$accepted_name))
+  
+  extinct_species_binomials <- unique(c(extinct_species_names, new, accepted))
+  
+  # Add ecoregions to extinct species via gbif (SLOW CODE) ----
+  
+  extinct_species_ecoregions <- get_gbif_data(extinct_species_binomials, 1000, ecoregion_map)
+  
+  no_ecoregions <- as.vector(extinct_species_ecoregions[[2]])
+  
+  all_extinct_species_ecoregions <- extinct_species_ecoregions
+  
+  extinct_species_ecoregions <- extinct_species_ecoregions[[1]] %>%
+                                distinct(.) %>%
+                                rename(accepted_binomial = species) 
+  
+  
+  extinct_species_ecoregions <- extinct_species_ecoregions %>%
+                                merge(extinct_species_synonyms[c("binomial",
+                                                                 "tsn")],
+                                by.x = "accepted_binomial",by.y = "binomial")
+  
+  no_ecoregions <- as.data.frame(no_ecoregions)
+  
+  write.csv(no_ecoregions, file.path(interim_outputs, 
+                                               paste(location,"extinct_no_ecoregion_found.rds", 
+                                                     sep = "_")))
+  
+  # Add ecoregions to our other data
+  
+  species_data_columns <- names(mammal_ecoregion_redlist)
+  
+  extinction_ecoregion_redlist <- extinct_species_data %>%
+                                  dplyr::select(-tsn) %>%
+                                  merge(extinct_species_ecoregions[c("accepted_binomial", "tsn",
+                                                                       "ECO_ID", "OBJECTID")],
+                                          by = "accepted_binomial", all = TRUE) %>%
+                                  rename(ecoregion_id = ECO_ID,
+                                           eco_objectid = OBJECTID,
+                                           binomial = accepted_binomial) %>%
+                                  mutate(redlist_source = "IUCN_API",
+                                           location_source = "gbif") %>%
+                                  merge(ecoregion_country_df[c("ECO_ID", 
+                                                                 "CNTRY_NAME")],
+                                          by.x = "ecoregion_id",
+                                          by.y = "ECO_ID") %>%
+                                   filter(ecoregion_id != 0) %>%
+                                   select(all_of(species_data_columns))
+  
+
+saveRDS(extinction_ecoregion_redlist, file.path(interim_outputs, 
+                                               paste(location,"extinction", 
+                                                       "ecoregion_redlist.rds", 
+                                                       sep = "_")))
+}
+
+
+# Combine to create species data
+
+# Filter extinction data so we don't double up
+
+# test <- extinction_ecoregion_redlist[!extinction_ecoregion_redlist$tsn %in% 
+#                                      species_data$tsn,] 
+# 
+# x <- species_data %>% filter(tsn == 22710840)
+# y <- extinction_ecoregion_redlist %>% filter(tsn == 22710840)
+
+species_data <- rbind(amphibian_ecoregion_redlist,
+                      mammal_ecoregion_redlist,
+                      bird_ecoregion_redlist,
+                      reptile_ecoregion_redlist,
+                      extinction_ecoregion_redlist)
+
+saveRDS(species_data, file.path(interim_outputs, paste(db_version, 
+                                                       "species_data_v2.rds",
+                                                       sep = "_")))
+
+
 
 
 # Check data for gaps ----
@@ -2523,114 +2827,7 @@ species_redlist_global <- rbind(amphibian_redlist_global,
 #' 
 #' 
 #' 
-#' # Get extinct species data from IUCN website ----
-#' 
-#' #' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
-#' #' 
-#' 
-#' if (!("extinct_species_ecoregions.rds" %in% list.files(outputs))) {
-#' 
-#' iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
-#' iucn_scraped_ew_species <- rl_sp_category("EW", key = NULL, parse = TRUE)
-#' 
-#' # Put names into a vector and clean it (names that don't follow the binomial
-#' # 'genus species' format will break the next loop)
-#' 
-#' extinct_species_names <- unique(c(iucn_scraped_extinct_species[[3]]$scientific_name, 
-#'                                   iucn_scraped_ew_species[[3]]$scientific_name))
-#' 
-#' extinct_species_names <- word(extinct_species_names, 1, 2)
-#' extinct_species_names <- unique(extinct_species_names)
-#' 
-#' # Feed the names back to the iucn website to get the other variables we need
-#' 
-#' extinct_species_data_list <- list()
-#' leftovers <- list()
-#' 
-#' for (i in seq_along(extinct_species_names)) {
-#'   
-#'   temp <- rl_search(extinct_species_names[i], parse = FALSE)
-#'   
-#'   if (is.list(temp[[2]]) && (length(temp[[2]]) != 0)) {
-#'   
-#'   tsn <- temp[[2]][[1]]$taxonid
-#'   accepted_binomial <- temp[[2]][[1]]$scientific_name
-#'   wwf_species_id <- NA
-#'   genus <- temp[[2]][[1]]$genus
-#'   species <- tail(accepted_binomial, n = 1)
-#'   class <- temp[[2]][[1]]$class
-#'   redlist_assessment_year <- temp[[2]][[1]]$published_year
-#'   redlist_status <- "EX"
-#'   common_name <- NA
-#'   ecoregion_code <- NA
-#'   df <- cbind(tsn, accepted_binomial, wwf_species_id, genus, species,
-#'               class, redlist_assessment_year, redlist_status, common_name, ecoregion_code)
-#'   
-#'   extinct_species_data_list[[i]] <- df
-#'   
-#'   } else {
-#'     
-#'   leftovers[[i]] <- temp[[1]]
-#'   
-#'   }
-#'   
-#' }
-#' 
-#' extinct_species_data <- as.data.frame(do.call(rbind, extinct_species_data_list))
-#' 
-#' extinct_species_data$class <- as.character(extinct_species_data$class)
-#' extinct_species_data$accepted_binomial <- as.character(extinct_species_data$accepted_binomial)
-#' 
-#' # Subset to the classes we are looking for
-#' 
-#' # extinct_species_data <- extinct_species_data %>%
-#' #                         filter(class == c("REPTILIA", "AVES", "MAMMALIA", 
-#' #                                          "AMPHIBIA"))
-#' 
-#' # Get ecoregions for the extinct species
-#' 
-#' extinct_species_names <- extinct_species_data %>%
-#'                          dplyr::select(accepted_binomial) %>%
-#'                          pull(.) %>%
-#'                          unique(.)
-#' 
-#' # Add ecoregions to extinct species via gbif (SLOW CODE) ----
-#' 
-#' extinct_species_ecoregions <- get_gbif_data(extinct_species_names, 20, ecoregion_map)
-#' 
-#' no_ecoregions <- as.vector(extinct_species_ecoregions[[2]])
-#' 
-#' all_extinct_species_ecoregions <- extinct_species_ecoregions
-#' 
-#' extinct_species_ecoregions <- extinct_species_ecoregions[[1]] %>%
-#'                               distinct(.) %>%
-#'                               rename(accepted_binomial = species)
-#' 
-#' # Add ecoregions to our other data
-#' 
-#' extinct_species_data <- extinct_species_data %>%
-#'                         merge(extinct_species_ecoregions[c("accepted_binomial",
-#'                                   "ECO_ID", "OBJECTID")], 
-#'                                   by = "accepted_binomial", all = TRUE) %>%
-#'                         dplyr::select(-ecoregion_code) %>%
-#'                         rename(ecoregion_code = ECO_ID,
-#'                                eco_objectid = OBJECTID) %>%
-#'                         mutate(redlist_status = "EX") %>%
-#'                         select(correct_order)
-#' 
-#' } else {
-#' 
-#'   extinct_species_data <- readRDS(file.path(outputs,"extinct_species_ecoregions.rds"))
-#' 
-#' }
-#' 
-#' 
-#' if (save_outputs == "yes") {
-#'   
-#'   saveRDS(extinct_species_data, 
-#'           file.path(outputs, "extinct_species_ecoregions.rds"))
-#'   
-#' } 
+
 #' 
 #' # Add in the new extinct species data
 #' 

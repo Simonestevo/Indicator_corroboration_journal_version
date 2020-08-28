@@ -38,7 +38,7 @@ create_new_database_version <- FALSE # Only set to true if you want to create an
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
-save_outputs <- "no"
+save_outputs <- "yes" #only applies to maps, other things will always save
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 eco_version <- "ecoregions_2017"
 #eco_version <- "official_teow_wwf"
@@ -844,7 +844,7 @@ indicator_values <- indicator_values %>%
 #' TODO: Remove the crap years with hardly any data
 
 indicator_values_2 <- indicator_values %>%
-                      dplyr::select(ecoregion_code, indicator_year,
+                      dplyr::select(ecoregion_id, indicator_year,
                                     raw_indicator_value) %>%
                       distinct(.)
 
@@ -859,27 +859,28 @@ names(indicator_values_wide) <- make.names(names(indicator_values_wide),
 # TEMPORARY - select columns that have enough data
 
 indicator_values_wide <- indicator_values_wide %>%
-                         select(biodiversity.habitat.index.plants.2015,
-                                 human.footprint.index.2017,
-                                 proportion.at.risk.1988,
-                                 proportion.at.risk.1994,
-                                 proportion.at.risk.1996,
-                                 proportion.at.risk.2000,
-                                 proportion.at.risk.2004,
-                                 proportion.at.risk.2008,
-                                 proportion.at.risk.2012,
-                                 proportion.at.risk.2016,
-                                 red.list.index.Amphibia.2004,
-                                 red.list.index.Amphibia.2008,
-                                 red.list.index.Aves.1988,
-                                 red.list.index.Aves.1994,
-                                 red.list.index.Aves.2000,
-                                 red.list.index.Aves.2004,
-                                 red.list.index.Aves.2008,
-                                 red.list.index.Aves.2012,
-                                 red.list.index.Aves.2016,
-                                 red.list.index.Mammalia.1996,
-                                 red.list.index.Mammalia.2008) %>%
+                         select(-ecoregion_id) %>%
+                         # select(biodiversity.habitat.index.plants.2015,
+                         #         human.footprint.index.2017,
+                         #         proportion.at.risk.1988,
+                         #         proportion.at.risk.1994,
+                         #         proportion.at.risk.1996,
+                         #         proportion.at.risk.2000,
+                         #         proportion.at.risk.2004,
+                         #         proportion.at.risk.2008,
+                         #         proportion.at.risk.2012,
+                         #         proportion.at.risk.2016,
+                         #         red.list.index.Amphibia.2004,
+                         #         red.list.index.Amphibia.2008,
+                         #         red.list.index.Aves.1988,
+                         #         red.list.index.Aves.1994,
+                         #         red.list.index.Aves.2000,
+                         #         red.list.index.Aves.2004,
+                         #         red.list.index.Aves.2008,
+                         #         red.list.index.Aves.2012,
+                         #         red.list.index.Aves.2016,
+                         #         red.list.index.Mammalia.1996,
+                         #         red.list.index.Mammalia.2008) %>%
                           na.omit(.)
 
 
@@ -970,7 +971,7 @@ for (i in seq_along(indicator_values_time_list)) {
   # Remove year column from dataframe
   
   step1 <- indicator_values_time_list[[i]] %>% 
-           select(ecoregion_code, 
+           select(ecoregion_id, 
                   raw_indicator_value, 
                   indicator_year, 
                   -year) %>%
@@ -1036,18 +1037,45 @@ for (i in seq_along(scatterplots)) {
 
 # Map the indicators ----
 
+ecoregion_map <- ecoregion_map %>% rename(ecoregion_id = "ECO_ID")
 indicator_map_data <- left_join(ecoregion_map, indicator_values, 
-                                 by = "ECO_ID")
+                                 by = "ecoregion_id")
 
-# Map the BII
-bii_map <- indicator_map_data %>%
-  filter(indicator == "richness biodiversity intactness index") %>%
+# * BII Richness ----
+
+richness_bii_map <- indicator_map_data %>%
+                    filter(indicator == 
+                             "richness biodiversity intactness index") %>%
+                    map_indicators(.$raw_indicator_value,
+                                   "Richness BII 2005", 
+                                   "right")
+richness_bii_map
+
+if (save_outputs == "yes") {
+
+ggsave(file.path(indicator_outputs,"2005_richness_bii_map.png", sep = "")), 
+       richness_bii_map,  device = "png")
+
+}
+
+# * BII Abundance ----
+
+abundance_bii_map <- indicator_map_data %>%
+  filter(indicator == 
+           "abundance biodiversity intactness index") %>%
   map_indicators(.$raw_indicator_value,
-                 "Richness BII", 
+                 "Abundance BII 2005", 
                  "right")
-bii_map
+abundance_bii_map
 
-# Map the BHI
+if (save_outputs == "yes") {
+  
+ggsave(file.path(indicator_outputs,"2005_abundance_bii_map.png", sep = "")), 
+abundance_bii_map,  device = "png")
+
+}
+# * BHI Plants ----
+
 bhi_map <- indicator_map_data %>%
            filter(indicator == "biodiversity habitat index plants") %>%
            map_indicators(.$raw_indicator_value,
@@ -1065,21 +1093,17 @@ bhi_2015_plants_sf <- indicator_map_data %>%
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "2020-07-27_bhi_plants_2015_map.png"), 
+  ggsave(file.path(indicator_outputs, "2020-07-27_bhi_plants_2015_map.png"), 
          bhi_map,  device = "png")
   
-  st_write(bhi_2015_plants_sf, file.path(outputs, 
+  st_write(bhi_2015_plants_sf, file.path(indicator_outputs, 
                                          paste(date, 
                                                "_bhi_plants_2015_map.shp")))
-  saveRDS(bhi_map, file.path(outputs, "bhi_2015_ecoregion_map.rds"))
+  saveRDS(bhi_map, file.path(indicator_outputs, "bhi_2015_ecoregion_map.rds"))
   
 }
 
-test <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2020-07-27_indicator_output_files")
-
-
-
-# Map species risk status
+# * Proportion at risk ----
 
 at_risk_map <- indicator_map_data %>%
                filter(indicator == "proportion at risk") %>%
@@ -1091,11 +1115,13 @@ at_risk_map
 
 if(save_outputs == "yes") {
   
-ggsave(file.path(outputs, "at_risk_map.png"), 
+ggsave(file.path(indicator_outputs, "at_risk_map.png"), 
 at_risk_map,  device = "png")
     
 
 }
+
+# * Proportion extinct ----
 
 extinct_map <- indicator_map_data %>%
                filter(indicator == "proportion extinct") %>%
@@ -1107,7 +1133,7 @@ extinct_map
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "extinct_map.png"), 
+  ggsave(file.path(indicator_outputs, "extinct_map.png"), 
          extinct_map,  device = "png")
   
   
@@ -1116,8 +1142,7 @@ if(save_outputs == "yes") {
   
 # Map the Red List Index by class
 
-#' TODO: Put this into a loop - currently doesn't work because they have
-#' different timesteps
+# * RLI Birds ----
 
 birds_rli_map <- indicator_map_data %>%
                  filter(indicator == "red list index Aves") %>%
@@ -1127,6 +1152,16 @@ birds_rli_map <- indicator_map_data %>%
 
 birds_rli_map
 
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "birds_rli_map.png", 
+                                            sep = "_")), 
+         birds_rli_map,  device = "png")
+  
+}
+
+# * RLI Mammals ----
+
 mammals_rli_map <- indicator_map_data %>%
                    filter(indicator == "red list index Mammalia") %>%
                    map_indicators(.$raw_indicator_value,
@@ -1134,6 +1169,16 @@ mammals_rli_map <- indicator_map_data %>%
                                    "right")
 
 mammals_rli_map
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "mammals_rli_map.png", 
+                                            sep = "_")), 
+         mammals_rli_map,  device = "png")
+  
+}
+
+# * RLI Amphibians ----
 
 amphibians_rli_map <- indicator_map_data %>%
                       filter(indicator == "red list index Amphibia") %>%
@@ -1143,7 +1188,32 @@ amphibians_rli_map <- indicator_map_data %>%
 
 amphibians_rli_map
 
-# Map the Human Footprint Index
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "amphibians_rli_map.png", 
+                                            sep = "_")), 
+         amphibians_rli_map,  device = "png")
+  
+}
+
+# * RLI Reptiles ----
+
+reptiles_rli_map <- indicator_map_data %>%
+  filter(indicator == "red list index Amphibia") %>%
+  map_indicators(.$raw_indicator_value,
+                 "Red List\nIndex (Amphibians)", 
+                 "right")
+
+reptiles_rli_map
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "reptiles_rli_map.png", 
+                                            sep = "_")), 
+         reptiles_rli_map,  device = "png")
+  
+}
+# * HFP ----
 
 hfp_map <- indicator_map_data %>%
            filter(indicator == "human footprint index") %>%
@@ -1152,14 +1222,7 @@ hfp_map <- indicator_map_data %>%
                           "right")
 hfp_map
 
-#' TODO: Turn this back on when we've figures out bii
-# Map the Biodiversity Intactness Index
 
-# bii_map <- indicator_map_data %>%
-#            filter(indicator == "biodiversity intactness index") %>%
-#            map_indicators(.$raw_indicator_value,
-#                            "Biodiversity\nIntactness\nIndex",
-#                            "right")
 
 
 # Look at the data distribution
@@ -1219,7 +1282,7 @@ rli_hfp
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "hfp_rli_scatterplot.png"), rli_hfp,  device = "png")
+  ggsave(file.path(indicator_outputs, "hfp_rli_scatterplot.png"), rli_hfp,  device = "png")
   
 }
 
@@ -1255,7 +1318,7 @@ rli_hfp_2
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "hfp_rli_scatterplot_gradient.png"), 
+  ggsave(file.path(indicator_outputs, "hfp_rli_scatterplot_gradient.png"), 
          rli_hfp_2, height = 4, width = 5, device = "png")
   
 }
@@ -1289,7 +1352,7 @@ rli_hfp_3
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(outputs, "hfp_rli_scatterplot_multi_colour_scales.png"), 
+  ggsave(file.path(indicator_outputs, "hfp_rli_scatterplot_multi_colour_scales.png"), 
          rli_hfp_3, height = 4, width = 5, device = "png")
   
 }

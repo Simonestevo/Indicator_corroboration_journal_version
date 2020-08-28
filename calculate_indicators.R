@@ -1053,7 +1053,9 @@ richness_bii_map
 
 if (save_outputs == "yes") {
 
-ggsave(file.path(indicator_outputs,"2005_richness_bii_map.png", sep = "")), 
+ggsave(file.path(indicator_outputs, paste(location,
+                                          "richness_bii_ecoregion_map.png", 
+                                          sep = "_")), 
        richness_bii_map,  device = "png")
 
 }
@@ -1070,8 +1072,10 @@ abundance_bii_map
 
 if (save_outputs == "yes") {
   
-ggsave(file.path(indicator_outputs,"2005_abundance_bii_map.png", sep = "")), 
-abundance_bii_map,  device = "png")
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "abundance_bii_ecoregion_map.png", 
+                                            sep = "_")),  
+         abundance_bii_map,  device = "png")
 
 }
 # * BHI Plants ----
@@ -1097,9 +1101,11 @@ if (save_outputs == "yes") {
          bhi_map,  device = "png")
   
   st_write(bhi_2015_plants_sf, file.path(indicator_outputs, 
-                                         paste(date, 
+                                         paste(location, 
                                                "_bhi_plants_2015_map.shp")))
-  saveRDS(bhi_map, file.path(indicator_outputs, "bhi_2015_ecoregion_map.rds"))
+  saveRDS(bhi_map, file.path(indicator_outputs,paste(location,
+                                                     "bhi_plants_map.rds",
+                                                     sep = "_")))
   
 }
 
@@ -1115,7 +1121,9 @@ at_risk_map
 
 if(save_outputs == "yes") {
   
-ggsave(file.path(indicator_outputs, "at_risk_map.png"), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "proportion_at_risk_ecoregion_map.png", 
+                                            sep = "_")),  
 at_risk_map,  device = "png")
     
 
@@ -1133,7 +1141,9 @@ extinct_map
 
 if(save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, "extinct_map.png"), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "proportion_extinct_ecoregion_map.png", 
+                                            sep = "_")),  
          extinct_map,  device = "png")
   
   
@@ -1154,8 +1164,9 @@ birds_rli_map
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, paste(location, "birds_rli_map.png", 
-                                            sep = "_")), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "birds_rli_ecoregion_map.png", 
+                                            sep = "_")),  
          birds_rli_map,  device = "png")
   
 }
@@ -1172,8 +1183,9 @@ mammals_rli_map
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, paste(location, "mammals_rli_map.png", 
-                                            sep = "_")), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "mammals_rli_ecoregion_map.png", 
+                                            sep = "_")),  
          mammals_rli_map,  device = "png")
   
 }
@@ -1190,8 +1202,9 @@ amphibians_rli_map
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, paste(location, "amphibians_rli_map.png", 
-                                            sep = "_")), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "amphibians_rli_ecoregion_map.png", 
+                                            sep = "_")),  
          amphibians_rli_map,  device = "png")
   
 }
@@ -1208,8 +1221,9 @@ reptiles_rli_map
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, paste(location, "reptiles_rli_map.png", 
-                                            sep = "_")), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "reptiles_rli_ecoregion_map.png", 
+                                            sep = "_")),  
          reptiles_rli_map,  device = "png")
   
 }
@@ -1223,6 +1237,13 @@ hfp_map <- indicator_map_data %>%
 hfp_map
 
 
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "hfp_ecoregion_map.png", 
+                                            sep = "_")), 
+         hfp_map,  device = "png")
+  
+}
 
 
 # Look at the data distribution

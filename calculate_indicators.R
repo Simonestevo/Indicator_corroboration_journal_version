@@ -42,6 +42,8 @@ save_outputs <- "no"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 eco_version <- "ecoregions_2017"
 #eco_version <- "official_teow_wwf"
+indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+
 
 if (!is.na(country)) {
   
@@ -175,15 +177,17 @@ return(indicator_map)
 
 ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
 
+ecoregion_map_all <- st_make_valid(ecoregion_map_all)
+
 
 # Pull out only required variables
 
 ecoregion_map <- ecoregion_map_all %>% 
-                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, geometry)
+                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 
 # Check geometry and fix if needed
 
-ecoregion_map <- st_make_valid(ecoregion_map)
+
 
 # names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","eco_objectid",
 #                            "geometry")
@@ -248,28 +252,39 @@ if (!is.na(country)) {
 # Load species data ----
 
 
-species_data <- readRDS(file.path(interim_outputs, 
-                                  "global_amphibian_ecoregion_redlist.rds"))
+species_data_all <- readRDS(file.path(interim_outputs, 
+                                  "version_3_species_data_v2.rds"))
 
 # species_data <- readRDS(file.path(interim_outputs, 
 #                                   "version_3_species_data_v1.rds"))
 
-# Remove cases without redlist status and/or assessment year
-#' TODO: this might be better done in the build_database script? So there's no
-#' wrangling of the species data in this script?
+# Rename classes so they match and remove country variable
 
-# species_data <- species_data %>%
-#                 drop_na(redlist_assessment_year, redlist_status, class) %>%
-#                 distinct(.) %>%
-#                 mutate(class = replace(class, class == "AMPHIBIA", "Amphibia"),
-#                        class = replace(class, class == "MAMMALIA", "Mammalia"),
-#                        class = replace(class, class == "FLORIDEOPHYCEAE", 
-#                                                        "Florideophycae"),
-#                        class = replace(class, class == "REPTILIA", "Reptilia"),
-#                        class = replace(class, class == "MAGNOLIOPSIDA", 
-#                                                        "Magnoliopsida"),
-#                        class = replace(class, class == "AVES", "Aves"))
-
+species_data <- species_data_all %>%
+                # drop_na(redlist_assessment_year, redlist_status, class) %>%
+                # distinct(.) %>%
+                dplyr::select(-CNTRY_NAME) %>%
+                distinct(.) %>%
+                mutate(class = replace(class, class == "AMPHIBIA", "Amphibia"),
+                       class = replace(class, class == "MAMMALIA", "Mammalia"),
+                       class = replace(class, class == "FLORIDEOPHYCEAE",
+                                                       "Florideophycae"),
+                       class = replace(class, class == "REPTILIA", "Reptilia"),
+                       class = replace(class, class == "MAGNOLIOPSIDA",
+                                                       "Magnoliopsida"),
+                       class = replace(class, class == "AVES", "Aves"),
+                       redlist_assessment_year = as.numeric(as.character(redlist_assessment_year)),
+                       decade = ifelse(redlist_assessment_year < 1990, 1980,
+                                       ifelse(redlist_assessment_year > 1989 &
+                                              redlist_assessment_year < 2000, 1990,
+                                       ifelse(redlist_assessment_year > 1999 &
+                                              redlist_assessment_year < 2010, 2000,
+                                       ifelse(redlist_assessment_year > 2009 &
+                                              redlist_assessment_year < 2020, 2010,
+                                       ifelse(redlist_assessment_year > 2019, 
+                                              2020, NA)))))) %>%
+               filter(decade != 2020) %>%
+               drop_na(decade)
 
 # Subset by test country
 
@@ -289,8 +304,8 @@ species_data <- species_data[species_data$ecoregion_id %in%
 species_by_ecoregion <- species_data %>%
                         select(-eco_objectid) %>%
                         distinct(.) %>%
-                        group_by(ecoregion_id, redlist_assessment_year) %>%
-                        mutate(number_of_species = n_distinct(tsn),
+                        group_by(ecoregion_id, decade) %>%
+                        mutate(number_of_species_year = n_distinct(tsn),
                                number_extinct = n_distinct(tsn[redlist_status == "EX"|
                                                                redlist_status == "EW"]),
                                number_atrisk = n_distinct(tsn[redlist_status == "EN"|
@@ -300,38 +315,71 @@ species_by_ecoregion <- species_data %>%
                                number_lowrisk = n_distinct(tsn[redlist_status == "LC"|
                                                        redlist_status == "NT"]),
                                number_datadeficient = n_distinct(tsn[redlist_status == "DD"]),
-                               check = number_of_species - (number_extinct +
+                               check = number_of_species_year - (number_extinct +
                                                             number_atrisk +
                                                             number_lowrisk+
-                                                            number_datadeficient),
-                               proportion_extinct = number_extinct/number_of_species,
-                               proportion_atrisk = number_atrisk/number_of_species,
-                               proportion_lowrisk = number_lowrisk/number_of_species)
-                               
+                                                            number_datadeficient)) %>%
+                         group_by(ecoregion_id) %>%
+                         mutate(number_of_species = max(number_of_species_year),
+                                proportion_extinct = number_extinct/number_of_species,
+                                proportion_atrisk = number_atrisk/number_of_species,
+                                proportion_lowrisk = number_lowrisk/number_of_species)
+
+test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
 # Extinctions
 
+#' TODO: IMPORTANT - ADD AN IFELSE THAT REPLACES NUMBER OF EXTINCTIONS WITH
+#' HIGHEST PREVIOUS VALUE IF THE NUMBER OF EXTINCTIONS IS LOWER IN A LATER
+#' YEAR THAN A PREVIOUS ONE
+
 extinction_values <- species_by_ecoregion %>%
                      mutate(indicator = "proportion extinct") %>%
-                     select(indicator, redlist_assessment_year, 
+                     dplyr::select(indicator, decade, 
                             ecoregion_id, proportion_extinct) %>%
-                     rename(year = redlist_assessment_year, 
-                            raw_indicator_value = proportion_extinct)
+                     rename(year = decade) %>%
+                     distinct(.) %>%
+                     drop_na(year) %>%
+                     group_by(ecoregion_id) %>%
+                     arrange(year) %>%
+                     mutate(raw_indicator_value = cummax(proportion_extinct)) %>%
+                     dplyr::select(-proportion_extinct)
 
 extinction_values <- as.data.frame(extinction_values)
 
-indicator_columns <- names(extinction_values)
+
+# Check extinction values behave as anticipated
+
+ECO <- 8
+test_spp <- species_by_ecoregion %>% filter(ecoregion_id == ECO)
+test <- extinction_values %>% filter(ecoregion_id == ECO)
+
+ggplot(test) +
+  geom_line(aes(x = year, y = raw_indicator_value)) +
+  geom_line(aes(x = year, y = proportion_extinct), col = "red", linetype = 2)
 
 # Threatened status
 
 at_risk_values <- species_by_ecoregion %>%
                  mutate(indicator = "proportion at risk") %>%
-                 select(indicator, redlist_assessment_year, 
+                 select(indicator, decade, 
                          ecoregion_id, proportion_atrisk) %>%
-                 rename(year = redlist_assessment_year, 
-                         raw_indicator_value = proportion_atrisk)
+                 rename(year = decade, 
+                        raw_indicator_value = proportion_atrisk) %>%
+                 distinct(.) %>%
+                 drop_na(year) 
+
 
 at_risk_values <- as.data.frame(at_risk_values)
+
+# Check extinction values behave as anticipated
+
+ECO <- 476
+atrisk_test <- at_risk_values %>% filter(ecoregion_id == ECO)
+
+ggplot(atrisk_test) +
+  geom_line(aes(x = year, y = raw_indicator_value)) 
+
 
 # # Red List Index ----
 
@@ -339,7 +387,7 @@ at_risk_values <- as.data.frame(at_risk_values)
 
 species_data_for_rli <- species_data %>%
                         filter(class == "Amphibia"| class == "Aves"|
-                               class == "Mammalia")
+                               class == "Mammalia"| class == "Reptilia")
 
 class_list <- split(species_data_for_rli, species_data_for_rli$class)
 
@@ -380,6 +428,11 @@ class_time_list[[i]] <- class_time_list_full[[i]][lengths(class_time_list_full[[
 
 # Calculate the RLI per ecoregion, per timepoint, per class (output should be
 # dataframes of RLI values by ecoregion, by timepoint, split by class)
+
+real_class_time_list <- class_time_list
+
+class_time_list <- real_class_time_list[[1]]
+class_time_list <- class_time_list[c(1,2)]
 
 class_time_ecoregions <- list()
 classes_rli <- list()
@@ -458,21 +511,18 @@ if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in%
   
 
   hfp_1993_data <- raster(file.path(inputs,
-                                    "human_footprint_index\\HFP1993.tif"))
+                                    "human_footprint_index\\HFP1993RP.tif"))
   
-  #Reproject some how
-    
-
-  # system.time(hfp_1993_ecoregion_map <- ecoregion_map %>%
-  #               mutate(raw_indicator_value = 
-  #                        raster::extract(hfp_1993,
-  #                                        ecoregion_map,
-  #                                        fun = mean, 
-  #                                        na.rm = TRUE)))
-  # 
-  # saveRDS(hfp_1993_ecoregion_map, file.path(indicator_outputs, paste(location, 
-  #                                           "hfp_1993_ecoregion_map.rds",
-  #                                            sep = "_")))
+  system.time(hfp_1993_ecoregion_map <- ecoregion_map %>%
+                mutate(raw_indicator_value = 
+                         raster::extract(hfp_1993,
+                                         ecoregion_map,
+                                         fun = mean, 
+                                         na.rm = TRUE)))
+  
+ saveRDS(hfp_1993_ecoregion_map, file.path(indicator_outputs, paste(location, 
+                                            "hfp_1993_ecoregion_map.rds",
+                                             sep = "_")))
 }
 
 # Create indicator values dataframe
@@ -498,13 +548,11 @@ if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in%
                                                     sep = "_"))) 
 } else {
   
-  
-  hfp_2009_data <- raster(file.path(inputs,
-                                    "human_footprint_index\\HFP2009.tif"))
-  
-  #Reproject some how
-  
-  
+  # 
+  # hfp_2009_data <- raster(file.path(inputs,
+  #                                   "human_footprint_index\\HFP2009.tif"))
+  # 
+
   # system.time(hfp_2009_ecoregion_map <- ecoregion_map %>%
   #               mutate(raw_indicator_value = 
   #                        raster::extract(hfp_2009,
@@ -520,12 +568,12 @@ if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in%
 # Create indicator values dataframe
 
 hfp_2009_values <- hfp_2009_ecoregion_map %>%
-  st_set_geometry(NULL) %>%
-  mutate(indicator = "human footprint index") %>%
-  mutate(year = "2009") %>%
-  rename(ecoregion_id = ECO_ID) %>%
-  select(names(rli_values)) %>%
-  drop_na()
+                   st_set_geometry(NULL) %>%
+                   mutate(indicator = "human footprint index") %>%
+                   mutate(year = "2009") %>%
+                   rename(ecoregion_id = ECO_ID) %>%
+                   select(names(rli_values)) %>%
+                   drop_na()
 
 
 # Human Footprint Index 2017 ----
@@ -542,8 +590,9 @@ hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
                          #       by = "ECO_ID") %>% # This will subset automatically if you subset by country
                          mutate(year = "2017") %>%
                          mutate(indicator = "human footprint index") %>%
-                         rename(raw_indicator_value = HFP) %>%
-                         dplyr::select(indicator, year, ECO_ID, 
+                         rename(raw_indicator_value = HFP,
+                                ecoregion_id = ECO_ID) %>%
+                         dplyr::select(indicator, year, ecoregion_id, 
                                         raw_indicator_value) 
                          # mutate(HFP_original = HFP) %>%
                          # mutate(HFP_adjusted_old = ifelse(HFP_original > 33.29037,
@@ -631,7 +680,7 @@ lpi_input_summary <- lpi_inputs %>%
 
 ## WARNING - SLOW CODE - bii richness time elapsed 50753.13 (~ 14 hrs)
 
-if (!(paste(location, "richness_bii_2005_ecoregion_map.rds", sep = "_") %in% 
+if ((paste(location, "richness_bii_2005_ecoregion_map.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
 
 #' TODO: Work out why this is producing so many NaNs
@@ -675,7 +724,7 @@ bii_richness_values <- bii_rich_ecoregion_map %>%
                       mutate(indicator = "richness biodiversity intactness index") %>%
                       mutate(year = "2005") %>%
                       rename(ecoregion_id = ECO_ID) %>%
-                      select(names(rli_values)) %>%
+                      select(all_of(indicator_columns)) %>%
                       drop_na()
 
 # Abundance Biodiversity Intactness Index 2005 ----
@@ -684,8 +733,8 @@ bii_richness_values <- bii_rich_ecoregion_map %>%
 # reading in prepped bii data for development, but put the below chunk back on 
 # when doing the real deal analysis
 
-if (!(paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in% 
-      list.files(indicator_outputs))) {
+if (paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
   
   #' TODO: Work out why this is producing so many NaNs
   
@@ -723,12 +772,12 @@ if (!(paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in%
 #' #' TODO: Figure out how to deal with multiple polygons of the same ecoregion - once
 #' #' you remove the geometry you end up with multiple values p/ecoregion
 
-bii_richness_values <- bii_rich_ecoregion_map %>%
+bii_abundance_values <- bii_abundance_ecoregion_map %>%
                         st_set_geometry(NULL) %>%
-                        mutate(indicator = "richness biodiversity intactness index") %>%
+                        mutate(indicator = "abundance biodiversity intactness index") %>%
                         mutate(year = "2005") %>%
                         rename(ecoregion_id = ECO_ID,) %>%
-                        select(names(rli_values)) %>%
+                        select(all_of(indicator_columns)) %>%
                         drop_na()
 
 # Wilderness Intactness Index ----
@@ -747,26 +796,28 @@ ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 # TODO: Melt the adjusted values into long form
 # TODO: Add the BII back in when we've dealt with multiple ecosystem issue
 
-indicator_values <- rbind(rli_values, hfp_by_ecoregion_2017, extinction_values, 
-                          at_risk_values, bhi_plants_2015_values)
+indicator_values <- rbind(hfp_by_ecoregion_2017, extinction_values, 
+                          at_risk_values, bii_abundance_values, 
+                          bii_richness_values)
 
 indicator_values <- indicator_values %>%
-                    mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
-                                                     33.29037, raw_indicator_value)) %>%
-                    mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
-                                   ifelse(raw_indicator_value > 0 & 
-                                            raw_indicator_value < 0.9538,
-                                          0.9538, raw_indicator_value))) %>%
-                    mutate(year = as.numeric(year)) %>%
-                    mutate(HFP_adjusted_old = ifelse(indicator != 
-                                              "human footprint index", NA,
-                                              HFP_adjusted_old)) %>%
-                    mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
-                                                    indicator), 
-                                                    RLI_adjusted_old, NA)) %>%
-                    merge(ecoregion_country_df[c("ecoregion_code", 
-                                                 "country_name")], 
-                          by = "ecoregion_code", all.x = TRUE, all.y = FALSE) %>%
+                    # mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
+                    #                                  33.29037, raw_indicator_value)) %>%
+                    # mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
+                    #                ifelse(raw_indicator_value > 0 & 
+                    #                         raw_indicator_value < 0.9538,
+                    #                       0.9538, raw_indicator_value))) %>%
+                    # mutate(year = as.numeric(year)) %>%
+                    # mutate(HFP_adjusted_old = ifelse(indicator != 
+                    #                           "human footprint index", NA,
+                    #                           HFP_adjusted_old)) %>%
+                    # mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
+                    #                                 indicator), 
+                    #                                 RLI_adjusted_old, NA)) %>%
+                    merge(ecoregion_country_df[c("ECO_ID", 
+                                                 "CNTRY_NAME")], 
+                          by.x = "ecoregion_id", by.y = "ECO_ID",
+                          all.x = TRUE, all.y = FALSE) %>%
                     distinct(.) %>%
                     mutate(indicator_year = paste(indicator, year, sep = " "))
                     # %>%
@@ -793,10 +844,8 @@ indicator_values <- indicator_values %>%
 #' TODO: Remove the crap years with hardly any data
 
 indicator_values_2 <- indicator_values %>%
-                      dplyr::select(ecoregion_code, indicator_year, 
+                      dplyr::select(ecoregion_code, indicator_year,
                                     raw_indicator_value) %>%
-                      filter(indicator_year != 
-                               "biodiversity intactness index 2005") %>%
                       distinct(.)
 
 

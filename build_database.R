@@ -1149,9 +1149,6 @@ amphibian_ecoregion_redlist <- amphibian_ecoregions %>%
          redlist_assessment_year,
          redlist_status, redlist_source, class)
 
-
-
-
 saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs, 
                                                paste(location,"amphibian", 
                                                      "ecoregion_redlist.rds", 
@@ -1554,45 +1551,28 @@ bird_single_tsn <- bird_redlist_data %>%
   filter(n() == 1) %>%
   ungroup(.)
 
-bird_redlist_data <- rbind(bird_single_tsn, bird_multi_tsn)
-
-# Remove species without tsn 
-
-bird_ecoregions_no_tsn <- bird_ecoregions %>% filter(is.na(tsn))
-bird_redlist_no_tsn <- bird_redlist_data %>% filter(is.na(tsn))
-
-bird_ecoregions <- bird_ecoregions %>% filter(!is.na(tsn))
-bird_redlist_data <- bird_redlist_data %>% filter(!is.na(tsn))
 
 # Merge only the species that we have a tsn for
 
+bird_redlist_data <- as.data.frame(rbind(bird_single_tsn, 
+                                              bird_multi_tsn))
+
+# Join ecoregion and redlist data together
+
 bird_ecoregion_redlist <- bird_ecoregions %>%
-                          select(-redlist_status) %>%
+                          dplyr::select(-redlist_status) %>%
                           merge(bird_redlist_data[c("tsn", 
-                                                    "redlist_assessment_year",
-                                                    "redlist_status", 
-                                                    "redlist_source")],
-                                by = "tsn",
+                                                         "binomial",
+                                                         "redlist_assessment_year",
+                                                         "redlist_status", 
+                                                         "redlist_source")], by = "tsn", 
                                 all = TRUE) %>%
-                          rename(location_source = source) %>%
-                          mutate(class = "Aves") %>%
-                          filter(ecoregion_id != 0)
+                          mutate(binomial = coalesce(binomial.x, binomial.y),
+                                 class = "Aves") %>%
+                          select(ecoregion_id, tsn, binomial, source, 
+                                 redlist_assessment_year,
+                                 redlist_status, redlist_source, class)
 
-# Merge the rest by binomial instead
-
-no_tsn_bird_ecoregion_redlist <- bird_ecoregions_no_tsn %>%
-                                 select(-redlist_status) %>%
-                                 merge(bird_redlist_no_tsn[c("binomial", 
-                                                            "redlist_assessment_year",
-                                                            "redlist_status", 
-                                                            "redlist_source")],
-                                        by = "binomial",
-                                        all = TRUE) %>%
-                                 rename(location_source = source) %>%
-                                 mutate(class = "Aves") %>%
-                                 filter(ecoregion_id != 0)
-
-bird_ecoregion_redlist <- rbind(bird_ecoregion_redlist, no_tsn_bird_ecoregion_redlist)
 
 saveRDS(bird_ecoregion_redlist, file.path(interim_outputs, 
                                             paste(location,"bird", 

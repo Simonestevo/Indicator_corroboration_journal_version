@@ -40,7 +40,7 @@ library(rredlist)
 library(rgbif)
 library(rlist)
 library(pryr) # Can probably remove this when finished
-
+library(data.table)
 
 # Set input and output locations ----
 
@@ -1334,7 +1334,7 @@ mammal_redlist_data <-  mammal_redlist_data %>%
                         rename(binomial = Name) %>%
                         set_names(c("binomial","1996", "2008", "class", "redlist_source")) %>%
                         dplyr::select("binomial","class","1996", "2008", "redlist_source") %>%
-                        melt(.,id.vars = c("binomial", "class", 
+                        reshape2::melt(.,id.vars = c("binomial", "class", 
                                            "redlist_source"), 
                              value.name = "redlist_status",
                              variable.name = "redlist_assessment_year") %>%
@@ -1404,25 +1404,23 @@ mammal_single_tsn <- mammal_redlist_data %>%
                      filter(n() == 1) %>%
                      ungroup(.)
 
-mammal_redlist_data <- rbind(mammal_single_tsn, mammal_multi_tsn)
+mammal_redlist_data <- as.data.frame(rbind(mammal_single_tsn, mammal_multi_tsn))
 
 # Join ecoregion and redlist data together
 
 mammal_ecoregion_redlist <- mammal_ecoregions %>%
-                            select(-redlist_status) %>%
+                            dplyr::select(-redlist_status) %>%
                             merge(mammal_redlist_data[c("tsn", 
-                                                           "redlist_assessment_year",
-                                                           "redlist_status", 
-                                                           "redlist_source")],
-                                  by = "tsn",
+                                            "binomial",
+                                            "redlist_assessment_year",
+                                            "redlist_status", 
+                                            "redlist_source")], by = "tsn", 
                                   all = TRUE) %>%
-                            rename(location_source = source) %>%
-                            mutate(class = "Mammalia") %>%
-                            merge(ecoregion_country_df[c("ECO_ID", 
-                                                         "CNTRY_NAME")],
-                                  by.x = "ecoregion_id",
-                                  by.y = "ECO_ID") %>%
-                            filter(ecoregion_id != 0)
+                            mutate(binomial = coalesce(binomial.x, binomial.y),
+                                   class = "test") %>%
+                            select(ecoregion_id, tsn, binomial, source, 
+                                   redlist_assessment_year,
+                                   redlist_status, redlist_source, class)
 
 
 saveRDS(mammal_ecoregion_redlist, file.path(interim_outputs, 
@@ -1436,6 +1434,16 @@ saveRDS(mammal_ecoregion_redlist, file.path(interim_outputs,
 mammal_summaries <- summarise_species_data(mammal_ecoregion_redlist, "1", "mammal")
 mammal_redlist_by_ecoregion <- mammal_summaries[[1]]
 mammal_redlist_global <- mammal_summaries[[2]]
+
+# Check the data
+
+test <- mammal_ecoregion_redlist %>% filter(redlist_status == "EX") # only one ex mammal?
+rangemap <- mammal_ecoregions %>% filter(binomial == "Thylacinus cynocephalus")
+redlist <- mammal_redlist_data %>% filter(binomial == "Thylacinus cynocephalus")
+synonyms <- mammal_redlist_synonyms %>% filter(binomial == "Thylacinus cynocephalus")
+newtest <- mammal_ecoregion_redlist %>% filter(tsn == 9275)
+ecoregion <- mammal_ecoregions[c(1,80),]
+x <- test_output_all %>% filter(binomial == "Thylacinus cynocephalus")
 
 # * Birds ----
 
@@ -1590,13 +1598,14 @@ bird_redlist_by_ecoregion <- bird_summaries[[1]]
 bird_redlist_global <- bird_summaries[[2]]
 
 # Bird data checks!
-bird_rangemaps_no_tsn <- bird_rangemap_synonyms %>% filter(is.na(tsn))
-bird_ecoregions_no_tsn <- bird_ecoregions %>% filter(is.na(tsn))
-bird_redlist_no_tsn <- bird_redlist_data %>% filter(is.na(tsn))
-bird_ER_RL_no_tsn <- bird_ecoregion_redlist %>% filter(is.na(tsn))
-
-australian_birds <- bird_ecoregion_redlist[bird_ecoregion_redlist$ecoregion_id %in% 
-                                    ecoregion_subset$ECO_ID,] 
+# bird_rangemaps_no_tsn <- bird_rangemap_synonyms %>% filter(is.na(tsn))
+# bird_ecoregions_no_tsn <- bird_ecoregions %>% filter(is.na(tsn))
+# bird_redlist_no_tsn <- bird_redlist_data %>% filter(is.na(tsn))
+# bird_ER_RL_no_tsn <- bird_ecoregion_redlist %>% filter(is.na(tsn))
+# 
+# australian_birds <- bird_ecoregion_redlist[bird_ecoregion_redlist$ecoregion_id %in% 
+#                                     ecoregion_subset$ECO_ID,] 
+# extinct_birds <- bird_ecoregion_redlist %>% filter(redlist_status == "EX")
 
 # * Reptiles ----
 

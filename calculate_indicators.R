@@ -498,6 +498,8 @@ rli_values <- rli_values %>%
 
 # Human Fooprint Index 1993 ----
 
+# Slow code (time elapsed 30088.33 ~ 8 hours)
+
 if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
   
@@ -513,15 +515,23 @@ if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in%
   hfp_1993_data <- raster(file.path(inputs,
                                     "human_footprint_index\\HFP1993RP.tif"))
   
-  system.time(hfp_1993_ecoregion_map <- ecoregion_map %>%
-                mutate(raw_indicator_value = 
-                         raster::extract(hfp_1993,
+  system.time(hfp_1993_ecoregion_values <- ecoregion_map %>%
+                mutate(raw_indicator_value =
+                         raster::extract(hfp_1993_data,
                                          ecoregion_map,
-                                         fun = mean, 
+                                         fun = mean,
                                          na.rm = TRUE)))
   
- saveRDS(hfp_1993_ecoregion_map, file.path(indicator_outputs, paste(location, 
-                                            "hfp_1993_ecoregion_map.rds",
+  # system.time(hfp_1993_ecoregion_values <- 
+  #   ecoregion_map %>% mutate(
+  #     hfpMean = raster_extract(hfp_1993_data, ecoregion_map, fun = mean, na.rm = TRUE)
+  #     #,
+  #     # hfpMax = raster_extract(hfp_1993_data, ecoregion_map, fun = max, na.rm = TRUE),
+  #     # hfpMin = raster_extract(hfp_1993_data, ecoregion_map, fun = min, na.rm = TRUE)
+  #   ))
+  
+ saveRDS(hfp_1993_ecoregion_values, file.path(indicator_outputs, paste(location, 
+                                            "hfp_1993_ecoregion_values.rds",
                                              sep = "_")))
 }
 
@@ -548,21 +558,33 @@ if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in%
                                                     sep = "_"))) 
 } else {
   
-  # 
-  # hfp_2009_data <- raster(file.path(inputs,
-  #                                   "human_footprint_index\\HFP2009.tif"))
-  # 
+  hfp_2009_data <- raster(file.path(inputs,
+                                    "human_footprint_index\\HFP2009RP.tif"))
+  
+  system.time(hfp_2009_ecoregion_values <- ecoregion_map %>%
+                mutate(raw_indicator_value =
+                       raster::extract(hfp_2009_data,
+                                         ecoregion_map,
+                                         fun = mean,
+                                         na.rm = TRUE),
+                       indicator_CV = raster::extract(hfp_2009_data,
+                                                      ecoregion_map,
+                                                      fun = sd,
+                                                      na.rm=TRUE)))
+  
+  # system.time(hfp_1993_ecoregion_values <- 
+  #   ecoregion_map %>% mutate(
+  #     hfpMean = raster_extract(hfp_1993_data, ecoregion_map, fun = mean, na.rm = TRUE)
+  #     #,
+  #     # hfpMax = raster_extract(hfp_1993_data, ecoregion_map, fun = max, na.rm = TRUE),
+  #     # hfpMin = raster_extract(hfp_1993_data, ecoregion_map, fun = min, na.rm = TRUE)
+  #   ))
+  
+  saveRDS(hfp_2009_ecoregion_values, file.path(indicator_outputs, paste(location, 
+                                         "hfp_2009_ecoregion_values.rds",
+                                         sep = "_")))
+  
 
-  # system.time(hfp_2009_ecoregion_map <- ecoregion_map %>%
-  #               mutate(raw_indicator_value = 
-  #                        raster::extract(hfp_2009,
-  #                                        ecoregion_map,
-  #                                        fun = mean, 
-  #                                        na.rm = TRUE)))
-  # 
-  # saveRDS(hfp_2009_ecoregion_map, file.path(indicator_outputs, paste(location, 
-  #                                           "hfp_2009_ecoregion_map.rds",
-  #                                            sep = "_")))
 }
 
 # Create indicator values dataframe

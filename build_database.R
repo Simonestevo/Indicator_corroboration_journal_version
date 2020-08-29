@@ -1537,23 +1537,43 @@ bird_single_tsn <- bird_redlist_data %>%
 
 bird_redlist_data <- rbind(bird_single_tsn, bird_multi_tsn)
 
-# Join ecoregion and redlist data together
+# Remove species without tsn 
+
+bird_ecoregions_no_tsn <- bird_ecoregions %>% filter(is.na(tsn))
+bird_redlist_no_tsn <- bird_redlist_data %>% filter(is.na(tsn))
+
+bird_ecoregions <- bird_ecoregions %>% filter(!is.na(tsn))
+bird_redlist_data <- bird_redlist_data %>% filter(!is.na(tsn))
+
+# Merge only the species that we have a tsn for
 
 bird_ecoregion_redlist <- bird_ecoregions %>%
                           select(-redlist_status) %>%
                           merge(bird_redlist_data[c("tsn", 
-                                                      "redlist_assessment_year",
-                                                      "redlist_status", 
-                                                      "redlist_source")],
+                                                    "redlist_assessment_year",
+                                                    "redlist_status", 
+                                                    "redlist_source")],
                                 by = "tsn",
                                 all = TRUE) %>%
                           rename(location_source = source) %>%
                           mutate(class = "Aves") %>%
-                          merge(ecoregion_country_df[c("ECO_ID", 
-                                                       "CNTRY_NAME")],
-                                by.x = "ecoregion_id",
-                                by.y = "ECO_ID") %>%
                           filter(ecoregion_id != 0)
+
+# Merge the rest by binomial instead
+
+no_tsn_bird_ecoregion_redlist <- bird_ecoregions_no_tsn %>%
+                                 select(-redlist_status) %>%
+                                 merge(bird_redlist_no_tsn[c("binomial", 
+                                                            "redlist_assessment_year",
+                                                            "redlist_status", 
+                                                            "redlist_source")],
+                                        by = "binomial",
+                                        all = TRUE) %>%
+                                 rename(location_source = source) %>%
+                                 mutate(class = "Aves") %>%
+                                 filter(ecoregion_id != 0)
+
+bird_ecoregion_redlist <- rbind(bird_ecoregion_redlist, no_tsn_bird_ecoregion_redlist)
 
 saveRDS(bird_ecoregion_redlist, file.path(interim_outputs, 
                                             paste(location,"bird", 
@@ -1568,6 +1588,15 @@ saveRDS(bird_ecoregion_redlist, file.path(interim_outputs,
 bird_summaries <- summarise_species_data(bird_ecoregion_redlist, "1", "bird")
 bird_redlist_by_ecoregion <- bird_summaries[[1]]
 bird_redlist_global <- bird_summaries[[2]]
+
+# Bird data checks!
+bird_rangemaps_no_tsn <- bird_rangemap_synonyms %>% filter(is.na(tsn))
+bird_ecoregions_no_tsn <- bird_ecoregions %>% filter(is.na(tsn))
+bird_redlist_no_tsn <- bird_redlist_data %>% filter(is.na(tsn))
+bird_ER_RL_no_tsn <- bird_ecoregion_redlist %>% filter(is.na(tsn))
+
+australian_birds <- bird_ecoregion_redlist[bird_ecoregion_redlist$ecoregion_id %in% 
+                                    ecoregion_subset$ECO_ID,] 
 
 # * Reptiles ----
 

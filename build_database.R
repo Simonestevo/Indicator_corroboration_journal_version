@@ -1063,7 +1063,7 @@ amphibian_redlist_data <- amphibian_redlist_data %>%
                                       "binomial")) %>%
                           dplyr::select("binomial","class","2004", "2008", 
                                         "redlist_source") %>%
-                          melt(.,id.vars = c("binomial", "class", 
+                          reshape2::melt(.,id.vars = c("binomial", "class", 
                                              "redlist_source"), 
                                value.name = "redlist_status",
                                variable.name = "redlist_assessment_year") 
@@ -1130,25 +1130,26 @@ amphibians_single_tsn <- amphibian_redlist_data %>%
                          filter(n() == 1) %>%
                          ungroup(.)
 
-amphibian_redlist_data <- rbind(amphibians_single_tsn, amphibians_multi_tsn)
+amphibian_redlist_data <- as.data.frame(rbind(amphibians_single_tsn, 
+                                              amphibians_multi_tsn))
 
 # Join ecoregion and redlist data together
 
 amphibian_ecoregion_redlist <- amphibian_ecoregions %>%
-                               select(-redlist_status) %>%
-                               merge(amphibian_redlist_data[c("tsn", 
-                                                               "redlist_assessment_year",
-                                                               "redlist_status", 
-                                                               "redlist_source")],
-                                      by = "tsn",
-                                     all = TRUE) %>%
-                                rename(location_source = source) %>%
-                                mutate(class = "Amphibia") %>%
-                                merge(ecoregion_country_df[c("ECO_ID", 
-                                                             "CNTRY_NAME")],
-                                      by.x = "ecoregion_id",
-                                      by.y = "ECO_ID") %>%
-                                filter(ecoregion_id != 0)
+  dplyr::select(-redlist_status) %>%
+  merge(amphibian_redlist_data[c("tsn", 
+                              "binomial",
+                              "redlist_assessment_year",
+                              "redlist_status", 
+                              "redlist_source")], by = "tsn", 
+        all = TRUE) %>%
+  mutate(binomial = coalesce(binomial.x, binomial.y),
+         class = "test") %>%
+  select(ecoregion_id, tsn, binomial, source, 
+         redlist_assessment_year,
+         redlist_status, redlist_source, class)
+
+
 
 
 saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs, 
@@ -1156,6 +1157,21 @@ saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs,
                                                      "ecoregion_redlist.rds", 
                                                      sep = "_")))
 }
+
+
+# Summarise to check for data gaps
+
+amphibian_summaries <- summarise_species_data(amphibian_ecoregion_redlist, "1", 
+                                              "amphibian")
+amphibian_redlist_by_ecoregion <- amphibian_summaries[[1]]
+amphibian_redlist_global <- amphibian_summaries[[2]]
+
+# Check data
+
+# Check the data
+
+test <- amphibian_redlist_data %>% filter(redlist_status == "EX") # only one ex mammal?
+newtest <- amphibian_ecoregion_redlist %>% filter(binomial == "Atelopus vogli")
 
 
 # Check what species we still don't have red list data for
@@ -1302,12 +1318,7 @@ saveRDS(amphibian_ecoregion_redlist, file.path(interim_outputs,
 
 ## UP TO HERE ....
 
-# Summarise to check for data gaps
 
-amphibian_summaries <- summarise_species_data(amphibian_ecoregion_redlist, "1", 
-                                              "amphibian")
-amphibian_redlist_by_ecoregion <- amphibian_summaries[[1]]
-amphibian_redlist_global <- amphibian_summaries[[2]]
 
 # * Mammals ----
 

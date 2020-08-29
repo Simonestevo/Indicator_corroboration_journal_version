@@ -1628,17 +1628,29 @@ reptile_binomial_list <- split(reptile_binomials_all,
 
 # Create a sub-directory for the outputs so they will be easy to collate later
 
+if ((paste(location, "reptile_redlist_data.rds", 
+           sep = "_") %in% list.files(interim_outputs))) {
+  
+reptile_redlist_data <- readRDS(file.path(interim_outputs, 
+                                   paste(location, "reptile_redlist_data.rds", 
+                                                       sep = "_" )))
+} else {
+
+
+reptile_redlist_directory <- file.path(interim_outputs, 
+                                       "reptile_redlist_history")
+
 if( !dir.exists( file.path(interim_outputs, "reptile_redlist_history") ) ) {
   
   dir.create( file.path(interim_outputs, "reptile_redlist_history"), 
               recursive = TRUE )
   
-  reptile_redlist_directory <- file.path(interim_outputs, 
-                                         "reptile_redlist_history")
 }
 
 # Loop through the names and get redlist history data, saving the output in
 # sections
+
+# WARNING - SLOW CODE, TAKES AROUND 12 HOURS
 
 out <- list()
 
@@ -1650,7 +1662,7 @@ for (i in seq_along(reptile_binomial_list)) {
                                            maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
   df <- do.call(rbind, section_out)
   
-  saveRDS(df, file.path(reptile_redlist_directory, paste("section", (i + 98), # Remove plus 98
+  saveRDS(df, file.path(reptile_redlist_directory, paste("section", i ,
                                                 "reptile_redlist_history.rds", 
                                                 sep = "_")))
   out[[i]] <- df
@@ -1658,10 +1670,16 @@ for (i in seq_along(reptile_binomial_list)) {
 
 # Convert list of redlist data back into a nice dataframe 
 
-# all_reptile_out <- list.files(reptile_redlist_directory)
-# out <- lapply(file.path(reptile_redlist_directory, all_reptile_out), readRDS)
+all_reptile_out <- list.files(reptile_redlist_directory)
+out <- lapply(file.path(reptile_redlist_directory, all_reptile_out), readRDS)
 
 reptile_redlist_data <- do.call(rbind, out)
+
+saveRDS(reptile_redlist_data, 
+        file.path(interim_outputs, paste(location, "reptile_redlist_data.rds",
+                                         sep = "_")))
+
+}
 
 status_list <- reptile_redlist_data %>%
                dplyr::select(code, category) %>%
@@ -1741,25 +1759,28 @@ reptile_single_tsn <- reptile_redlist_data %>%
   filter(n() == 1) %>%
   ungroup(.)
 
-reptile_redlist_data <- rbind(reptile_single_tsn, reptile_multi_tsn)
+# Merge only the species that we have a tsn for
+
+reptile_redlist_data <- as.data.frame(rbind(reptile_single_tsn, 
+                                            reptile_multi_tsn))
 
 # Join ecoregion and redlist data together
 
 reptile_ecoregion_redlist <- reptile_ecoregions %>%
-  select(-redlist_status) %>%
+  dplyr::select(-redlist_status) %>%
   merge(reptile_redlist_data[c("tsn", 
+                            "binomial",
                             "redlist_assessment_year",
                             "redlist_status", 
-                            "redlist_source")],
-        by = "tsn",
+                            "redlist_source")], by = "tsn", 
         all = TRUE) %>%
-  rename(location_source = source) %>%
-  mutate(class = "Reptilia") %>%
-  merge(ecoregion_country_df[c("ECO_ID", 
-                               "CNTRY_NAME")],
-        by.x = "ecoregion_id",
-        by.y = "ECO_ID") %>%
-  filter(ecoregion_id != 0)
+  mutate(binomial = coalesce(binomial.x, binomial.y),
+         class = "Aves") %>%
+  select(ecoregion_id, tsn, binomial, source, 
+         redlist_assessment_year,
+         redlist_status, redlist_source, class)
+
+
 
 saveRDS(reptile_ecoregion_redlist, file.path(interim_outputs, 
                                           paste(location,"reptile", 

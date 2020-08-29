@@ -1144,7 +1144,7 @@ amphibian_ecoregion_redlist <- amphibian_ecoregions %>%
                               "redlist_source")], by = "tsn", 
         all = TRUE) %>%
   mutate(binomial = coalesce(binomial.x, binomial.y),
-         class = "test") %>%
+         class = "Amphibia") %>%
   select(ecoregion_id, tsn, binomial, source, 
          redlist_assessment_year,
          redlist_status, redlist_source, class)
@@ -1425,7 +1425,7 @@ mammal_ecoregion_redlist <- mammal_ecoregions %>%
                                             "redlist_source")], by = "tsn", 
                                   all = TRUE) %>%
                             mutate(binomial = coalesce(binomial.x, binomial.y),
-                                   class = "test") %>%
+                                   class = "Mammalia") %>%
                             select(ecoregion_id, tsn, binomial, source, 
                                    redlist_assessment_year,
                                    redlist_status, redlist_source, class)
@@ -1775,7 +1775,7 @@ reptile_ecoregion_redlist <- reptile_ecoregions %>%
                             "redlist_source")], by = "tsn", 
         all = TRUE) %>%
   mutate(binomial = coalesce(binomial.x, binomial.y),
-         class = "Aves") %>%
+         class = "Reptilia") %>%
   select(ecoregion_id, tsn, binomial, source, 
          redlist_assessment_year,
          redlist_status, redlist_source, class)
@@ -1799,6 +1799,34 @@ reptile_redlist_global <- reptile_summaries[[2]]
 
 # * Extinct species ----
 
+extinct_amphibians <- amphibian_ecoregion_redlist %>% filter(redlist_status == "EX"|redlist_status == "EW")
+extinct_mammals <- mammal_ecoregion_redlist %>% filter(redlist_status == "EX"|redlist_status == "EW")
+extinct_birds <- bird_ecoregion_redlist %>% filter(redlist_status == "EX"|redlist_status == "EW")
+extinct_reptiles <- reptile_ecoregion_redlist %>% filter(redlist_status == "EX"|redlist_status == "EW")
+
+extinct_spp <- rbind(extinct_amphibians, extinct_mammals, extinct_birds, extinct_reptiles)
+extinct_spp_no_ecoregion <- extinct_spp %>% filter(is.na(ecoregion_id))
+extinct_spp_no_ecoregion_binomials <- unique(extinct_spp_no_ecoregion$binomial)
+extinct_spp_ecoregions <- get_gbif_data(extinct_spp_no_ecoregion_binomials, 
+                                        100, ecoregion_map)
+
+extinct_species_ecoregions <- extinct_spp_ecoregions[[1]] %>%
+                              distinct(.) %>%
+                              rename(binomial = species) 
+
+extinct_species_ecoregions %>% filter(binomial == "Thylacinus cynocephalus")
+mammal_ecoregion_redlist %>% filter(binomial == "Thylacinus cynocephalus")
+
+mammal_ecoregion_redlist2 <- mammal_ecoregion_redlist %>%
+        merge(extinct_species_ecoregions[c("ECO_ID", "binomial")],
+              by ="binomial", all = TRUE) %>%
+        mutate(eco_source = "gbif",
+               ecoregion_id = coalesce(ecoregion_id, ECO_ID),
+               source = coalesce(source, eco_source)) %>%
+        select(ecoregion_id, tsn, binomial, source, redlist_assessment_year,
+               redlist_status, redlist_source, class)
+
+tassietiger <- test %>% filter(binomial == "Thylacinus cynocephalus")
 # Get extinct species data from IUCN website ----
 
 #' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
@@ -1812,6 +1840,14 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
                                                          "extinction", 
                                                          "ecoregion_redlist.rds", 
                                                          sep = "_" )))
+  
+  revised_extinction_ecoregion_redlist <- extinction_ecoregion_redlist %>%
+                                          select(ecoregion_id, tsn, 
+                                                 location_source, 
+                                                 redlist_assessment_year,
+                                                 redlist_status,redlist_source,
+                                                 class) %>%
+                                          distinct(.)
 } else {
   
   iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
@@ -1918,6 +1954,25 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
   # Add ecoregions to our other data
   
   species_data_columns <- names(mammal_ecoregion_redlist)
+  
+  reptile_redlist_data <- as.data.frame(rbind(reptile_single_tsn, 
+                                              reptile_multi_tsn))
+  
+  # Join ecoregion and redlist data together
+  
+  extinction_ecoregion_redlist <- extinct_species_ecoregions %>%
+    dplyr::select(-redlist_status) %>%
+    merge(extinct_species_data[c("tsn", 
+                                 "binomial",
+                                 "redlist_assessment_year",
+                                 "redlist_status", 
+                                 "redlist_source")], by = "tsn", 
+          all = TRUE) %>%
+    mutate(binomial = coalesce(binomial.x, binomial.y),
+           class = "Reptilia") %>%
+    select(ecoregion_id, tsn, binomial, source, 
+           redlist_assessment_year,
+           redlist_status, redlist_source, class)
   
   extinction_ecoregion_redlist <- extinct_species_data %>%
                                   dplyr::select(-tsn) %>%

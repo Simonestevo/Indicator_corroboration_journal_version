@@ -44,6 +44,13 @@ eco_version <- "ecoregions_2017"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 
+# Set up some ecoregions that we know how they should behave
+
+east_australia <- 168 # Decline over time
+amazon <- 473 # Decline over time
+cardamom <- 223 # In good shape
+ecuador <- 516 #Had a lot of extinctions
+
 
 if (!is.na(country)) {
   
@@ -253,7 +260,7 @@ if (!is.na(country)) {
 
 
 species_data_all <- readRDS(file.path(interim_outputs, 
-                                  "version_3_species_data_v2.rds"))
+                                  "global_species_data_3.rds"))
 
 # species_data <- readRDS(file.path(interim_outputs, 
 #                                   "version_3_species_data_v1.rds"))
@@ -261,30 +268,39 @@ species_data_all <- readRDS(file.path(interim_outputs,
 # Rename classes so they match and remove country variable
 
 species_data <- species_data_all %>%
-                # drop_na(redlist_assessment_year, redlist_status, class) %>%
-                # distinct(.) %>%
-                dplyr::select(-CNTRY_NAME) %>%
                 distinct(.) %>%
-                mutate(class = replace(class, class == "AMPHIBIA", "Amphibia"),
-                       class = replace(class, class == "MAMMALIA", "Mammalia"),
-                       class = replace(class, class == "FLORIDEOPHYCEAE",
-                                                       "Florideophycae"),
-                       class = replace(class, class == "REPTILIA", "Reptilia"),
-                       class = replace(class, class == "MAGNOLIOPSIDA",
-                                                       "Magnoliopsida"),
-                       class = replace(class, class == "AVES", "Aves"),
-                       redlist_assessment_year = as.numeric(as.character(redlist_assessment_year)),
+                mutate(redlist_assessment_year = as.numeric(as.character(
+                       redlist_assessment_year)),
                        decade = ifelse(redlist_assessment_year < 1990, 1980,
                                        ifelse(redlist_assessment_year > 1989 &
                                               redlist_assessment_year < 2000, 1990,
+                                       # ifelse(redlist_assessment_year > 1994 &
+                                       #        redlist_assessment_year < 2000, 1995,
                                        ifelse(redlist_assessment_year > 1999 &
-                                              redlist_assessment_year < 2010, 2000,
+                                              redlist_assessment_year < 2005, 2000,
+                                       ifelse(redlist_assessment_year > 2004 &
+                                              redlist_assessment_year < 2010, 2005,
                                        ifelse(redlist_assessment_year > 2009 &
-                                              redlist_assessment_year < 2020, 2010,
-                                       ifelse(redlist_assessment_year > 2019, 
-                                              2020, NA)))))) %>%
-               filter(decade != 2020) %>%
+                                              redlist_assessment_year < 2015, 2010,
+                                       ifelse(redlist_assessment_year > 2014 &
+                                              redlist_assessment_year < 2021, 2015,
+                                       NA))))))) %>%
+               filter(redlist_assessment_year != 2020,
+                      redlist_assessment_year != 2019) %>%
                drop_na(decade)
+
+hist(species_data$decade)
+
+# Get only complete cases (RL status for each decade)
+
+complete_cases <- species_data %>% 
+                  group_by(binomial) %>%
+                  summarise(number_timepoints = n_distinct(decade)) %>%
+                  filter(number_timepoints == 6) %>%
+                  distinct(.)
+
+species_data_complete <- species_data[species_data$binomial %in% 
+                                     complete_cases$binomial,]
 
 # Subset by test country
 
@@ -302,7 +318,6 @@ species_data <- species_data[species_data$ecoregion_id %in%
 # Extinction/Risk status ----
 
 species_by_ecoregion <- species_data %>%
-                        select(-eco_objectid) %>%
                         distinct(.) %>%
                         group_by(ecoregion_id, decade) %>%
                         mutate(number_of_species_year = n_distinct(tsn),
@@ -329,9 +344,16 @@ test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
 # Extinctions
 
-#' TODO: IMPORTANT - ADD AN IFELSE THAT REPLACES NUMBER OF EXTINCTIONS WITH
-#' HIGHEST PREVIOUS VALUE IF THE NUMBER OF EXTINCTIONS IS LOWER IN A LATER
-#' YEAR THAN A PREVIOUS ONE
+if (!(paste(location, eco_version, "proportion_extinct.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+extinction_values <- readRDS(file.path(indicator_outputs, 
+                                              paste(location, eco_version, 
+                                                    "proportion_extinct.rds",
+                                                    sep = "_"))) 
+} else {
 
 extinction_values <- species_by_ecoregion %>%
                      mutate(indicator = "proportion extinct") %>%
@@ -342,15 +364,16 @@ extinction_values <- species_by_ecoregion %>%
                      drop_na(year) %>%
                      group_by(ecoregion_id) %>%
                      arrange(year) %>%
-                     mutate(raw_indicator_value = cummax(proportion_extinct)) %>%
-                     dplyr::select(-proportion_extinct)
+                     mutate(raw_indicator_value = cummax(proportion_extinct))
+
 
 extinction_values <- as.data.frame(extinction_values)
 
 
+
 # Check extinction values behave as anticipated
 
-ECO <- 8
+ECO <- ecuador
 test_spp <- species_by_ecoregion %>% filter(ecoregion_id == ECO)
 test <- extinction_values %>% filter(ecoregion_id == ECO)
 
@@ -358,9 +381,54 @@ ggplot(test) +
   geom_line(aes(x = year, y = raw_indicator_value)) +
   geom_line(aes(x = year, y = proportion_extinct), col = "red", linetype = 2)
 
+# Remove proportion extinct after check it is working as intended
+
+extinction_values <- extinction_values %>% dplyr::select(-proportion_extinct)
+
+saveRDS(extinction_values, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "proportion_extinct.rds",
+                                           sep = "_")))
+
+}
+
 # Threatened status
 
-at_risk_values <- species_by_ecoregion %>%
+if (!(paste(location, eco_version, "proportion_at_risk.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+at_risk_values <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "proportion_at_risk.rds",
+                                               sep = "_"))) 
+} else {
+
+species_by_ecoregion_complete <- species_data_complete %>%
+                                 distinct(.) %>%
+                                 group_by(ecoregion_id, decade) %>%
+                                 mutate(number_of_species_year = n_distinct(tsn),
+                                         number_extinct = n_distinct(tsn[redlist_status == "EX"|
+                                                                           redlist_status == "EW"]),
+                                         number_atrisk = n_distinct(tsn[redlist_status == "EN"|
+                                                                          redlist_status == "CR"|
+                                                                          redlist_status == "CR(PE)"|
+                                                                          redlist_status == "VU"]),
+                                         number_lowrisk = n_distinct(tsn[redlist_status == "LC"|
+                                                                           redlist_status == "NT"]),
+                                         number_datadeficient = n_distinct(tsn[redlist_status == "DD"]),
+                                         check = number_of_species_year - (number_extinct +
+                                                                             number_atrisk +
+                                                                             number_lowrisk+
+                                                                             number_datadeficient)) %>%
+                                  group_by(ecoregion_id) %>%
+                                  mutate(number_of_species = max(number_of_species_year),
+                                         proportion_extinct = number_extinct/number_of_species,
+                                         proportion_atrisk = number_atrisk/number_of_species,
+                                         proportion_lowrisk = number_lowrisk/number_of_species)
+
+at_risk_values <- species_by_ecoregion_complete %>%
                  mutate(indicator = "proportion at risk") %>%
                  select(indicator, decade, 
                          ecoregion_id, proportion_atrisk) %>%
@@ -372,20 +440,29 @@ at_risk_values <- species_by_ecoregion %>%
 
 at_risk_values <- as.data.frame(at_risk_values)
 
+saveRDS(at_risk_values, file.path(indicator_outputs, 
+                                  paste(location, eco_version, 
+                                        "proportion_at_risk.rds",
+                                        sep = "_")))
+
+}
+
 # Check extinction values behave as anticipated
 
-ECO <- 476
+ECO <- 7
 atrisk_test <- at_risk_values %>% filter(ecoregion_id == ECO)
 
 ggplot(atrisk_test) +
   geom_line(aes(x = year, y = raw_indicator_value)) 
 
 
+
+
 # # Red List Index ----
 
 # Split into different classes
 
-species_data_for_rli <- species_data %>%
+species_data_for_rli <- species_data_complete %>%
                         filter(class == "Amphibia"| class == "Aves"|
                                class == "Mammalia"| class == "Reptilia")
 
@@ -402,7 +479,7 @@ for (i in seq_along(class_list)) {
   # Split by different assessment timepoints
   
   class_timestep <- split(class_list[[i]], 
-                          class_list[[i]]$redlist_assessment_year)
+                          class_list[[i]]$decade)
   
     for (j in seq_along(class_timestep)) {
       
@@ -567,10 +644,10 @@ if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in%
                                          ecoregion_map,
                                          fun = mean,
                                          na.rm = TRUE),
-                       indicator_CV = raster::extract(hfp_2009_data,
+                       indicator_sd = raster::extract(hfp_2009_data,
                                                       ecoregion_map,
                                                       fun = sd,
-                                                      na.rm=TRUE)))
+                                                      na.rm = TRUE)))
   
   # system.time(hfp_1993_ecoregion_values <- 
   #   ecoregion_map %>% mutate(

@@ -291,6 +291,15 @@ species_data <- species_data_all %>%
 
 hist(species_data$decade)
 
+# Subset by test country
+
+if (!is.na(country)) {
+  
+  species_data <- species_data[species_data$ecoregion_id %in% 
+                                 ecoregion_map$ECO_ID, ]
+  
+}
+
 # Get only complete cases (RL status for each decade)
 
 complete_cases <- species_data %>% 
@@ -302,20 +311,31 @@ complete_cases <- species_data %>%
 species_data_complete <- species_data[species_data$binomial %in% 
                                      complete_cases$binomial,]
 
-# Subset by test country
+species_by_ecoregion_complete <- species_data_complete %>%
+  distinct(.) %>%
+  group_by(ecoregion_id, decade) %>%
+  mutate(number_of_species_year = n_distinct(tsn),
+         number_extinct = n_distinct(tsn[redlist_status == "EX"|
+                                           redlist_status == "EW"]),
+         number_atrisk = n_distinct(tsn[redlist_status == "EN"|
+                                          redlist_status == "CR"|
+                                          redlist_status == "CR(PE)"|
+                                          redlist_status == "VU"]),
+         number_lowrisk = n_distinct(tsn[redlist_status == "LC"|
+                                           redlist_status == "NT"]),
+         number_datadeficient = n_distinct(tsn[redlist_status == "DD"]),
+         check = number_of_species_year - (number_extinct +
+                                             number_atrisk +
+                                             number_lowrisk+
+                                             number_datadeficient)) %>%
+  group_by(ecoregion_id) %>%
+  mutate(number_of_species = max(number_of_species_year),
+         proportion_extinct = number_extinct/number_of_species,
+         proportion_atrisk = number_atrisk/number_of_species,
+         proportion_lowrisk = number_lowrisk/number_of_species)
 
-if (!is.na(country)) {
-  
-species_data <- species_data[species_data$ecoregion_id %in% 
-                             ecoregion_map$ECO_ID, ]
-  
-}
 
-
-# Calculate indicators ----
-
-
-# Extinction/Risk status ----
+# All species (not just those with complete timepoints)
 
 species_by_ecoregion <- species_data %>%
                         distinct(.) %>%
@@ -342,7 +362,10 @@ species_by_ecoregion <- species_data %>%
 
 test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
-# Extinctions
+
+
+
+# Proportion of species extinct ----
 
 if (!(paste(location, eco_version, "proportion_extinct.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
@@ -369,8 +392,6 @@ extinction_values <- species_by_ecoregion %>%
 
 extinction_values <- as.data.frame(extinction_values)
 
-
-
 # Check extinction values behave as anticipated
 
 ECO <- ecuador
@@ -392,7 +413,9 @@ saveRDS(extinction_values, file.path(indicator_outputs,
 
 }
 
-# Threatened status
+indicator_df_colnames <- names(extinction_values)
+
+# Proportion of species threatened ----
 
 if (!(paste(location, eco_version, "proportion_at_risk.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
@@ -405,28 +428,6 @@ at_risk_values <- readRDS(file.path(indicator_outputs,
                                                sep = "_"))) 
 } else {
 
-species_by_ecoregion_complete <- species_data_complete %>%
-                                 distinct(.) %>%
-                                 group_by(ecoregion_id, decade) %>%
-                                 mutate(number_of_species_year = n_distinct(tsn),
-                                         number_extinct = n_distinct(tsn[redlist_status == "EX"|
-                                                                           redlist_status == "EW"]),
-                                         number_atrisk = n_distinct(tsn[redlist_status == "EN"|
-                                                                          redlist_status == "CR"|
-                                                                          redlist_status == "CR(PE)"|
-                                                                          redlist_status == "VU"]),
-                                         number_lowrisk = n_distinct(tsn[redlist_status == "LC"|
-                                                                           redlist_status == "NT"]),
-                                         number_datadeficient = n_distinct(tsn[redlist_status == "DD"]),
-                                         check = number_of_species_year - (number_extinct +
-                                                                             number_atrisk +
-                                                                             number_lowrisk+
-                                                                             number_datadeficient)) %>%
-                                  group_by(ecoregion_id) %>%
-                                  mutate(number_of_species = max(number_of_species_year),
-                                         proportion_extinct = number_extinct/number_of_species,
-                                         proportion_atrisk = number_atrisk/number_of_species,
-                                         proportion_lowrisk = number_lowrisk/number_of_species)
 
 at_risk_values <- species_by_ecoregion_complete %>%
                  mutate(indicator = "proportion at risk") %>%
@@ -456,17 +457,29 @@ ggplot(atrisk_test) +
   geom_line(aes(x = year, y = raw_indicator_value)) 
 
 
-
-
 # # Red List Index ----
 
+if (!(paste(location, eco_version, "red_list_index.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+rli_values <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "red_list_index.rds",
+                                               sep = "_"))) 
+} else {
 # Split into different classes
 
-species_data_for_rli <- species_data_complete %>%
+species_data_for_rli <- species_data %>%
                         filter(class == "Amphibia"| class == "Aves"|
-                               class == "Mammalia"| class == "Reptilia")
+                               class == "Mammalia"| class == "Reptilia") %>%
+                        filter(tsn != 1444976) # Remove only spp with timepoint in 2015 for amphibia
 
 class_list <- split(species_data_for_rli, species_data_for_rli$class)
+
+#class_list <- lapply(class_list, sample_n, size = 200)
+
 
 # Split each class into different time points (output should be dataframes of 
 # species red list status in a nested list with levels: Class, Time point, Ecoregion)
@@ -506,18 +519,17 @@ class_time_list[[i]] <- class_time_list_full[[i]][lengths(class_time_list_full[[
 # Calculate the RLI per ecoregion, per timepoint, per class (output should be
 # dataframes of RLI values by ecoregion, by timepoint, split by class)
 
-real_class_time_list <- class_time_list
-
-class_time_list <- real_class_time_list[[1]]
-class_time_list <- class_time_list[c(1,2)]
 
 class_time_ecoregions <- list()
 classes_rli <- list()
 
-
 for (i in seq_along(class_time_list)) {
   
   class <- class_time_list[[i]] # Get list of timesteps for one class
+  
+  taxa <- class[[1]][[1]][[8]][1]
+  
+  print(paste("Processing class", taxa, sep = " "))
   
   class_all_timepoints <- list()
   
@@ -525,9 +537,19 @@ for (i in seq_along(class_time_list)) {
     
       time <- class[[j]] # Get list of ecoregions for one timestep, for one class
       
+      timepoint <- time[[1]][[9]][1]
+      
+      print(paste("Processing class", taxa,
+                  "at timepoint", timepoint, sep = " "))
+      
         for (k in seq_along(time)) {
-        
+          
+          eco <- time[[k]][[1]][1]
+          
           class_time_ecoregions[[k]] <- calculate_red_list_index(time[[k]]) # Calculate RLI for each ecoregion for one timestep, one class
+          
+          print(paste("Processed redlist values for class", taxa,
+                      "at timepoint", timepoint, "in ecoregion", eco, sep = " "))
           
           class_time_ecoregion_df <- do.call(rbind, class_time_ecoregions) # One dataframe for one time point, one class
           
@@ -540,11 +562,11 @@ for (i in seq_along(class_time_list)) {
   class_all_timepoints_df <- do.call(rbind, class_all_timepoints)
   
   timepoints <- unique(class_all_timepoints_df$redlist_assessment_year)
-  taxa <- class_all_timepoints_df$class[1]
+  taxon <- class_all_timepoints_df$class[1]
   
   classes_rli[[i]] <- class_all_timepoints_df # Put the list of time points into a class
   
-  print(paste("Finished processing timepoints", timepoints, "for class", taxa))
+  print(paste("Finished processing timepoints", timepoints, "for class", taxon))
   
 }
 
@@ -573,18 +595,42 @@ rli_values <- rli_values %>%
                   #                       quantile(RLI, .05, na.rm = TRUE))))) %>%
                   # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
 
-# Human Fooprint Index 1993 ----
+saveRDS(rli_values, file.path(indicator_outputs, 
+          paste(location, eco_version, 
+                "red_list_index.rds",
+                sep = "_"))) 
+}
+
+
+# Check extinction values behave as anticipated
+
+ECO <- 7
+rli_test <- rli_values %>% filter(ecoregion_id == ECO)
+
+ggplot(rli_test) +
+  geom_line(aes(x = year, y = raw_indicator_value))
+
+# Human Footprint Index  ----
+
+if (!(paste(location, eco_version,
+            "human_footprint_index.rds", sep = "_") %in% 
+      list.files(indicator_outputs))) {
+
+hfp_values <- readRDS(file.path(indicator_outputs,
+                                paste(location, eco_version,
+                                      "human_footprint_index.rds", sep = "_")))
+} else {
+  
+# * HFP 1993 ----
 
 # Slow code (time elapsed 30088.33 ~ 8 hours)
 
-if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in% 
-      list.files(indicator_outputs))) {
+if (paste(location, "hfp_1993_ecoregion_values.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
   
-  #' TODO: Work out why this is producing so many NaNs
-  
-  hfp_1993_ecoregion_map <- readRDS(file.path(indicator_outputs, 
+  hfp_1993_ecoregion_values <- readRDS(file.path(indicator_outputs, 
                                               paste(location, 
-                                                    "hfp_1993_ecoregion_map.rds",
+                                                    "hfp_1993_ecoregion_values.rds",
                                                     sep = "_"))) 
 } else {
   
@@ -614,80 +660,81 @@ if (!(paste(location, "hfp_1993_ecoregion_map.rds", sep = "_") %in%
 
 # Create indicator values dataframe
 
-hfp_1993_values <- hfp_1993_ecoregion_map %>%
+hfp_1993_values <- hfp_1993_ecoregion_values %>%
                    st_set_geometry(NULL) %>%
                    mutate(indicator = "human footprint index") %>%
                    mutate(year = "1993") %>%
                    rename(ecoregion_id = ECO_ID) %>%
-                   select(names(rli_values)) %>%
-                   drop_na()
+                   select(all_of(indicator_df_colnames)) %>%
+                   mutate(raw_indicator_value = ifelse(is.nan(raw_indicator_value),
+                                                       NA, raw_indicator_value))
 
-# Human Fooprint Index 2009 ----
+# * HFP 2009 ----
 
-if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in% 
-      list.files(indicator_outputs))) {
-  
-  #' TODO: Work out why this is producing so many NaNs
-  
-  hfp_2009_ecoregion_map <- readRDS(file.path(indicator_outputs, 
-                                              paste(location, 
-                                                    "hfp_2009_ecoregion_map.rds",
-                                                    sep = "_"))) 
-} else {
-  
-  hfp_2009_data <- raster(file.path(inputs,
-                                    "human_footprint_index\\HFP2009RP.tif"))
-  
-  system.time(hfp_2009_ecoregion_values <- ecoregion_map %>%
-                mutate(raw_indicator_value =
-                       raster::extract(hfp_2009_data,
-                                         ecoregion_map,
-                                         fun = mean,
-                                         na.rm = TRUE),
-                       indicator_sd = raster::extract(hfp_2009_data,
-                                                      ecoregion_map,
-                                                      fun = sd,
-                                                      na.rm = TRUE)))
-  
-  # system.time(hfp_1993_ecoregion_values <- 
-  #   ecoregion_map %>% mutate(
-  #     hfpMean = raster_extract(hfp_1993_data, ecoregion_map, fun = mean, na.rm = TRUE)
-  #     #,
-  #     # hfpMax = raster_extract(hfp_1993_data, ecoregion_map, fun = max, na.rm = TRUE),
-  #     # hfpMin = raster_extract(hfp_1993_data, ecoregion_map, fun = min, na.rm = TRUE)
-  #   ))
-  
-  saveRDS(hfp_2009_ecoregion_values, file.path(indicator_outputs, paste(location, 
-                                         "hfp_2009_ecoregion_values.rds",
-                                         sep = "_")))
-  
+#' if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in% 
+#'       list.files(indicator_outputs))) {
+#'   
+#'   #' TODO: Work out why this is producing so many NaNs
+#'   
+#'   hfp_2009_ecoregion_map <- readRDS(file.path(indicator_outputs, 
+#'                                               paste(location, 
+#'                                                     "hfp_2009_ecoregion_map.rds",
+#'                                                     sep = "_"))) 
+#' } else {
+#'   
+#'   hfp_2009_data <- raster(file.path(inputs,
+#'                                     "human_footprint_index\\HFP2009RP.tif"))
+#'   
+#'   system.time(hfp_2009_ecoregion_values <- ecoregion_map %>%
+#'                 mutate(raw_indicator_value =
+#'                        raster::extract(hfp_2009_data,
+#'                                          ecoregion_map,
+#'                                          fun = mean,
+#'                                          na.rm = TRUE),
+#'                        indicator_sd = raster::extract(hfp_2009_data,
+#'                                                       ecoregion_map,
+#'                                                       fun = sd,
+#'                                                       na.rm = TRUE)))
+#'   
+#'   # system.time(hfp_1993_ecoregion_values <- 
+#'   #   ecoregion_map %>% mutate(
+#'   #     hfpMean = raster_extract(hfp_1993_data, ecoregion_map, fun = mean, na.rm = TRUE)
+#'   #     #,
+#'   #     # hfpMax = raster_extract(hfp_1993_data, ecoregion_map, fun = max, na.rm = TRUE),
+#'   #     # hfpMin = raster_extract(hfp_1993_data, ecoregion_map, fun = min, na.rm = TRUE)
+#'   #   ))
+#'   
+#'   saveRDS(hfp_2009_ecoregion_values, file.path(indicator_outputs, paste(location, 
+#'                                          "hfp_2009_ecoregion_values.rds",
+#'                                          sep = "_")))
+#'   
+#' 
+#' }
+#' 
+#' # Create indicator values dataframe
+#' 
+#' hfp_2009_values <- hfp_2009_ecoregion_map %>%
+#'                    st_set_geometry(NULL) %>%
+#'                    mutate(indicator = "human footprint index") %>%
+#'                    mutate(year = "2009") %>%
+#'                    rename(ecoregion_id = ECO_ID) %>%
+#'                    select(names(rli_values)) %>%
+#'                    drop_na()
 
-}
 
-# Create indicator values dataframe
-
-hfp_2009_values <- hfp_2009_ecoregion_map %>%
-                   st_set_geometry(NULL) %>%
-                   mutate(indicator = "human footprint index") %>%
-                   mutate(year = "2009") %>%
-                   rename(ecoregion_id = ECO_ID) %>%
-                   select(names(rli_values)) %>%
-                   drop_na()
-
-
-# Human Footprint Index 2017 ----
+# * HFP 2013 ----
 
 # Read in the Human Footprint Index data 
 
-hfp_by_ecoregion_2017 <- read.csv(paste(inputs, "human_footprint_index", 
+hfp_by_ecoregion_2013 <- read.csv(paste(inputs, "human_footprint_index", 
                                         "human_footprint_index_by_ecoregion.csv",
                                         sep = "/"))
 
-hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
+hfp_2013_values <- hfp_by_ecoregion_2013 %>%
                          rename(ecoregion_name = ECO_NAME) %>%
                          # merge(ecoregion_map[c("ecoregion_name", "ECO_ID")], 
                          #       by = "ECO_ID") %>% # This will subset automatically if you subset by country
-                         mutate(year = "2017") %>%
+                         mutate(year = "2013") %>%
                          mutate(indicator = "human footprint index") %>%
                          rename(raw_indicator_value = HFP,
                                 ecoregion_id = ECO_ID) %>%
@@ -706,76 +753,75 @@ hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017 %>%
                          #           1 - HFP_scaled_adjusted)
 
 
-# Subset the HFP data by country 
+hfp_values <- rbind(hfp_1993_values, hfp_2013_values)
 
-if (!is.na(country)) {
-
-  full_hfp_by_ecoregion_2017 <- hfp_by_ecoregion_2017
-
-  country_ecoregions <- ecoregion_map$ECO_ID
-
-  hfp_by_ecoregion_2017 <- full_hfp_by_ecoregion_2017[
-    full_hfp_by_ecoregion_2017$ECO_ID %in% country_ecoregions, ]
+saveRDS(hfp_values, file.path(indicator_outputs, paste(location, eco_version,
+                          "human_footprint_index.rds", sep = "_")))
 
 }
 
 # Biodiversity Habitat Index Plants 2015 ----
 
-bhi_plants_2015_all <- read.csv(file.path(inputs, 
-                                       "biodiversity_habitat_index\\BHI2015_PLANTS_BY_ECOREGION.csv"))
-
-bhi_plants_2015_values <- bhi_plants_2015_all[-1,1:2]
-
-bhi_plants_2015_values <- bhi_plants_2015_values %>%
-                          rename(eco_id = BIODIVERSITY.HABITAT.INDEX.2015,
-                                 raw_indicator_value = X) %>%
-                          mutate(raw_indicator_value = 
-                          as.numeric(levels(raw_indicator_value))[raw_indicator_value]) %>%
-                          merge(ecoregion_map[c("eco_id","ecoregion_code")], 
-                                by = "eco_id") %>%
-                          mutate(indicator = "biodiversity habitat index plants",
-                                 year = 2015) %>%
-                          dplyr::select(-geometry) %>%
-                          dplyr::select(indicator_columns) %>%
-                          distinct(.)
-
-# Living Planet Index ----
-
-lpi_data <- read.csv(file.path(inputs, 
-                               "living_planet_index\\LPR2018data_public.csv"))
-
-## Assign species to ecoregions
-
-# Get coordinates
-
-lpi_coordinates <- lpi_data %>%
-                   select(Binomial, Latitude, Longitude) %>%
-                   distinct(.) %>%
-                   filter(complete.cases(Latitude, Longitude))
-
-# Convert into simple features
-
-lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude', 
-                                                'Latitude'), 
-                       crs = st_crs(ecoregion_map))
-
-lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
-lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)   
-
-lpi_inputs <- lpi_data %>%
-              merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")], 
-                    by = "Binomial")
-
-lpi_input_summary <- lpi_inputs %>%
-                     group_by(ECO_ID) %>%
-                     summarise(number_of_records = n_distinct(Binomial),
-                               .groups = "drop_last")
+# bhi_plants_2015_all <- read.csv(file.path(inputs, 
+#                                        "biodiversity_habitat_index\\BHI2015_PLANTS_BY_ECOREGION.csv"))
+# 
+# bhi_plants_2015_values <- bhi_plants_2015_all[-1,1:2]
+# 
+# bhi_plants_2015_values <- bhi_plants_2015_values %>%
+#                           rename(eco_id = BIODIVERSITY.HABITAT.INDEX.2015,
+#                                  raw_indicator_value = X) %>%
+#                           mutate(raw_indicator_value = 
+#                           as.numeric(levels(raw_indicator_value))[raw_indicator_value]) %>%
+#                           merge(ecoregion_map[c("eco_id","ecoregion_code")], 
+#                                 by = "eco_id") %>%
+#                           mutate(indicator = "biodiversity habitat index plants",
+#                                  year = 2015) %>%
+#                           dplyr::select(-geometry) %>%
+#                           dplyr::select(indicator_columns) %>%
+#                           distinct(.)
+# 
+# # Living Planet Index ----
+# 
+# lpi_data <- read.csv(file.path(inputs, 
+#                                "living_planet_index\\LPR2018data_public.csv"))
+# 
+# ## Assign species to ecoregions
+# 
+# # Get coordinates
+# 
+# lpi_coordinates <- lpi_data %>%
+#                    select(Binomial, Latitude, Longitude) %>%
+#                    distinct(.) %>%
+#                    filter(complete.cases(Latitude, Longitude))
+# 
+# # Convert into simple features
+# 
+# lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude', 
+#                                                 'Latitude'), 
+#                        crs = st_crs(ecoregion_map))
+# 
+# lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
+# lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)   
+# 
+# lpi_inputs <- lpi_data %>%
+#               merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")], 
+#                     by = "Binomial")
+# 
+# lpi_input_summary <- lpi_inputs %>%
+#                      group_by(ECO_ID) %>%
+#                      summarise(number_of_records = n_distinct(Binomial),
+#                                .groups = "drop_last")
 
 # Richness Biodiversity Intactness Index 2005 ----
 
-# TEMPORARY CODE - the below takes ages to run on a laptop, so currently just
-# reading in prepped bii data for development, but put the below chunk back on 
-# when doing the real deal analysis
+if (paste(location, eco_version, "richness_BII.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+bii_richness_values <- readRDS(file.path(indicator_outputs, 
+                                                 paste(location, eco_version,
+                                                       "richness_BII.rds", 
+                                                       sep = "_")))
+} else {
 
 ## WARNING - SLOW CODE - bii richness time elapsed 50753.13 (~ 14 hrs)
 
@@ -824,13 +870,26 @@ bii_richness_values <- bii_rich_ecoregion_map %>%
                       mutate(year = "2005") %>%
                       rename(ecoregion_id = ECO_ID) %>%
                       select(all_of(indicator_columns)) %>%
-                      drop_na()
+                      mutate(raw_indicator_value = ifelse(
+                        is.nan(raw_indicator_value),
+                                      NA, raw_indicator_value))
+
+saveRDS(bii_richness_values, file.path(indicator_outputs, 
+                                       paste(location, eco_version,
+                                             "richness_BII.rds", sep = "_")))
+
+}
 
 # Abundance Biodiversity Intactness Index 2005 ----
 
-# TEMPORARY CODE - the below takes ages to run on a laptop, so currently just
-# reading in prepped bii data for development, but put the below chunk back on 
-# when doing the real deal analysis
+if (paste(location, eco_version, "abundance_BII.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+bii_abundance_values <- readRDS(file.path(indicator_outputs, 
+                                           paste(location, eco_version,
+                                                 "abundance_BII.rds", 
+                                                 sep = "_")))
+} else {
 
 if (paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in% 
       list.files(indicator_outputs)) {
@@ -877,7 +936,14 @@ bii_abundance_values <- bii_abundance_ecoregion_map %>%
                         mutate(year = "2005") %>%
                         rename(ecoregion_id = ECO_ID,) %>%
                         select(all_of(indicator_columns)) %>%
-                        drop_na()
+                        mutate(raw_indicator_value = ifelse(
+                          is.nan(raw_indicator_value),
+                          NA, raw_indicator_value))
+
+saveRDS(bii_abundance_values, file.path(indicator_outputs, 
+                                       paste(location, eco_version,
+                                             "abundance_BII.rds", sep = "_")))
+}
 
 # Wilderness Intactness Index ----
 

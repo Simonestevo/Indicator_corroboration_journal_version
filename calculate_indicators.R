@@ -367,7 +367,7 @@ test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
 # Proportion of species extinct ----
 
-if (!(paste(location, eco_version, "proportion_extinct.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "proportion_extinct.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
   
   #' TODO: Work out why this is producing so many NaNs
@@ -417,7 +417,7 @@ indicator_df_colnames <- names(extinction_values)
 
 # Proportion of species threatened ----
 
-if (!(paste(location, eco_version, "proportion_at_risk.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "proportion_at_risk.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
   
   #' TODO: Work out why this is producing so many NaNs
@@ -458,8 +458,10 @@ ggplot(atrisk_test) +
 
 
 # # Red List Index ----
+# **WARNING SLOW CODE ** ## ----
+# (Takes about half a day? ~ 15 hours?)
 
-if (!(paste(location, eco_version, "red_list_index.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "red_list_index.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
   
   #' TODO: Work out why this is producing so many NaNs
@@ -612,7 +614,9 @@ ggplot(rli_test) +
 
 # Human Footprint Index  ----
 
-if (!(paste(location, eco_version,
+#' TODO: Add 2009 and min/max and stdev for others
+
+if ((paste(location, eco_version,
             "human_footprint_index.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
 
@@ -623,7 +627,8 @@ hfp_values <- readRDS(file.path(indicator_outputs,
   
 # * HFP 1993 ----
 
-# Slow code (time elapsed 30088.33 ~ 8 hours)
+# **WARNING SLOW CODE ** ## ---- 
+  # (time elapsed 30088.33 ~ 8 hours)
 
 if (paste(location, "hfp_1993_ecoregion_values.rds", sep = "_") %in% 
       list.files(indicator_outputs)) {
@@ -663,13 +668,20 @@ if (paste(location, "hfp_1993_ecoregion_values.rds", sep = "_") %in%
 hfp_1993_values <- hfp_1993_ecoregion_values %>%
                    st_set_geometry(NULL) %>%
                    mutate(indicator = "human footprint index") %>%
-                   mutate(year = "1993") %>%
+                   mutate(year = 1990) %>%
                    rename(ecoregion_id = ECO_ID) %>%
                    select(all_of(indicator_df_colnames)) %>%
                    mutate(raw_indicator_value = ifelse(is.nan(raw_indicator_value),
                                                        NA, raw_indicator_value))
 
+saveRDS(hfp_1993_values, file.path(indicator_outputs, 
+                                   paste(location, 
+                                         "hfp_1993_ecoregion_values.rds",
+                                         sep = "_"))) 
 # * HFP 2009 ----
+
+# **WARNING SLOW CODE ** ## ---- 
+# (time elapsed 30088.33 ~ 8 hours)
 
 #' if (!(paste(location, "hfp_2009_ecoregion_map.rds", sep = "_") %in% 
 #'       list.files(indicator_outputs))) {
@@ -734,7 +746,7 @@ hfp_2013_values <- hfp_by_ecoregion_2013 %>%
                          rename(ecoregion_name = ECO_NAME) %>%
                          # merge(ecoregion_map[c("ecoregion_name", "ECO_ID")], 
                          #       by = "ECO_ID") %>% # This will subset automatically if you subset by country
-                         mutate(year = "2013") %>%
+                         mutate(year = 2010) %>%
                          mutate(indicator = "human footprint index") %>%
                          rename(raw_indicator_value = HFP,
                                 ecoregion_id = ECO_ID) %>%
@@ -867,7 +879,7 @@ saveRDS(bii_rich_ecoregion_map, file.path(indicator_outputs, paste(location,
 bii_richness_values <- bii_rich_ecoregion_map %>%
                       st_set_geometry(NULL) %>%
                       mutate(indicator = "richness biodiversity intactness index") %>%
-                      mutate(year = "2005") %>%
+                      mutate(year = 2005) %>%
                       rename(ecoregion_id = ECO_ID) %>%
                       select(all_of(indicator_columns)) %>%
                       mutate(raw_indicator_value = ifelse(
@@ -893,8 +905,6 @@ bii_abundance_values <- readRDS(file.path(indicator_outputs,
 
 if (paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in% 
       list.files(indicator_outputs)) {
-  
-  #' TODO: Work out why this is producing so many NaNs
   
   bii_abundance_ecoregion_map <- readRDS(file.path(indicator_outputs, 
                                               paste(location, 
@@ -933,7 +943,7 @@ if (paste(location, "abundance_bii_2005_ecoregion_map.rds", sep = "_") %in%
 bii_abundance_values <- bii_abundance_ecoregion_map %>%
                         st_set_geometry(NULL) %>%
                         mutate(indicator = "abundance biodiversity intactness index") %>%
-                        mutate(year = "2005") %>%
+                        mutate(year = 2005) %>%
                         rename(ecoregion_id = ECO_ID,) %>%
                         select(all_of(indicator_columns)) %>%
                         mutate(raw_indicator_value = ifelse(
@@ -957,9 +967,6 @@ saveRDS(bii_abundance_values, file.path(indicator_outputs,
 ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
 # Combine indicator values into a single dataframe ----
-
-# TODO: Melt the adjusted values into long form
-# TODO: Add the BII back in when we've dealt with multiple ecosystem issue
 
 indicator_values <- rbind(extinction_values, 
                           at_risk_values, 
@@ -1012,8 +1019,10 @@ indicator_values <- indicator_values %>%
 
 # Test for correlations between indicators ----
 
-# All years
-#' TODO: Remove the crap years with hardly any data
+indicator_values_master <- indicator_values
+
+indicator_values <- indicator_values_master %>%
+                    filter(year == 2010)
 
 indicator_values_2 <- indicator_values %>%
                       dplyr::select(ecoregion_id, indicator_year,
@@ -1046,6 +1055,8 @@ indicators_for_scatterplots <- indicator_values_wide
 summary(indicators_for_scatterplots)
 
 indicator_scatterplots <- ggpairs(indicators_for_scatterplots)
+
+indicator_scatterplots
 
 if (save_outputs == "yes") {
   

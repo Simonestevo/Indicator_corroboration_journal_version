@@ -961,32 +961,39 @@ ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 # TODO: Melt the adjusted values into long form
 # TODO: Add the BII back in when we've dealt with multiple ecosystem issue
 
-indicator_values <- rbind(hfp_by_ecoregion_2017, extinction_values, 
-                          at_risk_values, bii_abundance_values, 
-                          bii_richness_values)
+indicator_values <- rbind(extinction_values, 
+                          at_risk_values, 
+                          hfp_values,
+                          bii_richness_values,
+                          bii_abundance_values)
 
 indicator_values <- indicator_values %>%
-                    # mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
-                    #                                  33.29037, raw_indicator_value)) %>%
-                    # mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
-                    #                ifelse(raw_indicator_value > 0 & 
-                    #                         raw_indicator_value < 0.9538,
-                    #                       0.9538, raw_indicator_value))) %>%
-                    # mutate(year = as.numeric(year)) %>%
-                    # mutate(HFP_adjusted_old = ifelse(indicator != 
-                    #                           "human footprint index", NA,
-                    #                           HFP_adjusted_old)) %>%
-                    # mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
-                    #                                 indicator), 
-                    #                                 RLI_adjusted_old, NA)) %>%
                     merge(ecoregion_country_df[c("ECO_ID", 
                                                  "CNTRY_NAME")], 
                           by.x = "ecoregion_id", by.y = "ECO_ID",
                           all.x = TRUE, all.y = FALSE) %>%
                     distinct(.) %>%
-                    mutate(indicator_year = paste(indicator, year, sep = " "))
-                    # %>%
-                    # mutate(HFP_adjusted =
+                    mutate(indicator_year = paste(indicator, year, sep = " ")) %>%
+                    rename(country = CNTRY_NAME) %>%
+                    merge(ecoregions[c("ECO_ID", "REALM")], 
+                          by.x = "ecoregion_id",
+                          by.y = "ECO_ID") %>%
+                    rename(realm = REALM) %>%
+                    filter(ecoregion_id != 0)
+# mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
+#                                  33.29037, raw_indicator_value)) %>%
+# mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
+#                ifelse(raw_indicator_value > 0 & 
+#                         raw_indicator_value < 0.9538,
+#                       0.9538, raw_indicator_value))) %>%
+# mutate(year = as.numeric(year)) %>%
+# mutate(HFP_adjusted_old = ifelse(indicator != 
+#                           "human footprint index", NA,
+#                           HFP_adjusted_old)) %>%
+# mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
+#                                 indicator), 
+#                                 RLI_adjusted_old, NA)) %>%
+# mutate(HFP_adjusted =
                     #          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
                     #                                          .005, na.rm = TRUE)),
                     #               quantile(raw_indicator_value, .995,
@@ -1025,44 +1032,16 @@ names(indicator_values_wide) <- make.names(names(indicator_values_wide),
 
 indicator_values_wide <- indicator_values_wide %>%
                          select(-ecoregion_id) %>%
-                         # select(biodiversity.habitat.index.plants.2015,
-                         #         human.footprint.index.2017,
-                         #         proportion.at.risk.1988,
-                         #         proportion.at.risk.1994,
-                         #         proportion.at.risk.1996,
-                         #         proportion.at.risk.2000,
-                         #         proportion.at.risk.2004,
-                         #         proportion.at.risk.2008,
-                         #         proportion.at.risk.2012,
-                         #         proportion.at.risk.2016,
-                         #         red.list.index.Amphibia.2004,
-                         #         red.list.index.Amphibia.2008,
-                         #         red.list.index.Aves.1988,
-                         #         red.list.index.Aves.1994,
-                         #         red.list.index.Aves.2000,
-                         #         red.list.index.Aves.2004,
-                         #         red.list.index.Aves.2008,
-                         #         red.list.index.Aves.2012,
-                         #         red.list.index.Aves.2016,
-                         #         red.list.index.Mammalia.1996,
-                         #         red.list.index.Mammalia.2008) %>%
-                          na.omit(.)
+                         na.omit(.)
 
-
-#indicator_values_matrix <- as.matrix(indicator_values_wide[, -1])
-
-# indicator_values_wide_complete  <- as.matrix(indicator_values_matrix[
-#                                    complete.cases(indicator_values_matrix),])
+# indicator_values_wide[,c(2:ncol(indicator_values_wide))] <- 
+#   scale(indicator_values_wide[,c(2:ncol(indicator_values_wide))])
 
 correlations_all_years <- as.data.frame(cor(indicator_values_wide, 
                                             method = "pearson"))
 
 
-indicators_for_scatterplots <- indicator_values_wide %>%
-                               #dplyr::select(- ecoregion_code) %>%
-                               mutate(human.footprint.index.2017.scaled = 
-                                     scale_to_1(human.footprint.index.2017)) %>%
-                               dplyr::select(-human.footprint.index.2017)
+indicators_for_scatterplots <- indicator_values_wide 
 
 summary(indicators_for_scatterplots)
 

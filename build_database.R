@@ -1059,9 +1059,9 @@ amphibian_redlist_data <- amphibian_redlist_data %>%
                           dplyr::mutate(binomial = paste(Genus, Species, 
                                                          sep = " ")) %>%
                           dplyr::select(-c(Genus, Species)) %>%
-                          set_names(c("2004", "2008", "class", "redlist_source", 
+                          set_names(c("2004", "1980", "class", "redlist_source", 
                                       "binomial")) %>%
-                          dplyr::select("binomial","class","2004", "2008", 
+                          dplyr::select("binomial","class","2004", "1980", 
                                         "redlist_source") %>%
                           reshape2::melt(.,id.vars = c("binomial", "class", 
                                              "redlist_source"), 

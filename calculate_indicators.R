@@ -30,6 +30,9 @@ library(reshape2)
 library(rlist)
 library(GGally)
 library(mapview)
+library(psych)
+library(e1071)
+library(tm)
 
 
 # Set input and output locations ----
@@ -49,7 +52,7 @@ indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value
 east_australia <- 168 # Decline over time
 amazon <- 473 # Decline over time
 cardamom <- 223 # In good shape
-ecuador <- 516 #Had a lot of extinctions
+mascarene <- 20 #Had a lot of extinctions
 
 
 if (!is.na(country)) {
@@ -157,6 +160,61 @@ calculate_red_list_index <- function(data){
   
 }
 
+produce_scatterplots <- function(indicator_values, name, save) {
+  
+  scatterplot_directory <- file.path(indicator_outputs, 
+                                     "scatterplots")
+  
+  if( !dir.exists( scatterplot_directory ) ) {
+    
+    dir.create( scatterplot_directory, recursive = TRUE )
+    
+  }
+  
+    indicator_values_2 <- indicator_values %>%
+    dplyr::select(ecoregion_id, indicator_year,
+                  raw_indicator_value) %>%
+    distinct(.)
+  
+  
+  indicator_values_wide <- indicator_values_2 %>%
+    spread(key = indicator_year, 
+           value = raw_indicator_value) 
+  
+  
+  names(indicator_values_wide) <- make.names(names(indicator_values_wide), 
+                                             unique = TRUE)
+  # TEMPORARY - select columns that have enough data
+  
+  indicator_values_wide <- indicator_values_wide %>%
+    select(-ecoregion_id) %>%
+    na.omit(.)
+  
+  # indicator_values_wide[,c(2:ncol(indicator_values_wide))] <- 
+  #   scale(indicator_values_wide[,c(2:ncol(indicator_values_wide))])
+  
+  correlations_all_years <- as.data.frame(cor(indicator_values_wide, 
+                                              method = "pearson"))
+  
+  
+  indicators_for_scatterplots <- indicator_values_wide 
+  
+  summary(indicators_for_scatterplots)
+  
+  indicator_scatterplots <- ggpairs(indicators_for_scatterplots)
+  
+  if (save == TRUE) {
+  
+  ggsave(file.path(scatterplot_directory, paste(location, eco_version,
+                                                name, "scatterplots.png", sep = "_")),
+         indicator_scatterplots,  device = "png")
+  }
+  
+  return(indicator_scatterplots)
+  
+}
+
+
 # Function that maps indicator values to ecoregions
 #' TODO: Get rid of grid background
 #' 
@@ -255,7 +313,21 @@ if (!is.na(country)) {
                                    ecoregion_subset$ECO_ID,] 
   
 }
+
+# Check if indicators have already been calculated ----
+
+if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
   
+
+  
+  indicator_values_master <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "indicator_values_master.rds",
+                                             sep = "_"))) 
+} else {
+  
+
 # Load species data ----
 
 
@@ -459,7 +531,7 @@ ggplot(atrisk_test) +
 
 # # Red List Index ----
 # **WARNING SLOW CODE ** ## ----
-# (Takes about half a day? ~ 15 hours?)
+# (Takes about a day and a half?)
 
 if ((paste(location, eco_version, "red_list_index.rds", sep = "_") %in% 
       list.files(indicator_outputs))) {
@@ -574,6 +646,10 @@ for (i in seq_along(class_time_list)) {
 
 # Convert back into one dataframe
 
+rli_values <- readRDS(file.path(indicator_outputs, 
+                                paste(location, eco_version, 
+                                      "rli_not_formatted.rds", sep = "_")))
+
 rli_values <- do.call(rbind, classes_rli)
 
 # Add scaled/inverted values
@@ -581,11 +657,27 @@ rli_values <- do.call(rbind, classes_rli)
 rli_values <- rli_values %>%
               filter(RLI != 0) %>%
               mutate(indicator = paste("red list index", class, sep = " ")) %>%
-              rename(year = redlist_assessment_year) %>%
               rename(raw_indicator_value = RLI) %>%
               rename(ecoregion_id = Ecoregion_id) %>%
               ungroup()%>%
-              dplyr::select(indicator, year, ecoregion_id, raw_indicator_value) 
+              filter(ecoregion_id != 0) %>%
+              distinct(.) %>%
+              filter(redlist_assessment_year < 2016) %>%
+              filter(!(class == "Aves" & redlist_assessment_year == 2004)) %>%
+              mutate(year = ifelse(redlist_assessment_year < 1990, 1980,
+                                   ifelse(redlist_assessment_year > 1989 &
+                                   redlist_assessment_year < 2000, 1990,
+                                   ifelse(redlist_assessment_year > 1999 &
+                                          redlist_assessment_year < 2005, 2000,
+                                   ifelse(redlist_assessment_year > 2004 &
+                                          redlist_assessment_year < 2010, 2005,
+                                   ifelse(redlist_assessment_year > 2009 &
+                                          redlist_assessment_year < 2015, 2010,
+                                   ifelse(redlist_assessment_year > 2014 &
+                                          redlist_assessment_year < 2021, 2015,
+                                           NA))))))) %>%
+              dplyr::select(indicator, redlist_assessment_year, year, 
+                            ecoregion_id, raw_indicator_value) 
                   # mutate(RLI_inverted = 1 - RLI) %>%
                   # mutate(RLI_scaled_inverted =
                   #          scale_to_1(RLI_inverted)) %>%
@@ -604,10 +696,11 @@ saveRDS(rli_values, file.path(indicator_outputs,
 }
 
 
-# Check extinction values behave as anticipated
+# Check rli values behave as anticipated
 
-ECO <- 7
-rli_test <- rli_values %>% filter(ecoregion_id == ECO)
+ECO <- mascarene
+rli_test <- rli_values %>% filter(ecoregion_id == ECO) %>% 
+  filter(indicator == 'red list index Amphibia')
 
 ggplot(rli_test) +
   geom_line(aes(x = year, y = raw_indicator_value))
@@ -974,7 +1067,7 @@ indicator_values <- rbind(extinction_values,
                           bii_richness_values,
                           bii_abundance_values)
 
-indicator_values <- indicator_values %>%
+indicator_values_master <- indicator_values %>%
                     merge(ecoregion_country_df[c("ECO_ID", 
                                                  "CNTRY_NAME")], 
                           by.x = "ecoregion_id", by.y = "ECO_ID",
@@ -987,6 +1080,341 @@ indicator_values <- indicator_values %>%
                           by.y = "ECO_ID") %>%
                     rename(realm = REALM) %>%
                     filter(ecoregion_id != 0)
+
+saveRDS(indicator_values_master, file.path(indicator_outputs,
+                                           paste(location, eco_version,
+                                                 "indicator_values_master.rds",
+                                                 sep = "_")))
+
+}
+
+# Data transformations ----
+
+indicator_values_2 <- indicator_values_master %>%
+                      dplyr::select(ecoregion_id, indicator_year,
+                                    raw_indicator_value) %>%
+                      distinct(.)
+
+# * Convert to wide ----
+
+indicators_wide <- indicator_values_2 %>%
+                                spread(key = indicator_year, 
+                                       value = raw_indicator_value) 
+
+
+names(indicators_wide) <- make.names(names(indicators_wide), 
+                                           unique = TRUE)
+
+summary(indicators_wide)
+
+# * Invert ----
+# For negatively valanced variables (where high values = negative outcome)
+
+cols_to_invert <- c("human.footprint.index.1990", "human.footprint.index.2010",
+                    "proportion.at.risk.1980", "proportion.at.risk.1990",
+                    "proportion.at.risk.2000", "proportion.at.risk.2005",
+                    "proportion.at.risk.2010","proportion.at.risk.2015", 
+                    "proportion.extinct.1980", "proportion.extinct.1990",
+                    "proportion.extinct.2000", "proportion.extinct.2005",
+                    "proportion.extinct.2010", "proportion.extinct.2015")
+
+col_index <- names(indicators_wide) %in% cols_to_invert
+cols_min <- sapply(indicators_wide, min, na.rm = TRUE)
+cols_max <- sapply(indicators_wide, max, na.rm = TRUE)
+
+
+keys <- as.data.frame(col_index) %>%
+        mutate(keys = ifelse(col_index == FALSE, 1, -1)) %>%
+        select(keys) %>%
+        pull(.)
+
+indicators_wide_inv <- as.data.frame(reverse.code(keys,indicators_wide,
+                          mini = cols_min, maxi = cols_max))
+
+summary(indicators_wide_inv)
+
+# * Centre ----
+
+indicators_wide_inv_centred <- indicators_wide_inv %>%
+  mutate_at(c(2:ncol(indicators_wide_inv)), funs(c(scale(.)))) 
+
+summary(indicators_wide_inv_centred)
+
+# ** Centred boxplots ----
+
+indicators_scaled <- melt(indicators_wide_inv_centred, 
+                          id.vars = 'ecoregion_id')
+
+boxplots <- ggplot(indicators_scaled) +
+            geom_boxplot(aes(x = variable, y = value)) +
+            theme(axis.text.x=element_text(angle= 45,hjust=1))
+
+boxplots
+
+# * Transform ----
+
+# Check distributions
+
+histograms <- lapply(indicators_wide_inv_centred, hist)
+names(histograms) <- colnames(indicators_wide_inv_centred)
+
+# Measure skew (nearly all negatively skewed)
+
+indicators_skew <- sapply(indicators_wide_inv_centred, skewness, na.rm = TRUE)
+indicators_skew_index <- as.data.frame(indicators_skew) %>%
+                         mutate(logtransform = ifelse(indicators_skew < -0.05, 
+                                                      TRUE, FALSE)) %>%
+                          select(logtransform) %>%
+                          pull(.)
+
+hist(indicators_wide_inv_centred$`human.footprint.index.2010-`)
+new <- log10(max(indicators_wide_inv_centred$`human.footprint.index.2010-`+1, na.rm = TRUE) - indicators_wide_inv_centred$`human.footprint.index.2010-`) 
+hist(new)
+skewness(new, na.rm = TRUE)
+
+indicators_transformed <- indicators_wide_inv_centred 
+
+# HFP 2010
+indicators_transformed$`human.footprint.index.2010-` <- log10(max(indicators_transformed$`human.footprint.index.2010-`+1, 
+                                                                  na.rm = TRUE) - 
+                                                                indicators_transformed$`human.footprint.index.2010-`) 
+skewness(indicators_wide_inv_centred$`human.footprint.index.2010-`, na.rm = TRUE)
+hist(indicators_wide_inv_centred$`human.footprint.index.2010-`)
+skewness(indicators_transformed$`human.footprint.index.2010-`, na.rm = TRUE)
+hist(indicators_transformed$`human.footprint.index.2010-`)
+
+#HFP 1990
+
+skewness(indicators_wide_inv_centred$`human.footprint.index.1990-`, na.rm = TRUE)
+hist(indicators_wide_inv_centred$`human.footprint.index.1990-`)
+
+indicators_transformed$`human.footprint.index.1990-` <- log10(max(indicators_transformed$`human.footprint.index.1990-`+1, 
+                                                                  na.rm = TRUE) - 
+                                                                indicators_transformed$`human.footprint.index.1990-`) 
+skewness(indicators_transformed$`human.footprint.index.1990-`, na.rm = TRUE)
+hist(indicators_transformed$`human.footprint.index.1990-`)
+
+#At risk 1980
+
+skewness(indicators_wide_inv_centred$`proportion.at.risk.1980-`, na.rm = TRUE)
+hist(indicators_wide_inv_centred$`proportion.at.risk.1980-`)
+
+indicators_transformed$`proportion.at.risk.1980-` <- 1/(max(indicators_wide_inv_centred$`proportion.at.risk.1980-`+1, 
+                                                                  na.rm = TRUE) - 
+                                                             indicators_wide_inv_centred$`proportion.at.risk.1980-`) 
+skewness(indicators_transformed$`proportion.at.risk.1980-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.at.risk.1980-`)
+
+#At risk 1990
+
+to_transform <- indicators_wide_inv_centred$`proportion.at.risk.1990-`
+transformed <- indicators_transformed$`proportion.at.risk.1990-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.at.risk.1990-` <- 1/(max(to_transform + 1, na.rm = TRUE) - to_transform) 
+skewness(transformed, na.rm = TRUE)
+hist(transformed)
+
+#At risk 2000
+
+to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2000-`
+transformed <- indicators_transformed$`proportion.at.risk.2000-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.at.risk.2000-` <- 1/(max(to_transform + 1, 
+                                                      na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.at.risk.2000-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.at.risk.2000-`)
+
+#At risk 2005
+
+to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2005-`
+transformed <- indicators_transformed$`proportion.at.risk.2005-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.at.risk.2005-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.at.risk.2005-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.at.risk.2005-`)
+
+#At risk 2010
+
+to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2010-`
+transformed <- indicators_transformed$`proportion.at.risk.2010-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.at.risk.2010-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.at.risk.2010-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.at.risk.2010-`)
+
+#At risk 2015
+
+to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2015-`
+transformed <- indicators_transformed$`proportion.at.risk.2015-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.at.risk.2015-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.at.risk.2015-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.at.risk.2015-`)
+
+# Proportion extinct 1980
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.1980-`
+transformed <- indicators_transformed$`proportion.extinct.1980-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.1980-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.1980-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.1980-`)
+
+# Proportion extinct 1990
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.1990-`
+transformed <- indicators_transformed$`proportion.extinct.1990-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.1990-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.1990-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.1990-`)
+
+# Proportion extinct 2000
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.2000-`
+transformed <- indicators_transformed$`proportion.extinct.2000-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.2000-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.2000-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.2000-`)
+
+# Proportion extinct 2005
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.2005-`
+transformed <- indicators_transformed$`proportion.extinct.2005-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.2005-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.2005-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.2005-`)
+
+# Proportion extinct 2010
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.2010-`
+transformed <- indicators_transformed$`proportion.extinct.2010-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.2010-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.2010-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.2010-`, breaks = 20)
+
+# Proportion extinct 2015
+
+to_transform <- indicators_wide_inv_centred$`proportion.extinct.2015-`
+transformed <- indicators_transformed$`proportion.extinct.2015-`
+
+skewness(to_transform, na.rm = TRUE)
+hist(to_transform)
+
+indicators_transformed$`proportion.extinct.2015-` <- 1/(max(to_transform + 1, 
+                                                            na.rm = TRUE) - to_transform) 
+skewness(indicators_transformed$`proportion.extinct.2015-`, na.rm = TRUE)
+hist(indicators_transformed$`proportion.extinct.2015-`, breaks = 20)
+
+# ** Transformed boxplots ----
+
+indicators_transformed_long <- melt(indicators_transformed, 
+                          id.vars = 'ecoregion_id')
+
+transformed_boxplots <- ggplot(indicators_transformed_long) +
+  geom_boxplot(aes(x = variable, y = value)) +
+  theme(axis.text.x=element_text(angle= 45,hjust=1))
+
+transformed_boxplots
+
+indicator_values_transformed <- indicators_transformed_long %>%
+                                merge(indicator_values_master[c("ecoregion_id",
+                                                                "country",
+                                                                "realm")],
+                                      by = "ecoregion_id") %>%
+                                rename(indicator_year = variable,
+                                       raw_indicator_value = value) %>% # TODO: Change to transformed
+                                mutate(year = str_sub(indicator_year, start= -4)) %>%
+                                mutate(indicator_year = as.character(indicator_year)) %>%
+                                mutate(year = ifelse(year == "980-", "1980",
+                                                     ifelse(year == "015-",
+                                                            "2015",
+                                                     ifelse(year == "000-",
+                                                                   "2000",
+                                                     ifelse(year == "990-",
+                                                                     "1990",
+                                                     ifelse(year == "005-", 
+                                                            "2005",
+                                                     ifelse(year == "010-", 
+                                                            "2010", 
+                                                     ifelse(year == "2005", 
+                                                            "2005", NA)))))))) %>%
+                                mutate(indicator = removeNumbers(indicator_year)) %>%
+                                mutate(indicator = str_replace_all(indicator,
+                                                                   '[[:punct:]]',' ')) 
+
+saveRDS(indicator_values_transformed, file.path(indicator_outputs,
+                                                paste(location, eco_version,
+                                                      "indicator_vals_transformed.rds",
+                                                      sep = "_")))
+
+# Correlations ----
+
+# Non-transformed
+
+indicator_matrix <- indicators_wide_inv_centred %>%
+                    select(-ecoregion_id) %>%
+                    na.omit(.)
+
+pearson_correlations_all_years <- as.data.frame(cor(indicator_matrix, 
+                                            method = "pearson"))
+
+spearman_correlations_all_years <- as.data.frame(cor(indicator_matrix, 
+                                                    method = "spearman"))
+
+# Transformed
+
+indicator_matrix_t <- indicators_transformed %>%
+  select(-ecoregion_id) %>%
+  na.omit(.)
+
+pearson_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
+                                                    method = "pearson"))
+
+spearman_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
+                                                     method = "spearman"))
+
 # mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
 #                                  33.29037, raw_indicator_value)) %>%
 # mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
@@ -1017,96 +1445,142 @@ indicator_values <- indicator_values %>%
                     #                            na.rm = TRUE))))) %>%
                     # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
 
-# Test for correlations between indicators ----
+# Scatterplots ----
 
-indicator_values_master <- indicator_values
+# * Subset by time ----
 
-indicator_values <- indicator_values_master %>%
-                    filter(year == 2010)
+# Non-transformed
 
-indicator_values_2 <- indicator_values %>%
-                      dplyr::select(ecoregion_id, indicator_year,
-                                    raw_indicator_value) %>%
-                      distinct(.)
+indicators_by_year <- split(indicator_values_master, indicator_values_master$year)
+indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
 
+scatterplots_by_year <- list()
 
-indicator_values_wide <- indicator_values_2 %>%
-                         spread(key = indicator_year, 
-                                value = raw_indicator_value) 
-
-
-names(indicator_values_wide) <- make.names(names(indicator_values_wide), 
-                                           unique = TRUE)
-# TEMPORARY - select columns that have enough data
-
-indicator_values_wide <- indicator_values_wide %>%
-                         select(-ecoregion_id) %>%
-                         na.omit(.)
-
-# indicator_values_wide[,c(2:ncol(indicator_values_wide))] <- 
-#   scale(indicator_values_wide[,c(2:ncol(indicator_values_wide))])
-
-correlations_all_years <- as.data.frame(cor(indicator_values_wide, 
-                                            method = "pearson"))
-
-
-indicators_for_scatterplots <- indicator_values_wide 
-
-summary(indicators_for_scatterplots)
-
-indicator_scatterplots <- ggpairs(indicators_for_scatterplots)
-
-indicator_scatterplots
-
-if (save_outputs == "yes") {
+for (i in seq_along(indicators_by_year)){
   
-  ggsave(file.path(outputs, "scatterplot_all_indicators_years.png"),
-         indicator_scatterplots,  device = "png")
+  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+                                                    indicators_by_year_names[[i]],
+                                                    save = FALSE)
   
 }
 
-# Split by year
+# Transformed
 
 
-indicator_values_time_list <- split(indicator_values, indicator_values$year)
 
+indicators_by_year <- split(indicator_values_transformed, indicator_values_transformed$year)
+indicators_by_year_names <- paste(location, "transformed", names(indicators_by_year), sep = "_")
 
-if (aggregate_timepoints == "yes") {
+scatterplots_by_year <- list()
+
+for (i in seq_along(indicators_by_year)){
   
-#' TODO: find a programmatical way to select which years get grouped together
-
-# Aggregate years that are close to each other
-
-indicators_1988 <- indicator_values_time_list[[1]]
-
-indicators_1994_1996 <- rbind(indicator_values_time_list[[2]], 
-                              indicator_values_time_list[[3]])
-
-indicators_2000 <- indicator_values_time_list[[4]]
-
-indicators_2004_2005 <- rbind(indicator_values_time_list[[5]])
-
-indicators_2008 <- indicator_values_time_list[[6]]
-
-indicators_2012 <- indicator_values_time_list[[7]]
-
-indicators_2016_2017 <- rbind(indicator_values_time_list[[8]],
-                           indicator_values_time_list[[9]])
-
-indicator_values_time_list <- list(indicators_1988, indicators_1994_1996,
-                                   indicators_2000, indicators_2004_2005,
-                                   indicators_2008, indicators_2012, 
-                                   indicators_2016_2017)
-
-rm(indicators_1988, indicators_1994_1996,
-        indicators_2000, indicators_2004_2005,
-        indicators_2008, indicators_2012, 
-        indicators_2016_2017)
-
+  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+                                                    indicators_by_year_names[[i]],
+                                                    save = FALSE)
+  
 }
 
+scatterplots_by_year[[6]]
+
+# * Subset by realm ----
+
+# * Subset by time by realm ----
+
+# Split data into nested list (level 1 = year, level 2 = realm)
+
+indicators_by_year_by_realm <- list()
+
+for (i in seq_along(indicators_by_year)) {
+  
+  indicators_timepoint <- indicators_by_year[[i]]
+  
+  indicators_by_year_by_realm[[i]] <- split(indicators_timepoint, 
+                                            indicators_timepoint$realm)
+}
+
+indicators_by_year_by_realm <- flatten(indicators_by_year_by_realm)
+realm_names <- names(indicators_by_year_by_realm)
+timepoints <- names(indicators_by_year)
+time_names <- rep(timepoints, each = length(unique(realm_names)))
+indicators_by_year_by_realm_names <- paste(realm_names, time_names , sep = "_")
+
+scatterplots_by_year_by_realm <- list()
+
+for (i in seq_along(indicators_by_year_by_realm)){
+  
+  scatterplots_by_year_by_realm[[i]] <- produce_scatterplots(indicators_by_year_by_realm[[i]],
+                                                             indicators_by_year_by_realm_names[[i]],
+                                                    save = TRUE)
+  
+}
+
+names(scatterplots_by_year_by_realm) <- indicators_by_year_by_realm_names
+
+# Look at Australiasia 2005
+
+scatterplots_by_year_by_realm[[27]]
+
+# Look at Oceania 2005
+
+scatterplots_by_year_by_realm[[31]]
+
+# * Subset effect of land use on extinction risk ----
+
+land_use_atrisk_values <- indicator_values_master %>%
+                    filter(indicator_year == "human footprint index 1990"|
+                           indicator_year == "proportion at risk 1990"|
+                             indicator_year == "proportion at risk 2000"|
+                             indicator_year == "proportion at risk 2005"|
+                             indicator_year == "proportion at risk 2010"|
+                             indicator_year == "proportion at risk 2015")
+
+hfp_vs_atrisk_scatterplots <- produce_scatterplots(land_use_atrisk_values, 
+                              paste(location, eco_version,
+                                    "HFP1990_vs_AtRisk_time_series",
+                                    sep = "_"), save = TRUE)
+
+# * Subset effect of land use on extinction  ----
+
+land_use_extinction_values <- indicator_values_master %>%
+    filter(indicator_year == "human footprint index 1990"|
+           indicator_year == "proportion extinct 1990"|
+           indicator_year == "proportion extinct 2000"|
+           indicator_year == "proportion extinct 2005"|
+           indicator_year == "proportion extinct 2010"|
+           indicator_year == "proportion extinct 2015")
+
+hfp_vs_extinction_scatterplots <- produce_scatterplots(land_use_extinction_values, 
+                                                   paste(location, eco_version,
+                                                   "HFP1990_vs_Extinction_time_series",
+                                                         sep = "_"), save = TRUE)
 
 
+hfp_vs_extinction_scatterplots
+
+# * Subset only unrelated indicators  ----
+
+subset_values <- indicator_values_master %>%
+    filter(indicator_year == "human footprint index 1990"|
+           indicator_year == "human footprint index 2010"|
+           indicator_year == "abundance biodiversity intactness index 2005"|
+           indicator_year == "richness biodiversity intactness index 2005"|
+           indicator_year == "proportion extinct 2005")
+
+subset_scatterplots <- produce_scatterplots(subset_values, 
+                                            paste(location, eco_version,
+                                            "subset_indicators",
+                                             sep = "_"), save = FALSE)
+
+
+subset_scatterplots
+
+
+ggplot(data = indicator_values_master_wide_scaled, 
+       aes(x = abundance.biodiversity.intactness.index.2005, 
+           y = human.footprint.index.1990)) +
+  geom_point() + 
+  coord_trans(x = "log10", y = "log10")
 
 # Pairwise correlations and scatterplots ----
 

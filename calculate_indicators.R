@@ -220,12 +220,14 @@ produce_scatterplots <- function(indicator_values, name, save) {
 #' 
 
 map_indicators <- function(data, indicator_variable, title, legend) {
+
   
 indicator_map <-  ggplot(data) +
                   geom_sf(aes(fill = indicator_variable), colour = "black", 
                           size = 0.05, show.legend = 'fill') +
-                  scale_fill_viridis_c(trans = "reverse", alpha = .8, 
-                                       na.value = "grey70") +         
+                  scale_fill_viridis_c(trans = "reverse",
+                                       alpha = .8,
+                                       na.value = "grey70") +
                   theme(axis.line = element_line(),
                         panel.grid.major = element_blank(),
                         panel.grid.minor = element_blank(),
@@ -334,6 +336,22 @@ if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in%
 species_data_all <- readRDS(file.path(interim_outputs, 
                                   "global_species_data_3.rds"))
 
+ecoregion_subset <- ecoregion_country_df %>%
+  filter(CNTRY_NAME == "Fiji") %>%
+  unique(.)
+
+}
+
+if (!is.na(country)) {
+  
+  ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                                   ecoregion_subset$ECO_ID,]
+
+species_data_oceania <- species_data[species_data$ecoregion_id %in% 
+                                       ecoregion_subset$ECO_ID,]
+
+amphibians_oceania <- species_data_oceania %>% filter(class == "Amphibia")
+                        
 # species_data <- readRDS(file.path(interim_outputs, 
 #                                   "version_3_species_data_v1.rds"))
 
@@ -1201,6 +1219,7 @@ boxplots <- ggplot(indicators_scaled) +
 boxplots
 
 # * Transform ----
+# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 
 # Check distributions
 
@@ -1379,15 +1398,26 @@ saveRDS(indicator_values_transformed, file.path(indicator_outputs,
 
 # Non-transformed
 
-indicator_names <- c("Ecoregion_id", "BII_A_2005","BHI_2005", "BHI_2010", "BHI_2015",
-                     "HFP_1990", "HFP_2010","Endangered_1980", "Endangered_1990",
-                     "At_risk_2000", "At_risk_2005", "At_risk_2010", 
+# indicator_names <- c("Ecoregion_id", "BII_A_2005","BHI_2005", "BHI_2010", "BHI_2015",
+#                      "HFP_1990", "HFP_2010","Endangered_1980", "Endangered_1990",
+#                      "At_risk_2000", "At_risk_2005", "At_risk_2010", 
+#                      "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
+#                      "Extinction_2000", "Extinction_2005",   "Extinction_2010",
+#                      "Extinction_2015", "RLI_Amph_1980", "RLI_Amph_2000",
+#                      "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
+#                      "RLI_Birds_2005", "RLI_Birds_2010", "RLI_Mamm_1990",
+#                      "RLI_Mamm_2005", "BII_R_2005")
+
+
+indicator_names <- c("Ecoregion_id", "BII","BHI", "BHI_2010", "BHI_2015",
+                     "HFP_1990", "HFP","Endangered_1980", "Endangered_1990",
+                     "At_risk_2000", "Endangered", "At_risk_2010", 
                      "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
                      "Extinction_2000", "Extinction_2005",   "Extinction_2010",
-                     "Extinction_2015", "RLI_Amph_1980", "RLI_Amph_2000",
+                     "Extinction_2015", "RLI_Amph_1980", "RLI_Amph",
                      "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
-                     "RLI_Birds_2005", "RLI_Birds_2010", "RLI_Mamm_1990",
-                     "RLI_Mamm_2005", "BII_R_2005")
+                     "RLI_Birds", "RLI_Birds_2010", "RLI_Mamm_1990",
+                     "RLI_Mammals", "BII_R_2005")
 
 colnames(indicators_wide_inv_centred) <- indicator_names
                                      
@@ -1399,11 +1429,15 @@ indicator_matrix <- indicators_wide_inv_centred %>%
 # Split by location
 
 indicators_wic <- indicators_wide_inv_centred %>%
-                  merge(ecoregion_map[c("ECO_ID", "REALM")],
+                  merge(ecoregion_map[c("ecoregion_id", "REALM")],
                         by.x = "Ecoregion_id",
-                        by.y = "ECO_ID") 
+                        by.y = "ecoregion_id") 
 
 indicators_wic_realm <- split(indicators_wic, indicators_wic$REALM)
+
+indicators_wic_oceania <- indicators_wic_realm[["Oceania"]]
+
+indicators_wic_australasia <- indicators_wic_realm[["Australasia"]]
 
 indicators_wic_realm[["Global"]] <- indicators_wic
 
@@ -1565,9 +1599,155 @@ for (i in seq_along(indicators_by_year)){
 
 scatterplots_by_year[[4]]
 
+# Centred and inverted 
+
+indicators_wic <- indicators_wic %>%
+  rename(ecoregion_id = Ecoregion_id) %>%
+  select(-geometry, -REALM)
+
+indicators_wic_long <- melt(indicators_wic, 
+                            id.vars = 'ecoregion_id')
+
+
+indicator_values_wic <- indicators_wic_long  %>%
+  rename(indicator_year = variable,
+         raw_indicator_value = value) %>% # TODO: Change to transformed
+  mutate(year = str_sub(indicator_year, start= -4)) %>%
+  mutate(indicator_year = as.character(indicator_year)) %>%
+  mutate(indicator = removeNumbers(indicator_year)) %>%
+  mutate(indicator = str_replace_all(indicator,
+                                     '[[:punct:]]',' '))
+
+indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
+indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
+
+scatterplots_by_year <- list()
+
+for (i in seq_along(indicators_by_year)){
+  
+  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+                                                    indicators_by_year_names[[i]],
+                                                    save = FALSE)
+  
+}
+
+scatterplots_by_year[[1]]
+
+# Oceania ----
+
+indicators_wic <- indicators_wic_oceania %>%
+  rename(ecoregion_id = Ecoregion_id) %>%
+  select(-geometry, -REALM)
+
+indicators_wic_long <- melt(indicators_wic, 
+                            id.vars = 'ecoregion_id')
+
+
+indicator_values_wic <- indicators_wic_long  %>%
+  rename(indicator_year = variable,
+         raw_indicator_value = value) %>% # TODO: Change to transformed
+  mutate(year = NA) %>%
+  mutate(indicator = as.character(indicator_year)) 
+
+oceania_comparisons <- indicator_values_wic %>%
+                       filter(indicator == "BII"| 
+                              indicator == "BHI"|
+                              indicator == "HFP"|
+                              indicator == "Endangered"|
+                              indicator == "RLI_Amph"|
+                              indicator == "RLI_Birds"|
+                              indicator == "RLI_Mammals")
+
+length(unique(oceania_comparisons$ecoregion_id))
+
+oceania_bhi_amph <- oceania_comparisons %>%
+  filter(indicator == "RLI_Amph"| 
+           indicator == "BHI")
+
+produce_scatterplots(oceania_bhi_amph, "oceania_bhi_amph", save = TRUE)
+
+oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
+
+plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
+
+oceania_master <- indicator_values_master %>%
+                  filter(realm == "Oceania")
+
+oceania_master_bhi <- oceania_master %>%
+                      filter(indicator == "BHI plants") %>%
+                      select(-country) %>%
+                      distinct(.) %>%
+                      group_by(ecoregion_id, year) %>%
+                      arrange(.)
+
+ggplot(oceania_master_bhi) +
+  geom_line(aes(x = year, 
+                y = raw_indicator_value, 
+                color = ecoregion_id))
+
+
+# Australasia ----
+
+indicators_wic <- indicators_wic_australasia %>%
+  rename(ecoregion_id = Ecoregion_id) %>%
+  select(-geometry, -REALM)
+
+indicators_wic_long <- melt(indicators_wic, 
+                            id.vars = 'ecoregion_id')
+
+
+indicator_values_wic <- indicators_wic_long  %>%
+  rename(indicator_year = variable,
+         raw_indicator_value = value) %>% # TODO: Change to transformed
+  mutate(year = NA) %>%
+  mutate(indicator = as.character(indicator_year)) 
+
+australasia_comparisons <- indicator_values_wic %>%
+  filter(indicator == "BII"| 
+           indicator == "BHI"|
+           indicator == "HFP"|
+           indicator == "Endangered"|
+           indicator == "RLI_Amph"|
+           indicator == "RLI_Birds"|
+           indicator == "RLI_Mammals")
+
+length(unique(oceania_comparisons$ecoregion_id))
+
+aus_bhi_amph <- australasia_comparisons %>%
+  filter(indicator == "RLI_Amph"| 
+           indicator == "BHI")
+
+aus_bhi_amph$RLI_Amph_t <- 1/(max(aus_bhi_amph$RLI_Amph_t + 1, na.rm = TRUE) - 
+  aus_bhi_amph$RLI_Amph_t)
+
+1/(max(indicators_wide_inv_centred$`proportion.at.risk.1980-`+1, 
+       na.rm = TRUE) - 
+     indicators_wide_inv_centred$`proportion.at.risk.1980-`) 
+
+produce_scatterplots(aus_bhi_amph, "aus_bhi_amph", save = TRUE)
+
+oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
+
+plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
+
+oceania_master <- indicator_values_master %>%
+  filter(realm == "Oceania")
+
+oceania_master_bhi <- oceania_master %>%
+  filter(indicator == "BHI plants") %>%
+  select(-country) %>%
+  distinct(.) %>%
+  group_by(ecoregion_id, year) %>%
+  arrange(.)
+
+ggplot(oceania_master_bhi) +
+  geom_line(aes(x = year, 
+                y = raw_indicator_value, 
+                color = ecoregion_id))
+
 # Transformed
 
-indicators_by_year <- split(indicator_values_transformed, indicator_values_transformed$year)
+indicators_by_year <- split(indicators_values_transformed, indicator_values_transformed$year)
 indicators_by_year_names <- paste(location, "transformed", names(indicators_by_year), sep = "_")
 
 scatterplots_by_year <- list()
@@ -1766,14 +1946,42 @@ for (i in seq_along(scatterplots)) {
 # Map the indicators ----
 
 ecoregion_map <- ecoregion_map %>% rename(ecoregion_id = "ECO_ID")
-indicator_map_data <- left_join(ecoregion_map, indicator_values, 
-                                 by = "ecoregion_id")
+
+# Prepare the data (inverted and centred)
+
+indicators_wic <- indicators_wic %>%
+                  rename(ecoregion_id = Ecoregion_id) %>%
+                  select(-geometry, -REALM)
+
+indicators_wic_long <- melt(indicators_wic, 
+                            id.vars = 'ecoregion_id')
+
+
+indicator_values_wic <- indicators_wic_long  %>%
+  rename(indicator_year = variable,
+         raw_indicator_value = value) %>% # TODO: Change to transformed
+  mutate(year = str_sub(indicator_year, start= -4)) %>%
+  mutate(indicator_year = as.character(indicator_year)) %>%
+  mutate(indicator = removeNumbers(indicator_year)) %>%
+  mutate(indicator = str_replace_all(indicator,
+                                     '[[:punct:]]',' ')) 
+# %>%
+#   merge(indicator_values_master[c("ecoregion_id",
+#                                   "country",
+#                                   "realm")],
+#         by = "ecoregion_id")
+# 
+
+indicator_map_data <- left_join(ecoregion_map, indicator_values_wic,
+                                by = "ecoregion_id")
+indicator_map_data_countries <- indicator_map_data %>%
+        merge(indicator_values_master[c("ecoregion_id", "country")], by = "ecoregion_id")
 
 # * BII Richness ----
 
 richness_bii_map <- indicator_map_data %>%
                     filter(indicator == 
-                             "richness biodiversity intactness index") %>%
+                             "BII R ") %>%
                     map_indicators(.$raw_indicator_value,
                                    "Richness BII 2005", 
                                    "right")
@@ -1792,7 +2000,7 @@ ggsave(file.path(indicator_outputs, paste(location,
 
 abundance_bii_map <- indicator_map_data %>%
   filter(indicator == 
-           "abundance biodiversity intactness index") %>%
+           "BII A ") %>%
   map_indicators(.$raw_indicator_value,
                  "Abundance BII 2005", 
                  "right")
@@ -1809,7 +2017,7 @@ if (save_outputs == "yes") {
 # * BHI Plants ----
 
 bhi_map <- indicator_map_data %>%
-           filter(indicator == "biodiversity habitat index plants") %>%
+           filter(indicator == "BHI ") %>%
            map_indicators(.$raw_indicator_value,
                           "BHI plants", 
                           "right")
@@ -1825,22 +2033,24 @@ bhi_2015_plants_sf <- indicator_map_data %>%
 
 if (save_outputs == "yes") {
   
-  ggsave(file.path(indicator_outputs, "2020-07-27_bhi_plants_2015_map.png"), 
+  ggsave(file.path(indicator_outputs, paste(location,
+                            "bhi_ecoregion_map.png", 
+                                            sep = "_")), 
          bhi_map,  device = "png")
   
-  st_write(bhi_2015_plants_sf, file.path(indicator_outputs, 
-                                         paste(location, 
-                                               "_bhi_plants_2015_map.shp")))
-  saveRDS(bhi_map, file.path(indicator_outputs,paste(location,
-                                                     "bhi_plants_map.rds",
-                                                     sep = "_")))
+  # st_write(bhi_2015_plants_sf, file.path(indicator_outputs, 
+  #                                        paste(location, 
+  #                                              "_bhi_plants_2015_map.shp")))
+  # saveRDS(bhi_map, file.path(indicator_outputs,paste(location,
+  #                                                    "bhi_plants_map.rds",
+  #                                                    sep = "_")))
   
 }
 
 # * Proportion at risk ----
 
 at_risk_map <- indicator_map_data %>%
-               filter(indicator == "proportion at risk") %>%
+               filter(indicator == "At risk ") %>%
                map_indicators(.$raw_indicator_value,
                              "Proportion\nof species\nat risk", 
                              "right")
@@ -1860,7 +2070,7 @@ at_risk_map,  device = "png")
 # * Proportion extinct ----
 
 extinct_map <- indicator_map_data %>%
-               filter(indicator == "proportion extinct") %>%
+               filter(indicator == "Extinction ") %>%
                map_indicators(.$raw_indicator_value,
                                "Proportion\nof species\nextinct", 
                                "right")
@@ -1882,9 +2092,12 @@ if(save_outputs == "yes") {
 
 # * RLI Birds ----
 
+indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
+
+
 birds_rli_map <- indicator_map_data %>%
-                 filter(indicator == "red list index Aves") %>%
-                 map_indicators(.$RLI_adjusted_old,
+                 filter(indicator == "RLI Birds ") %>%
+                 map_indicators(.$raw_indicator_value,
                                 "Red List\nIndex (Birds)", 
                                 "right")
 
@@ -1893,16 +2106,19 @@ birds_rli_map
 if (save_outputs == "yes") {
   
   ggsave(file.path(indicator_outputs, paste(location,
-                                            "birds_rli_ecoregion_map.png", 
+                                            "2005_birds_rli_ecoregion_map.png", 
                                             sep = "_")),  
          birds_rli_map,  device = "png")
   
 }
 
+
 # * RLI Mammals ----
 
+indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
+
 mammals_rli_map <- indicator_map_data %>%
-                   filter(indicator == "red list index Mammalia") %>%
+                   filter(indicator == "RLI Mamm ") %>%
                    map_indicators(.$raw_indicator_value,
                                    "Red List\nIndex (Mammals)", 
                                    "right")
@@ -1920,8 +2136,12 @@ if (save_outputs == "yes") {
 
 # * RLI Amphibians ----
 
+indicator_map_data <- indicator_map_data_countries %>%
+                      mutate(country = as.character(country)) %>%
+                      filter(country == "Fiji")
+
 amphibians_rli_map <- indicator_map_data %>%
-                      filter(indicator == "red list index Amphibia") %>%
+                      filter(indicator == "RLI Amph ") %>%
                       map_indicators(.$raw_indicator_value,
                                      "Red List\nIndex (Amphibians)", 
                                      "right")
@@ -1939,28 +2159,41 @@ if (save_outputs == "yes") {
 
 # * RLI Reptiles ----
 
-reptiles_rli_map <- indicator_map_data %>%
-  filter(indicator == "red list index Amphibia") %>%
-  map_indicators(.$raw_indicator_value,
-                 "Red List\nIndex (Amphibians)", 
-                 "right")
-
-reptiles_rli_map
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "reptiles_rli_ecoregion_map.png", 
-                                            sep = "_")),  
-         reptiles_rli_map,  device = "png")
-  
-}
+# reptiles_rli_map <- indicator_map_data %>%
+#   filter(indicator == "red list index Amphibia") %>%
+#   map_indicators(.$raw_indicator_value,
+#                  "Red List\nIndex (Amphibians)", 
+#                  "right")
+# 
+# reptiles_rli_map
+# 
+# if (save_outputs == "yes") {
+#   
+#   ggsave(file.path(indicator_outputs, paste(location,
+#                                             "reptiles_rli_ecoregion_map.png", 
+#                                             sep = "_")),  
+#          reptiles_rli_map,  device = "png")
+#   
+# }
 # * HFP ----
 
+indicator_map_data_all <- indicator_map_data
+  
+ecoregion_subset <- ecoregion_country_df %>%
+    filter(CNTRY_NAME == "Australia") %>%
+    unique(.)
+  
+indicator_map_data <- indicator_map_data_all[indicator_map_data_all$ecoregion_id %in% 
+                                   ecoregion_subset$ECO_ID,] 
+  
+save_outputs == "yes"
+
+indicator_map_data <- indicator_map_data_all %>% filter(year == 2010)
+
 hfp_map <- indicator_map_data %>%
-           filter(indicator == "human footprint index") %>%
-           map_indicators(.$HFP_adjusted_old,
-                          "Human\nFootprint\nIndex",
+           filter(indicator == "HFP ") %>%
+           map_indicators(.$raw_indicator_value,
+                          "Human\nFootprint\nIndex 2010",
                           "right")
 hfp_map
 
@@ -1974,21 +2207,6 @@ if (save_outputs == "yes") {
 }
 
 
-# Look at the data distribution
-
-hfp_hist <- hist(indicator_values$HFP, breaks = 100)
-hfp_hist # Values close to 0 = good, close to 30 = bad
-
-rli_hist <- hist(indicator_values$RLI, breaks = 100)
-rli_hist # Values close to 1 = good, close to 0 = bad
-
-# wii_hist <- hist(indicator_values$WII_inverted, breaks = 100)
-# wii_hist
-# 
-# indicator_values$PLOTCAT <- as.numeric(as.character(indicator_values$PLOTCAT))
-# 
-# wii_category_hist <- hist(indicator_values$PLOTCAT, breaks = 10)
-# wii_category_hist
 
 
 # RLI vs HFP scatterplot ----

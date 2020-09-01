@@ -646,13 +646,19 @@ for (i in seq_along(class_time_list)) {
 
 # Convert back into one dataframe
 
-rli_values <- readRDS(file.path(indicator_outputs, 
-                                paste(location, eco_version, 
-                                      "rli_not_formatted.rds", sep = "_")))
-
 rli_values <- do.call(rbind, classes_rli)
 
-# Add scaled/inverted values
+# rli_values <- readRDS(file.path(indicator_outputs, 
+#                                 paste(location, eco_version, 
+#                                       "rli_not_formatted.rds", sep = "_")))
+
+# Check if any amphibian values have the wrong year and fix (2008 should be 1980)
+
+rli_values <- rli_values %>%
+        mutate(redlist_assessment_year = ifelse(class == "Amphibia" & 
+                                                redlist_assessment_year == 2008, 1980,
+                                                redlist_assessment_year))
+# Format
 
 rli_values <- rli_values %>%
               filter(RLI != 0) %>%
@@ -695,10 +701,14 @@ saveRDS(rli_values, file.path(indicator_outputs,
                 sep = "_"))) 
 }
 
+# Remove reptiles for the moment b/c data hasn't been checked and it's behaving weirdly
+
+rli_values <- rli_values %>%
+              filter(indicator != "red list index Reptilia")
 
 # Check rli values behave as anticipated
 
-ECO <- mascarene
+ECO <- cardamom
 rli_test <- rli_values %>% filter(ecoregion_id == ECO) %>% 
   filter(indicator == 'red list index Amphibia')
 
@@ -865,25 +875,49 @@ saveRDS(hfp_values, file.path(indicator_outputs, paste(location, eco_version,
 
 }
 
-# Biodiversity Habitat Index Plants 2015 ----
+# Biodiversity Habitat Index Plants ----
 
-# bhi_plants_2015_all <- read.csv(file.path(inputs, 
-#                                        "biodiversity_habitat_index\\BHI2015_PLANTS_BY_ECOREGION.csv"))
-# 
-# bhi_plants_2015_values <- bhi_plants_2015_all[-1,1:2]
-# 
-# bhi_plants_2015_values <- bhi_plants_2015_values %>%
-#                           rename(eco_id = BIODIVERSITY.HABITAT.INDEX.2015,
-#                                  raw_indicator_value = X) %>%
-#                           mutate(raw_indicator_value = 
-#                           as.numeric(levels(raw_indicator_value))[raw_indicator_value]) %>%
-#                           merge(ecoregion_map[c("eco_id","ecoregion_code")], 
-#                                 by = "eco_id") %>%
-#                           mutate(indicator = "biodiversity habitat index plants",
-#                                  year = 2015) %>%
-#                           dplyr::select(-geometry) %>%
-#                           dplyr::select(indicator_columns) %>%
-#                           distinct(.)
+if ((paste(location, eco_version, "bhi_plants.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+bhi_plants_values <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "bhi_plants.rds",
+                                               sep = "_"))) 
+} else {
+
+bhi_plants_all <- read.csv(file.path(inputs,
+                                       "biodiversity_habitat_index\\BHI_PLANTS_2017_ECOREGIONS.csv"))
+
+bhi_plants_all <- bhi_plants_all %>%
+                  mutate(ecoregion_id = str_sub(REGION, start = -3)) %>%
+                  rename("2005" = X2005,
+                         "2010" = X2010,
+                         "2015" = X2015) %>%
+                  select(- REGION) %>%
+                  filter(ecoregion_id != "ALL") %>%
+                  filter(ecoregion_id != "000") %>%
+                  mutate(ecoregion_id = str_remove(ecoregion_id, "^0+"))
+
+bhi_plants_all_long <- melt(bhi_plants_all, id.vars = "ecoregion_id")
+
+bhi_plants_values <- bhi_plants_all_long %>%
+                     rename(year = variable, 
+                            raw_indicator_value = value) %>%
+                     mutate(indicator = "BHI plants",
+                            year = as.numeric(as.character(year)),
+                            ecoregion_id = as.numeric(ecoregion_id)) %>%
+                     dplyr::select(indicator_columns) %>%
+                     distinct(.)
+
+saveRDS(bhi_plants_values, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "bhi_plants.rds",
+                                           sep = "_")))
+
+}
 # 
 # # Living Planet Index ----
 # 

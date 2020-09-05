@@ -1797,7 +1797,7 @@ reptile_summaries <- summarise_species_data(reptile_ecoregion_redlist, "1", "rep
 reptile_redlist_by_ecoregion <- reptile_summaries[[1]]
 reptile_redlist_global <- reptile_summaries[[2]]
 
-# Find missing ecoregions ----
+# Species Data 1: Combine rangemaps and redlist data ----
 
 species_data <- rbind(amphibian_ecoregion_redlist,
                       mammal_ecoregion_redlist,
@@ -1808,6 +1808,17 @@ saveRDS(species_data, file.path(interim_outputs,
                                              paste(location,"species_data_1.rds", 
                                                    sep = "_")))
 
+# Species Data 2: Find and add missing ecoregions to species data 1 ----
+
+if ((paste(location, "species_data_2.rds", 
+                      sep = "_") %in% list.files(interim_outputs))) {
+  
+species_data_2 <- readRDS(file.path(interim_outputs,paste(location,
+                                                          "species_data_2.rds", 
+                                                          sep = "_") ))
+
+} else {
+  
 species_missing_ecoregions <- species_data %>% filter(is.na(ecoregion_id))
 species_missing_ecoregions_binomials <- unique(species_missing_ecoregions$binomial)
 species_found_ecoregions <- get_gbif_data(species_missing_ecoregions_binomials, 
@@ -1832,50 +1843,56 @@ species_data_2 <- species_data %>%
 saveRDS(species_data_2, file.path(interim_outputs, 
                                 paste(location,"species_data_2.rds", 
                                       sep = "_")))
+}
 
-# * Extinct species ----
+# Species Data 3: Find and add extinct species to species data 2 ----
 
 # Get extinct species data from IUCN website ----
 
-#' TODO: IMPORTANT - check if the 'tsn' is actually tsn or some other id
-#'
+# if ((paste(location, "extinction", "ecoregion_redlist.rds", 
+#            sep = "_") %in% list.files(interim_outputs))) {
+#   
+#   extinction_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
+#                                                    paste(location, 
+#                                                          "extinction", 
+#                                                          "ecoregion_redlist.rds", 
+#                                                          sep = "_" )))
+#   
+#   extinction_ecoregion_redlist <- extinction_ecoregion_redlist %>%
+#                                           select(ecoregion_id, binomial,
+#                                                  tsn, 
+#                                                  location_source, 
+#                                                  redlist_assessment_year,
+#                                                  redlist_status,redlist_source,
+#                                                  class) %>%
+#                                           distinct(.) %>%
+#                                           rename(source = location_source)
+#   
+#   extinction_ecoregion_redlist$class <-  str_to_title(
+#       extinction_ecoregion_redlist$class)
+#   
+#   species_data_3 <- rbind(species_data_2, extinction_ecoregion_redlist)
+#   
+#   saveRDS(species_data_3, file.path(interim_outputs, 
+#                                     paste(location,"species_data_3.rds", 
+#                                           sep = "_")))
+#     
+# } else {
 
-if ((paste(location, "extinction", "ecoregion_redlist.rds", 
-           sep = "_") %in% list.files(interim_outputs))) {
+# Get the names of all extinct species in IUCN Red List
   
-  extinction_ecoregion_redlist <- readRDS(file.path(interim_outputs, 
-                                                   paste(location, 
-                                                         "extinction", 
-                                                         "ecoregion_redlist.rds", 
-                                                         sep = "_" )))
+  iucn_scraped_extinct_species <- retry(rl_sp_category("EX", key = NULL, 
+                                                       parse = TRUE),
+                                        maxErrors = 1000, sleep = 300)
   
-  extinction_ecoregion_redlist <- extinction_ecoregion_redlist %>%
-                                          select(ecoregion_id, binomial,
-                                                 tsn, 
-                                                 location_source, 
-                                                 redlist_assessment_year,
-                                                 redlist_status,redlist_source,
-                                                 class) %>%
-                                          distinct(.) %>%
-                                          rename(source = location_source)
+  iucn_scraped_ew_species <- retry(rl_sp_category("EW", key = NULL, 
+                                                  parse = TRUE),
+                                     maxErrors = 1000, sleep = 300)
   
-  extinction_ecoregion_redlist$class <-  str_to_title(
-      extinction_ecoregion_redlist$class)
+  # Get their Red List Assessment history
   
-  species_data_3 <- rbind(species_data_2, extinction_ecoregion_redlist)
-  
-  saveRDS(species_data_3, file.path(interim_outputs, 
-                                    paste(location,"species_data_3.rds", 
-                                          sep = "_")))
-    
-} else {
-  
-  iucn_scraped_extinct_species <- rl_sp_category("EX", key = NULL, parse = TRUE)
-  iucn_scraped_ew_species <- rl_sp_category("EW", key = NULL, parse = TRUE)
-  
-  # Put names into a vector and clean it (names that don't follow the binomial
-  # 'genus species' format will break the next loop)
-  
+  ## Clean names and put into a list so can get and save the data in chunks from RLI API
+ 
   extinct_species_names <- unique(c(iucn_scraped_extinct_species[[3]]$scientific_name,
                                     iucn_scraped_ew_species[[3]]$scientific_name))
   
@@ -1883,7 +1900,7 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
   extinct_species_names <- unique(extinct_species_names)
   
    
-  # Create a sub-directory for the outputs so they will be easy to collate later
+  ## Create a sub-directory for the outputs so they will be easy to collate later
   
   if ((paste(location, "extinct_species_redlist_data.rds", 
              sep = "_") %in% list.files(interim_outputs))) {
@@ -1925,7 +1942,7 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
     out[[i]] <- df
   }
   
-  # Convert list of redlist data back into a nice dataframe 
+  ## Convert list of redlist history back into a nice dataframe 
   
   all_extinctions_out <- list.files(extinct_species_redlist_directory)
   out <- lapply(file.path(extinct_species_redlist_directory, 
@@ -1938,7 +1955,15 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
                                         "extinct_species_redlist_data.rds", 
                                                         sep = "_" )))
   
-  # Get ecoregions
+  ## Get ecoregions for the extinct species
+  
+  ## Get extinct species synonyms
+  
+  extinct_species_synonyms <- find_synonyms(extinct_species_names)
+  
+  extinct_species_names_all <- unique(c(extinct_species_synonyms$binomial, 
+                               extinct_species_synonyms$accepted_name,
+                               extinct_species_names))
   
   extinct_species_ecoregions <- get_gbif_data(extinct_species_names, 
                                             1000, ecoregion_map)
@@ -1951,7 +1976,13 @@ if ((paste(location, "extinction", "ecoregion_redlist.rds",
                                                 paste(location, 
                                                 "extinct_species_ecoregions.rds", 
                                                                        sep = "_" )))
- #### UP TO HERE!!! THE BELOW WON'T WORK PROPERLY ####
+  
+  extinct_species_names_df <- as.data.frame(extinct_species_names)
+  
+  extinct_species_without_ecoregions <- extinct_species_names_df[!extinct_species_names_df$extinct_species_names %in% 
+                                        extinct_species_ecoregions$binomial,] 
+ 
+  #### UP TO HERE!!! THE BELOW WON'T WORK PROPERLY ####
   
    # Join ecoregion and redlist data
   

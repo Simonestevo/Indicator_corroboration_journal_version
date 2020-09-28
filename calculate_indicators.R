@@ -337,20 +337,20 @@ species_data_all <- readRDS(file.path(interim_outputs,
                                   "global_species_data_3.rds"))
 
 ecoregion_subset <- ecoregion_country_df %>%
-  filter(CNTRY_NAME == "Fiji") %>%
+  filter(CNTRY_NAME == country) %>%
   unique(.)
 
 }
 
 if (!is.na(country)) {
   
-  ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
                                    ecoregion_subset$ECO_ID,]
 
-species_data_oceania <- species_data[species_data$ecoregion_id %in% 
+species_data_all <- species_data[species_data$ecoregion_id %in% 
                                        ecoregion_subset$ECO_ID,]
 
-amphibians_oceania <- species_data_oceania %>% filter(class == "Amphibia")
+}
                         
 # species_data <- readRDS(file.path(interim_outputs, 
 #                                   "version_3_species_data_v1.rds"))

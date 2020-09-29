@@ -30,6 +30,7 @@
 library(raster)
 library(tidyverse)
 library(stringr)
+library(stringi)
 library(reshape2)
 library(sf)
 library(spData)
@@ -410,9 +411,11 @@ get_gbif_data <- function(species, observations, polygon_map) {
                   i, " of ", length(extinct_gbif_data)," ", "species", sep = ""))
      
       extinct_coordinates[[i]] <- single_spp %>%
-        select(species, decimalLatitude, decimalLongitude ) %>%
+        select(genericName, specificEpithet, decimalLatitude, decimalLongitude ) %>%
         distinct(.) %>%
-        filter(complete.cases(decimalLatitude, decimalLongitude))
+        filter(complete.cases(decimalLatitude, decimalLongitude)) %>%
+        mutate(species = paste(genericName, specificEpithet, sep = " ")) %>%
+        select(- genericName, - specificEpithet)
       
       } else {
       
@@ -1896,7 +1899,11 @@ saveRDS(species_data_2, file.path(interim_outputs,
   extinct_species_names <- unique(c(iucn_scraped_extinct_species[[3]]$scientific_name,
                                     iucn_scraped_ew_species[[3]]$scientific_name))
   
-  extinct_species_names <- word(extinct_species_names, 1, 2)
+  ## Remove the subspecies
+  
+  extinct_species_names <- extinct_species_names[stri_count(extinct_species_names,
+                                                 regex="\\S+") < 3]
+    
   extinct_species_names <- unique(extinct_species_names)
   
    
@@ -1950,6 +1957,11 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
   extinct_species_redlist_data <- do.call(rbind, out)
   
+  test <- extinct_species_redlist_data %>%
+          select(-class) %>%
+          merge(extinct_species_synonyms[c('tsn', 'class', 'binomial')],
+                by = 'binomial')
+  
   saveRDS(extinct_species_redlist_data, file.path(interim_outputs, 
                                         paste(location, 
                                         "extinct_species_redlist_data.rds", 
@@ -1965,7 +1977,7 @@ saveRDS(species_data_2, file.path(interim_outputs,
                                extinct_species_synonyms$accepted_name,
                                extinct_species_names))
   
-  extinct_species_ecoregions <- get_gbif_data(extinct_species_names, 
+  extinct_species_ecoregions <- get_gbif_data(extinct_species_names_all, 
                                             1000, ecoregion_map)
   
   extinct_species_ecoregions <- extinct_species_ecoregions[[1]] %>%

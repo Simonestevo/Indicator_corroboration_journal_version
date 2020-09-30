@@ -242,10 +242,26 @@ return(indicator_map)
 
 # Get ecoregions and their attributes ----
 
+if (("Ecoregions2017Valid.rds" %in% list.files(file.path(inputs, 
+                                                          "ecoregions_2017")))){
+  
+ecoregion_map_all <- readRDS(paste(file.path(inputs, "ecoregions_2017"),
+                                   "Ecoregions2017valid.rds"))
+
+} else {
+  
+# Read in shape file
+
 ecoregion_map_all <- st_read(paste(inputs,eco_version, sep = "/"))
+
+# Fix non-valid geometries - takes a little while
 
 ecoregion_map_all <- st_make_valid(ecoregion_map_all)
 
+saveRDS(ecoregion_map_all, file.path(paste(inputs, "ecoregions_2017", sep = "/"),
+                                 "Ecoregions2017Valid.rds"))
+
+}
 
 # Pull out only required variables
 
@@ -318,16 +334,16 @@ if (!is.na(country)) {
 
 # Check if indicators have already been calculated ----
 
-if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in% 
-     list.files(indicator_outputs))) {
-  
-
-  
-  indicator_values_master <- readRDS(file.path(indicator_outputs, 
-                                         paste(location, eco_version, 
-                                               "indicator_values_master.rds",
-                                             sep = "_"))) 
-} else {
+# if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in% 
+#      list.files(indicator_outputs))) {
+#   
+# 
+#   
+#   indicator_values_master <- readRDS(file.path(indicator_outputs, 
+#                                          paste(location, eco_version, 
+#                                                "indicator_values_master.rds",
+#                                              sep = "_"))) 
+# } else {
   
 
 # Load species data ----
@@ -340,7 +356,7 @@ ecoregion_subset <- ecoregion_country_df %>%
   filter(CNTRY_NAME == country) %>%
   unique(.)
 
-}
+#}
 
 if (!is.na(country)) {
   
@@ -361,7 +377,7 @@ species_data <- species_data_all %>%
                 distinct(.) %>%
                 mutate(redlist_assessment_year = as.numeric(as.character(
                        redlist_assessment_year)),
-                       decade = ifelse(redlist_assessment_year < 1990, 1980,
+                       decade = ifelse(redlist_assessment_year < 1990, 1980, # Group assessment date into five year bins (prob a better way to do this)
                                        ifelse(redlist_assessment_year > 1989 &
                                               redlist_assessment_year < 2000, 1990,
                                        # ifelse(redlist_assessment_year > 1994 &
@@ -735,7 +751,24 @@ ggplot(rli_test) +
 
 # Human Footprint Index  ----
 
-#' TODO: Add 2009 and min/max and stdev for others
+# Read in each raster (each raster is a time point)
+
+hfp_maps_file_names <-   list.files(file.path(inputs,
+                         "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/"),
+                         recursive = FALSE)
+
+hfp_maps_file_names <- hfp_maps_file_names[grep(".tif", hfp_maps_file_names)]
+
+hfp_maps_files <- paste(inputs,
+                        "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/",
+                        hfp_maps_file_names,
+                        sep = "")
+
+hfp_maps <- lapply(hfp_maps_files, raster)
+
+names(hfp_maps) <- hfp_maps_file_names
+
+# Extract values from each raster
 
 if ((paste(location, eco_version,
             "human_footprint_index.rds", sep = "_") %in% 
@@ -745,6 +778,135 @@ hfp_values <- readRDS(file.path(indicator_outputs,
                                 paste(location, eco_version,
                                       "human_footprint_index.rds", sep = "_")))
 } else {
+
+# * HFP 2000 ----
+
+  if (paste(location, "hfp_2000_ecoregion_values.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
+    
+    hfp_2000_ecoregion_values <- readRDS(file.path(indicator_outputs, 
+                                                   paste(location, 
+                                                         "hfp_2000_ecoregion_values.rds",
+                                                         sep = "_"))) 
+  } else {
+    
+    hfp_2000_map <- hfp_maps[[grep("2000", names(hfp_maps))]]
+    
+    # SLOW CODE - 123536.0s or around 34 hours
+    
+    system.time(hfp_2000_ecoregion_values <- ecoregion_map %>%
+                mutate(hfpmean = raster::extract(hfp_2000_map, ecoregion_map, fun = mean, na.rm = TRUE),
+                       hfpsd = raster::extract(hfp_2000_map, ecoregion_map, fun = sd, na.rm = TRUE),
+                       hfpmax = raster::extract(hfp_2000_map, ecoregion_map, fun = max, na.rm = TRUE),
+                       hfpmin = raster::extract(hfp_2000_map, ecoregion_map, fun = min, na.rm = TRUE)))
+    
+
+    saveRDS(hfp_2000_ecoregion_values, file.path(indicator_outputs, paste(location, 
+                                                                          "hfp_2000_ecoregion_values.rds",
+                                                                          sep = "_")))
+  }
+  
+# * HFP 2005 ----
+  
+  #' TODO: Get min, max and sd as well
+  
+  if (paste(location, "hfp_2005_ecoregion_values.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
+    
+    hfp_2005_ecoregion_values <- readRDS(file.path(indicator_outputs, 
+                                                   paste(location, 
+                                                         "hfp_2005_ecoregion_values.rds",
+                                                         sep = "_"))) 
+  } else {
+    
+    hfp_2005_map <- hfp_maps[[grep("2005", names(hfp_maps))]]
+    
+    # SLOW CODE - 
+    
+    # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
+    #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
+    #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
+    #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
+    #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
+    
+    system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
+                mutate(hfpmean = raster::extract(hfp_2005_map, 
+                                                   ecoregion_map, fun = mean, 
+                                                   na.rm = TRUE)))
+    
+    
+    saveRDS(hfp_2005_ecoregion_values, file.path(indicator_outputs, 
+                                                 paste(location, 
+                                                 "hfp_2005_ecoregion_values.rds",
+                                                 sep = "_")))
+  }
+
+  # * HFP 2010 ----
+  
+  if (paste(location, "hfp_2010_ecoregion_values.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
+    
+    hfp_2010_ecoregion_values <- readRDS(file.path(indicator_outputs, 
+                                                   paste(location, 
+                                                         "hfp_2010_ecoregion_values.rds",
+                                                         sep = "_"))) 
+  } else {
+    
+    hfp_2010_map <- hfp_maps[[grep("2010", names(hfp_maps))]]
+    
+    # SLOW CODE - 
+    
+    # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
+    #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
+    #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
+    #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
+    #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
+    
+    system.time(hfp_2010_ecoregion_values <- ecoregion_map %>%
+                  mutate(hfpmean = raster::extract(hfp_2010_map, 
+                                                   ecoregion_map, fun = mean, 
+                                                   na.rm = TRUE)))
+    
+    
+    saveRDS(hfp_2010_ecoregion_values, file.path(indicator_outputs, 
+                                                 paste(location, 
+                                                 "hfp_2010_ecoregion_values.rds",
+                                                 sep = "_")))
+  }
+  
+  # * HFP 2013 ----
+  
+  if (paste(location, "hfp_2013_ecoregion_values.rds", sep = "_") %in% 
+      list.files(indicator_outputs)) {
+    
+    hfp_2013_ecoregion_values <- readRDS(file.path(indicator_outputs, 
+                                                   paste(location, 
+                                                         "hfp_2013_ecoregion_values.rds",
+                                                         sep = "_"))) 
+  } else {
+    
+    hfp_2013_map <- hfp_maps[[grep("2013", names(hfp_maps))]]
+    
+    # SLOW CODE - 
+    
+    # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
+    #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
+    #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
+    #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
+    #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
+    
+    system.time(hfp_2013_ecoregion_values <- ecoregion_map %>%
+                  mutate(hfpmean = raster::extract(hfp_2013_map, 
+                                                   ecoregion_map, fun = mean, 
+                                                   na.rm = TRUE)))
+    
+    
+    saveRDS(hfp_2013_ecoregion_values, file.path(indicator_outputs, 
+                                                 paste(location, 
+                                                 "hfp_2013_ecoregion_values.rds",
+                                                 sep = "_")))
+  }
+  
   
 # * HFP 1993 ----
 

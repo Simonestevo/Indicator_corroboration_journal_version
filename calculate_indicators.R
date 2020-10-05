@@ -19,6 +19,10 @@
 
 # Load packages ----
 
+# library(devtools)
+# Install from main ZSL repository online
+# install_github("Zoological-Society-of-London/rlpi", dependencies=TRUE)
+library(rlpi)
 library(raster)
 library(tidyverse)
 library(sf)
@@ -33,6 +37,7 @@ library(mapview)
 library(psych)
 library(e1071)
 library(tm)
+
 
 
 # Set input and output locations ----
@@ -395,7 +400,59 @@ species_data <- species_data_all %>%
                       redlist_assessment_year != 2019) %>%
                drop_na(decade)
 
-hist(species_data$decade)
+# Check the distribution of data over years
+
+hist(species_data$redlist_assessment_year)
+
+ggplot(species_data) +
+  geom_bar(aes(x = redlist_assessment_year)) 
+
+spp_per_timepoint <- species_data %>%
+                     group_by(redlist_assessment_year) %>%
+                     summarise(n_distinct(binomial))
+
+# Remove duplicate errors (species with more than one redlist status in the same year)
+
+duplicates <- species_data %>%
+                    group_by(binomial, redlist_assessment_year) %>%
+                    summarise(check = n_distinct(redlist_status)) %>%
+              filter(check > 1) %>%
+              select(binomial) %>%
+              distinct(.)
+
+species_data  <- species_data[! species_data$binomial %in% 
+                     duplicates$binomial,] 
+
+# Check for species that have complete data for most time points
+
+data_years <- c(1988, 1994, 2000, 2004, 2008, 2012, 2016) # These are the years with most of the data
+
+# Get only the columns we need to convert into wide and check for completeness across years
+data_check <- species_data %>% select(binomial, class, redlist_assessment_year, 
+                                redlist_status) %>% distinct(.)
+
+# Convert into wide format
+
+data_check_wide <- spread(data_check, key = redlist_assessment_year, 
+                    value = redlist_status)
+
+# Subset to the years with most of the data
+
+data_check_wide_subset_years <- data_check_wide[ , c(1, 2, 5, 7, 9, 10, 13, 17, 21)]
+
+# Subset to only species that have a complete set of redlist values for all main years
+
+data_check_complete <- data_check_wide_subset_years[complete.cases(data_check_wide_subset_years),]
+
+# Get the names of species with complete data
+
+species_with_complete_data <- unique(data_check_complete$binomial)
+
+# Subset the original species data to only those with complete redlist across all main years
+## Hint - only birds have complete data
+
+species_data_complete_all_classes <- species_data[species_data$binomial %in% 
+                                        species_with_complete_data,]
 
 # Subset by test country
 
@@ -406,6 +463,8 @@ if (!is.na(country)) {
   
 }
 
+## Get complete cases, but this time use 'decade' to determine if a species
+## has complete data (decade bins redlist year into 5 year breaks)
 # Get only complete cases (RL status for each decade)
 
 complete_cases <- species_data %>% 
@@ -467,9 +526,6 @@ species_by_ecoregion <- species_data %>%
                                 proportion_lowrisk = number_lowrisk/number_of_species)
 
 test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
-
-
-
 
 # Proportion of species extinct ----
 
@@ -563,7 +619,7 @@ ggplot(atrisk_test) +
   geom_line(aes(x = year, y = raw_indicator_value)) 
 
 
-# # Red List Index ----
+# # Red List Index by class ----
 # **WARNING SLOW CODE ** ## ----
 # (Takes about a day and a half?)
 
@@ -682,7 +738,7 @@ for (i in seq_along(class_time_list)) {
 
 rli_values <- do.call(rbind, classes_rli)
 
-rli_values <- readRDS(file.path(indicator_outputs,
+rli_values <- saveRDS(file.path(indicator_outputs,
                                 paste(location, eco_version,
                                       "rli_not_formatted.rds", sep = "_")))
 
@@ -748,6 +804,148 @@ rli_test <- rli_values %>% filter(ecoregion_id == ECO) %>%
 
 ggplot(rli_test) +
   geom_line(aes(x = year, y = raw_indicator_value))
+
+
+# # Red List Index all classes ----
+
+
+# Split the species data into different time points (output should be dataframes of 
+# species red list status in a nested list with levels: Time point, Ecoregion)
+
+# only 8400 spp left by now
+species_data_for_rli_all_classes <- species_data_complete_all_classes %>%
+                                    filter(class != "reptile") %>%
+                                    filter(tsn != 1444976)
+# Split the data by timepoint
+
+rli_timestep <- split(species_data_complete_all_classes, 
+                      species_data_complete_all_classes$redlist_assessment_year) 
+
+
+time_ecoregion_list <- list()
+
+for (i in seq_along(rli_timestep)) {
+    
+    # Split by each ecoregion as well (so have a list of species for each timepoint,
+    # ecoregion)
+    
+    time_ecoregions <- split(rli_timestep[[i]], 
+                                      rli_timestep[[i]]$ecoregion_id)
+    
+    # Remove the empty lists with no data in them
+    
+    time_ecoregions <- list.clean(time_ecoregions, 
+                                  fun = is.null, recursive = FALSE)
+    
+    time_ecoregion_list[[i]] <- time_ecoregions
+  
+}
+  
+
+# Calculate the RLI per ecoregion, per timepoint (output should be
+# dataframes of RLI values by ecoregion, by timepoint)
+
+rli_ecoregions_single_year <- list()
+rli_ecoregions_all_years <- list()
+
+for (i in seq_along(time_ecoregion_list)) {
+  
+  timestep <- time_ecoregion_list[[i]] # Get list of species for each ecoregion in one timestep
+  
+  year <- timestep[[1]][[5]][1]
+  
+  print(paste("Processing year", year, sep = " "))
+  
+  #class_all_timepoints <- list()
+  
+  for (j in seq_along(timestep)) {
+    
+      eco <- timestep[[j]][[1]][1] # Pull out species list for one ecoregion
+      
+      rli_ecoregions_single_year[[j]] <- calculate_red_list_index(timestep[[j]]) # Calculate RLI for each ecoregion for one timestep, one class
+      
+      print(paste("Processed redlist values in year", year,
+                  "for ecoregion", eco, sep = " "))
+      
+      } 
+    
+    rli_ecoregions_single_year_df <- do.call(rbind, rli_ecoregions_single_year) # One dataframe for one time point
+    
+    rli_ecoregions_all_years[[i]] <- rli_ecoregions_single_year_df # Put the time point into a list of timepoints
+    
+  }
+
+# Convert back into one dataframe
+
+rli_ecoregions_all_years_df <- do.call(rbind, rli_ecoregions_all_years)
+
+saveRDS(rli_ecoregions_all_years_df, 
+        file.path(indicator_outputs, paste(location, eco_version,
+                  "rli_all_classes_not_formatted.rds", sep = "_")))
+
+# Check if any amphibian values have the wrong year and fix (2008 should be 1980)
+
+rli_values <- rli_values %>%
+  mutate(redlist_assessment_year = ifelse(class == "Amphibia" & 
+                                            redlist_assessment_year == 2008, 1980,
+                                          redlist_assessment_year))
+# Format
+
+rli_values <- rli_values %>%
+  filter(RLI != 0) %>%
+  mutate(indicator = paste("RLI", class, sep = " ")) %>%
+  rename(raw_indicator_value = RLI) %>%
+  rename(ecoregion_id = Ecoregion_id) %>%
+  ungroup()%>%
+  filter(ecoregion_id != 0) %>%
+  distinct(.) %>%
+  filter(redlist_assessment_year < 2016) %>%
+  filter(!(class == "Aves" & redlist_assessment_year == 2004)) %>%
+  mutate(year = ifelse(redlist_assessment_year < 1990, 1980,
+                       ifelse(redlist_assessment_year > 1989 &
+                                redlist_assessment_year < 2000, 1990,
+                              ifelse(redlist_assessment_year > 1999 &
+                                       redlist_assessment_year < 2005, 2000,
+                                     ifelse(redlist_assessment_year > 2004 &
+                                              redlist_assessment_year < 2010, 2005,
+                                            ifelse(redlist_assessment_year > 2009 &
+                                                     redlist_assessment_year < 2015, 2010,
+                                                   ifelse(redlist_assessment_year > 2014 &
+                                                            redlist_assessment_year < 2021, 2015,
+                                                          NA))))))) %>%
+  dplyr::select(indicator, year, 
+                ecoregion_id, raw_indicator_value) 
+# mutate(RLI_inverted = 1 - RLI) %>%
+# mutate(RLI_scaled_inverted =
+#          scale_to_1(RLI_inverted)) %>%
+# mutate(RLI_adjusted_old = ifelse(RLI == 0, NA,
+#                           ifelse(RLI > 0 & RLI < 0.9538,
+#                                         0.9538, RLI))) %>%
+# mutate(RLI_adjusted = ifelse(RLI == 0, NA,
+#                              pmin(pmax(RLI,
+#                       quantile(RLI, .05, na.rm = TRUE))))) %>%
+# mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
+
+saveRDS(rli_values, file.path(indicator_outputs, 
+                              paste(location, eco_version, 
+                                    "red_list_index.rds",
+                                    sep = "_"))) 
+}
+
+# Remove reptiles for the moment b/c data hasn't been checked and it's behaving weirdly
+
+rli_values <- rli_values %>%
+  filter(indicator != "red list index Reptilia")
+
+# Check rli values behave as anticipated
+
+ECO <- cardamom
+rli_test <- rli_values %>% filter(ecoregion_id == ECO) %>% 
+  filter(indicator == 'RLI Amphibia')
+
+ggplot(rli_test) +
+  geom_line(aes(x = year, y = raw_indicator_value))
+
 
 # Human Footprint Index  ----
 
@@ -1098,38 +1296,118 @@ saveRDS(bhi_plants_values, file.path(indicator_outputs,
                                            sep = "_")))
 
 }
-# 
-# # Living Planet Index ----
-# 
-# lpi_data <- read.csv(file.path(inputs, 
-#                                "living_planet_index\\LPR2018data_public.csv"))
-# 
-# ## Assign species to ecoregions
-# 
-# # Get coordinates
-# 
-# lpi_coordinates <- lpi_data %>%
-#                    select(Binomial, Latitude, Longitude) %>%
-#                    distinct(.) %>%
-#                    filter(complete.cases(Latitude, Longitude))
-# 
-# # Convert into simple features
-# 
-# lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude', 
-#                                                 'Latitude'), 
-#                        crs = st_crs(ecoregion_map))
-# 
-# lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
-# lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)   
-# 
-# lpi_inputs <- lpi_data %>%
-#               merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")], 
-#                     by = "Binomial")
-# 
-# lpi_input_summary <- lpi_inputs %>%
-#                      group_by(ECO_ID) %>%
-#                      summarise(number_of_records = n_distinct(Binomial),
-#                                .groups = "drop_last")
+
+# Living Planet Index ----
+
+
+lpi_ecoregion_directory <- file.path(indicator_outputs, 
+                                   "lpi_ecoregion_directory")
+
+if( !dir.exists( lpi_ecoregion_directory ) ) {
+  
+  dir.create( lpi_ecoregion_directory, recursive = TRUE )
+  
+}
+
+setwd(lpi_ecoregion_directory)
+
+if (paste(location, eco_version, "LPI_2020_input_data_with_ecoregions.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+lpi_inputs <- readRDS(file.path(indicator_outputs, 
+                                           paste(location, eco_version,
+                                                 "LPI_2020_input_data_with_ecoregions.rds", 
+                                                 sep = "_")))
+} else {
+
+lpi_data <- read.csv(file.path(inputs,
+                     "living_planet_index_2020_version\\LPR2020data_public.csv"))
+
+## Assign species to ecoregions
+
+# Get coordinates
+
+lpi_coordinates <- lpi_data %>%
+                   select(Binomial, Latitude, Longitude) %>%
+                   distinct(.) %>%
+                   filter(complete.cases(Latitude, Longitude))
+
+# Convert into simple features
+
+lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude',
+                                                'Latitude'),
+                       crs = st_crs(ecoregion_map))
+
+# Match coordinates of population to ecoregions
+
+lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
+lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)
+
+# Format the input data
+
+lpi_inputs <- lpi_data %>%
+              merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")],
+                    by = "Binomial", all = FALSE) %>% # Drops around 1000 marine spp
+              select(ECO_ID, everything())
+
+# Have a look
+
+lpi_input_summary <- lpi_inputs %>%
+                     group_by(ECO_ID) %>%
+                     summarise(number_of_records = n_distinct(Binomial),
+                               .groups = "drop_last")
+
+# Save input data
+
+saveRDS(lpi_inputs, file.path(indicator_outputs, 
+                              paste(location, eco_version, 
+                              "LPI_2020_input_data_with_ecoregions.rds",
+                               sep = "_")))
+
+# Split LPI data by ecoregion
+
+lpi_inputs_ecoregions <- split(lpi_inputs, lpi_inputs$ECO_ID)
+
+eco_names <- vector()
+
+for (i in seq_along(lpi_inputs_ecoregions)) {
+
+  eco_names[i] <- as.character(lpi_inputs_ecoregions[[i]]$ECO_ID[1])
+  
+}
+
+names(lpi_inputs_ecoregions) <- eco_names
+
+lpi_infiles_ecoregions <- list()
+lpi_values_by_ecoregion <- list()
+file_name <- vector()
+
+for (i in seq_along(lpi_inputs_ecoregions)) {
+  
+single_ecoregion <- lpi_inputs_ecoregions[[i]] %>%
+                    select(-ECO_ID) %>%
+                    distinct(.)
+
+index_vector_ecoregion <- c(1:length(unique(single_ecoregion$ID)))
+
+file_name[i] <- paste("ecoregion", eco_names[i], sep = "_")
+
+lpi_infiles_ecoregions[[i]] <- create_infile(single_ecoregion, 
+                                             index_vector = index_vector_ecoregion, 
+                                             name = file_name[i])
+
+ecoregion_lpi <- LPIMain(paste(file_name[i], "infile.txt", sep = "_"),
+                                use_weightings = 1, VERBOSE = FALSE)
+
+ecoregion_lpi <- ecoregion_lpi[complete.cases(ecoregion_lpi), ]
+
+lpi_values_by_ecoregion[[i]] <- ecoregion_lpi
+
+rm(ecoregion_lpi)
+closeAllConnections()
+gc()
+
+}
 
 # Richness Biodiversity Intactness Index 2005 ----
 

@@ -344,10 +344,10 @@ if (!is.na(country)) {
 #   
 # 
 #   
-#   indicator_values_master <- readRDS(file.path(indicator_outputs, 
-#                                          paste(location, eco_version, 
-#                                                "indicator_values_master.rds",
-#                                              sep = "_"))) 
+# indicator_values_master <- readRDS(file.path(indicator_outputs,
+#                                        paste(location, eco_version,
+#                                              "indicator_values_master.rds",
+#                                            sep = "_")))
 # } else {
   
 
@@ -998,11 +998,18 @@ hfp_values <- readRDS(file.path(indicator_outputs,
                        hfpmax = raster::extract(hfp_2000_map, ecoregion_map, fun = max, na.rm = TRUE),
                        hfpmin = raster::extract(hfp_2000_map, ecoregion_map, fun = min, na.rm = TRUE)))
     
-
     saveRDS(hfp_2000_ecoregion_values, file.path(indicator_outputs, paste(location, 
                                                                           "hfp_2000_ecoregion_values.rds",
                                                                           sep = "_")))
   }
+  
+  hfp_2000 <- hfp_2000_ecoregion_values %>% 
+              select(ECO_ID, hfpmean) %>%
+              mutate(year = "2000",
+                     indicator = "mean human footprint index") %>%
+              rename(ecoregion_id = ECO_ID,
+                     raw_indicator_values = hfpmean) %>%
+              st_set_geometry(NULL) 
   
 # * HFP 2005 ----
   
@@ -1038,6 +1045,14 @@ hfp_values <- readRDS(file.path(indicator_outputs,
                                                  "hfp_2005_ecoregion_values.rds",
                                                  sep = "_")))
   }
+  
+  hfp_2005 <- hfp_2005_ecoregion_values %>% 
+    select(ECO_ID, hfpmean) %>%
+    mutate(year = "2005",
+           indicator = "mean human footprint index") %>%
+    rename(ecoregion_id = ECO_ID,
+           raw_indicator_values = hfpmean) %>%
+    st_set_geometry(NULL) 
 
   # * HFP 2010 ----
   
@@ -1071,6 +1086,14 @@ hfp_values <- readRDS(file.path(indicator_outputs,
                                                  "hfp_2010_ecoregion_values.rds",
                                                  sep = "_")))
   }
+  
+  hfp_2010 <- hfp_2010_ecoregion_values %>% 
+              select(ECO_ID, hfpmean) %>%
+              mutate(year = "2010",
+                     indicator = "mean human footprint index") %>%
+              rename(ecoregion_id = ECO_ID,
+                     raw_indicator_values = hfpmean) %>%
+              st_set_geometry(NULL) 
   
   # * HFP 2013 ----
   
@@ -1148,7 +1171,7 @@ if (paste(location, "hfp_1993_ecoregion_values.rds", sep = "_") %in%
 
 hfp_1993_values <- hfp_1993_ecoregion_values %>%
                    st_set_geometry(NULL) %>%
-                   mutate(indicator = "human footprint index") %>%
+                   mutate(indicator = "mean human footprint index") %>%
                    mutate(year = 1990) %>%
                    rename(ecoregion_id = ECO_ID) %>%
                    select(all_of(indicator_df_colnames)) %>%
@@ -1208,7 +1231,7 @@ saveRDS(hfp_1993_values, file.path(indicator_outputs,
 #' 
 #' hfp_2009_values <- hfp_2009_ecoregion_map %>%
 #'                    st_set_geometry(NULL) %>%
-#'                    mutate(indicator = "human footprint index") %>%
+#'                    mutate(indicator = "mean human footprint index") %>%
 #'                    mutate(year = "2009") %>%
 #'                    rename(ecoregion_id = ECO_ID) %>%
 #'                    select(names(rli_values)) %>%
@@ -1228,7 +1251,7 @@ hfp_2013_values <- hfp_by_ecoregion_2013 %>%
                          # merge(ecoregion_map[c("ecoregion_name", "ECO_ID")], 
                          #       by = "ECO_ID") %>% # This will subset automatically if you subset by country
                          mutate(year = 2010) %>%
-                         mutate(indicator = "human footprint index") %>%
+                         mutate(indicator = "mean human footprint index") %>%
                          rename(raw_indicator_value = HFP,
                                 ecoregion_id = ECO_ID) %>%
                          dplyr::select(indicator, year, ecoregion_id, 
@@ -1258,8 +1281,7 @@ saveRDS(hfp_values, file.path(indicator_outputs, paste(location, eco_version,
 if ((paste(location, eco_version, "bhi_plants.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
-  #' TODO: Work out why this is producing so many NaNs
-  
+
 bhi_plants_values <- readRDS(file.path(indicator_outputs, 
                                          paste(location, eco_version, 
                                                "bhi_plants.rds",
@@ -1996,7 +2018,7 @@ spearman_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t,
 #                       0.9538, raw_indicator_value))) %>%
 # mutate(year = as.numeric(year)) %>%
 # mutate(HFP_adjusted_old = ifelse(indicator != 
-#                           "human footprint index", NA,
+#                           "mean human footprint index", NA,
 #                           HFP_adjusted_old)) %>%
 # mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
 #                                 indicator), 

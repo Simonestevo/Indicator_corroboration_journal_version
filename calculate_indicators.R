@@ -271,7 +271,7 @@ saveRDS(ecoregion_map_all, file.path(paste(inputs, "ecoregions_2017", sep = "/")
 # Pull out only required variables
 
 ecoregion_map <- ecoregion_map_all %>% 
-                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+                 select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 
 # Check geometry and fix if needed
 
@@ -1321,7 +1321,15 @@ saveRDS(bhi_plants_values, file.path(indicator_outputs,
 
 # Living Planet Index ----
 
-
+if (paste(location, eco_version, "lpi.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+lpi_values <- readRDS(file.path(indicator_outputs, 
+                                paste(location, eco_version, 
+                                      "lpi.rds",
+                                      sep = "_")))
+} else {
+  
 lpi_ecoregion_directory <- file.path(indicator_outputs, 
                                    "lpi_ecoregion_directory")
 
@@ -1429,6 +1437,49 @@ rm(ecoregion_lpi)
 closeAllConnections()
 gc()
 
+}
+
+out <- list.files(lpi_ecoregion_directory)[grepl("Results",list.files(lpi_ecoregion_directory))]
+
+get_lpi <- function(data, name) {
+  
+  y <- str_remove(name, "ecoregion_") 
+  y <- str_remove(y, "_infile_Results.txt")
+  x <- data %>%
+       rownames_to_column(var = "year") %>%
+       mutate(ecoregion_id = as.numeric(y),
+              indicator = "LPI") %>%
+       rename(raw_indicator_value = LPI_final) %>%
+       select(indicator, year, ecoregion_id, raw_indicator_value) %>%
+       mutate(year = as.numeric(year)) %>%
+       filter(raw_indicator_value != - 99.0)
+  
+  print(paste("retrieved ecoregion", y, sep = " "))
+  
+  return(x)
+  
+}
+
+lpi_values_formatted <- list()
+
+for (i in seq_along(lpi_values_by_ecoregion)) {
+  
+  lpi_values_formatted[[i]] <- get_lpi(lpi_values_by_ecoregion[[i]],
+                                       out[[i]])
+  
+}
+
+lpi_values <- do.call(rbind, lpi_values_formatted)
+
+lpi_test <- lpi_values %>% filter(ecoregion_id == mascarene)
+
+ggplot(lpi_test) +
+  geom_line(aes(x = year, y = raw_indicator_value)) 
+
+saveRDS(lpi_values, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "lpi.rds",
+                                           sep = "_")))
 }
 
 # Richness Biodiversity Intactness Index 2005 ----

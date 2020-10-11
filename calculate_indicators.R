@@ -37,6 +37,7 @@ library(mapview)
 library(psych)
 library(e1071)
 library(tm)
+library(PerformanceAnalytics)
 
 
 
@@ -165,7 +166,7 @@ calculate_red_list_index <- function(data){
   
 }
 
-produce_scatterplots <- function(indicator_values, name, save) {
+produce_scatterplots <- function(indicator_values, name, save, variable) {
   
   scatterplot_directory <- file.path(indicator_outputs, 
                                      "scatterplots")
@@ -176,17 +177,31 @@ produce_scatterplots <- function(indicator_values, name, save) {
     
   }
   
+  if (variable == "centred") {
+    
     indicator_values_2 <- indicator_values %>%
     dplyr::select(ecoregion_id, indicator_year,
-                  raw_indicator_value) %>%
+                  centred_indicator_value) %>%
     distinct(.)
+    
+    indicator_values_wide <- indicator_values_2 %>%
+      spread(key = indicator_year, 
+             value = centred_indicator_value) 
   
+  } else if (variable == "raw") {
   
-  indicator_values_wide <- indicator_values_2 %>%
-    spread(key = indicator_year, 
-           value = raw_indicator_value) 
+    indicator_values_2 <- indicator_values %>%
+      dplyr::select(ecoregion_id, indicator_year,
+                    raw_indicator_value) %>%
+      distinct(.)
+    
+    indicator_values_wide <- indicator_values_2 %>%
+      spread(key = indicator_year, 
+             value = raw_indicator_value) 
   
+  }
   
+
   names(indicator_values_wide) <- make.names(names(indicator_values_wide), 
                                              unique = TRUE)
   # TEMPORARY - select columns that have enough data
@@ -273,8 +288,9 @@ saveRDS(ecoregion_map_all, file.path(paste(inputs, "ecoregions_2017", sep = "/")
 ecoregion_map <- ecoregion_map_all %>% 
                  select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 
-# Check geometry and fix if needed
+# As data frame
 
+ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
 
 
 # names(ecoregion_map) <- c("ecoregion_code", "ecoregion_name","eco_objectid",
@@ -399,6 +415,34 @@ species_data <- species_data_all %>%
                filter(redlist_assessment_year != 2020,
                       redlist_assessment_year != 2019) %>%
                drop_na(decade)
+
+
+# Check for duplicates (same tsn but different binomials)
+
+length(unique(species_data$binomial))
+length(unique(species_data$tsn))
+
+# Species that aren't duplicated
+
+species_data1 <- species_data %>% 
+  group_by_at(vars(-binomial, -source)) %>% 
+  filter(n() < 2) 
+
+# Find species that are duplicated and pick the BI record
+
+species_data2 <- species_data %>% 
+  group_by_at(vars(-binomial, -source)) %>% 
+  filter(n() > 1) %>%
+  filter(source == "birdlife_international")
+
+unique(species_data2$source)
+
+length(unique(species_data2$binomial))
+length(unique(species_data2$tsn))
+
+# Combine
+
+species_data <- rbind(species_data1, species_data2)
 
 # Check the distribution of data over years
 
@@ -556,7 +600,7 @@ extinction_values <- as.data.frame(extinction_values)
 
 # Check extinction values behave as anticipated
 
-ECO <- ecuador
+ECO <- east_australia
 test_spp <- species_by_ecoregion %>% filter(ecoregion_id == ECO)
 test <- extinction_values %>% filter(ecoregion_id == ECO)
 
@@ -610,9 +654,9 @@ saveRDS(at_risk_values, file.path(indicator_outputs,
 
 }
 
-# Check extinction values behave as anticipated
+# Check at risk values behave as anticipated
 
-ECO <- 7
+ECO <- east_australia
 atrisk_test <- at_risk_values %>% filter(ecoregion_id == ECO)
 
 ggplot(atrisk_test) +
@@ -808,7 +852,56 @@ ggplot(rli_test) +
 
 # # Red List Index all classes ----
 
+# * 2005 only ----
 
+species_data_for_rli_2005 <- species_data %>%
+                             select(-source) %>%
+                             distinct(.) %>%
+                             filter(class == "Amphibia"| class == "Aves"|
+                                    class == "Mammalia") %>%
+                             filter(tsn != 1444976) %>%
+                             filter(decade == 2005) %>%
+                             mutate(class = "all")
+
+
+species_data_ecoregions_2005 <- split(species_data_for_rli_2005, 
+                                      species_data_for_rli_2005$ecoregion_id)
+
+# Remove the empty lists with no data in them
+
+species_data_ecoregions_2005 <- list.clean(species_data_ecoregions_2005, 
+                                fun = is.null, recursive = FALSE)
+
+# Calculate the RLI per ecoregion
+
+rli_ecoregions_2005 <- list()
+
+for (i in seq_along(species_data_ecoregions_2005)) {
+  
+  eco <- species_data_ecoregions_2005[[i]][[1]][1] # Pull out species list for one ecoregion
+  
+  rli_ecoregions_2005[[i]] <- calculate_red_list_index(species_data_ecoregions_2005[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
+  
+  print(paste("Processed redlist values in year 2005 for ecoregion",
+              eco, sep = " "))
+  
+} 
+
+rli_all_classes_2005 <- do.call(rbind, rli_ecoregions_2005)
+
+# Formate
+
+rli_all_2005_values <- rli_all_classes_2005 %>%
+                       ungroup(.) %>%
+                       select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+                       mutate(indicator = "RLI",
+                              year = 2005,
+                              ecoregion_id = Ecoregion_id) %>%
+                       rename(raw_indicator_value = RLI) %>%
+                       select(indicator, year, ecoregion_id, raw_indicator_value) 
+
+
+# * Multiple time points ----
 # Split the species data into different time points (output should be dataframes of 
 # species red list status in a nested list with levels: Time point, Ecoregion)
 
@@ -1008,8 +1101,10 @@ hfp_values <- readRDS(file.path(indicator_outputs,
               mutate(year = "2000",
                      indicator = "mean human footprint index") %>%
               rename(ecoregion_id = ECO_ID,
-                     raw_indicator_values = hfpmean) %>%
-              st_set_geometry(NULL) 
+                     raw_indicator_value = hfpmean) %>%
+              st_set_geometry(NULL) %>%
+    dplyr::select(indicator, year, ecoregion_id, 
+                  raw_indicator_value)
   
 # * HFP 2005 ----
   
@@ -1051,9 +1146,10 @@ hfp_values <- readRDS(file.path(indicator_outputs,
     mutate(year = "2005",
            indicator = "mean human footprint index") %>%
     rename(ecoregion_id = ECO_ID,
-           raw_indicator_values = hfpmean) %>%
-    st_set_geometry(NULL) 
-
+           raw_indicator_value = hfpmean) %>%
+    st_set_geometry(NULL) %>%
+    dplyr::select(indicator, year, ecoregion_id, 
+                  raw_indicator_value)
   # * HFP 2010 ----
   
   if (paste(location, "hfp_2010_ecoregion_values.rds", sep = "_") %in% 
@@ -1092,41 +1188,43 @@ hfp_values <- readRDS(file.path(indicator_outputs,
               mutate(year = "2010",
                      indicator = "mean human footprint index") %>%
               rename(ecoregion_id = ECO_ID,
-                     raw_indicator_values = hfpmean) %>%
-              st_set_geometry(NULL) 
+                     raw_indicator_value = hfpmean) %>%
+              st_set_geometry(NULL) %>%
+              dplyr::select(indicator, year, ecoregion_id, 
+                            raw_indicator_value)
   
-  # * HFP 2013 ----
-  
-  if (paste(location, "hfp_2013_ecoregion_values.rds", sep = "_") %in% 
-      list.files(indicator_outputs)) {
-    
-    hfp_2013_ecoregion_values <- readRDS(file.path(indicator_outputs, 
-                                                   paste(location, 
-                                                         "hfp_2013_ecoregion_values.rds",
-                                                         sep = "_"))) 
-  } else {
-    
-    hfp_2013_map <- hfp_maps[[grep("2013", names(hfp_maps))]]
-    
-    # SLOW CODE - 
-    
-    # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
-    #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
-    #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
-    #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
-    #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
-    
-    system.time(hfp_2013_ecoregion_values <- ecoregion_map %>%
-                  mutate(hfpmean = raster::extract(hfp_2013_map, 
-                                                   ecoregion_map, fun = mean, 
-                                                   na.rm = TRUE)))
-    
-    
-    saveRDS(hfp_2013_ecoregion_values, file.path(indicator_outputs, 
-                                                 paste(location, 
-                                                 "hfp_2013_ecoregion_values.rds",
-                                                 sep = "_")))
-  }
+  # # * HFP 2013 ----
+  # 
+  # if (paste(location, "hfp_2013_ecoregion_values.rds", sep = "_") %in% 
+  #     list.files(indicator_outputs)) {
+  #   
+  #   hfp_2013_ecoregion_values <- readRDS(file.path(indicator_outputs, 
+  #                                                  paste(location, 
+  #                                                        "hfp_2013_ecoregion_values.rds",
+  #                                                        sep = "_"))) 
+  # } else {
+  #   
+  #   hfp_2013_map <- hfp_maps[[grep("2013", names(hfp_maps))]]
+  #   
+  #   # SLOW CODE - 
+  #   
+  #   # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
+  #   #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
+  #   #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
+  #   #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
+  #   #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
+  #   
+  #   system.time(hfp_2013_ecoregion_values <- ecoregion_map %>%
+  #                 mutate(hfpmean = raster::extract(hfp_2013_map, 
+  #                                                  ecoregion_map, fun = mean, 
+  #                                                  na.rm = TRUE)))
+  #   
+  #   
+  #   saveRDS(hfp_2013_ecoregion_values, file.path(indicator_outputs, 
+  #                                                paste(location, 
+  #                                                "hfp_2013_ecoregion_values.rds",
+  #                                                sep = "_")))
+  # }
   
   
 # * HFP 2013 ----
@@ -1137,11 +1235,11 @@ hfp_by_ecoregion_2013 <- read.csv(paste(inputs, "human_footprint_index",
                                         "human_footprint_index_by_ecoregion.csv",
                                         sep = "/"))
 
-hfp_2013_values <- hfp_by_ecoregion_2013 %>%
+hfp_2013 <- hfp_by_ecoregion_2013 %>%
                          rename(ecoregion_name = ECO_NAME) %>%
                          # merge(ecoregion_map[c("ecoregion_name", "ECO_ID")], 
                          #       by = "ECO_ID") %>% # This will subset automatically if you subset by country
-                         mutate(year = 2010) %>%
+                         mutate(year = 2013) %>%
                          mutate(indicator = "mean human footprint index") %>%
                          rename(raw_indicator_value = HFP,
                                 ecoregion_id = ECO_ID) %>%
@@ -1160,7 +1258,7 @@ hfp_2013_values <- hfp_by_ecoregion_2013 %>%
                          #           1 - HFP_scaled_adjusted)
 
 
-hfp_values <- rbind(hfp_1993_values, hfp_2013_values)
+hfp_values <- rbind(hfp_2000, hfp_2005, hfp_2010, hfp_2013)
 
 saveRDS(hfp_values, file.path(indicator_outputs, paste(location, eco_version,
                           "human_footprint_index.rds", sep = "_")))
@@ -1269,7 +1367,11 @@ lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)
 lpi_inputs <- lpi_data %>%
               merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")],
                     by = "Binomial", all = FALSE) %>% # Drops around 1000 marine spp
-              select(ECO_ID, everything())
+              select(ECO_ID, everything()) 
+
+
+lpi_inputs <- lpi_inputs %>%
+              filter(System == "Terrestrial")
 
 # Have a look
 
@@ -1277,6 +1379,14 @@ lpi_input_summary <- lpi_inputs %>%
                      group_by(ECO_ID) %>%
                      summarise(number_of_records = n_distinct(Binomial),
                                .groups = "drop_last")
+
+lpi_record_values <- lpi_input_summary %>%
+                     mutate(indicator = "LPI_records",
+                            year = 2005) %>%
+                      rename(ecoregion_id = ECO_ID,
+                             raw_indicator_value = number_of_records) %>%
+                     select(indicator_columns)
+                     
 
 # Save input data
 
@@ -1362,7 +1472,18 @@ for (i in seq_along(lpi_values_by_ecoregion)) {
 
 lpi_values <- do.call(rbind, lpi_values_formatted)
 
-lpi_test <- lpi_values %>% filter(ecoregion_id == mascarene)
+lpi_values_subset <- lpi_values %>%
+                     filter(year == 1980|
+                              year == 1990|
+                              year == 2000|
+                              year == 2005|
+                              year == 2010|
+                              year == 2013|
+                              year == 2015) 
+
+length(unique(lpi_values_subset$ecoregion_id))
+
+lpi_test <- lpi_values %>% filter(ecoregion_id == 291)
 
 ggplot(lpi_test) +
   geom_line(aes(x = year, y = raw_indicator_value)) 
@@ -1513,36 +1634,74 @@ saveRDS(bii_abundance_values, file.path(indicator_outputs,
 
 # Analyse indicators ----
 
-ecoregions <- as.data.frame(ecoregion_map) %>% dplyr::select(-geometry)
-
 # Combine indicator values into a single dataframe ----
 
-indicator_values <- rbind(extinction_values, 
+# Remove some outliers
+
+lpi_values_subset <- lpi_values_subset %>%
+                     filter(raw_indicator_value < 2)
+
+hfp_values_subset <- hfp_values %>%
+                     filter(raw_indicator_value < 40)
+
+extinction_values_subset <- extinction_values %>%
+                            filter(ecoregion_id != 20) %>%
+                            filter(ecoregion_id != 637)
+
+indicator_values <- rbind(extinction_values_subset, 
                           at_risk_values, 
-                          rli_values,
-                          hfp_values,
+                          rli_all_2005_values,
+                          hfp_values_subset,
                           bhi_plants_values,
+                          #lpi_values_subset,
                           bii_richness_values,
                           bii_abundance_values)
 
 indicator_values_master <- indicator_values %>%
-                    merge(ecoregion_country_df[c("ECO_ID", 
-                                                 "CNTRY_NAME")], 
-                          by.x = "ecoregion_id", by.y = "ECO_ID",
-                          all.x = TRUE, all.y = FALSE) %>%
-                    distinct(.) %>%
-                    mutate(indicator_year = paste(indicator, year, sep = " ")) %>%
-                    rename(country = CNTRY_NAME) %>%
-                    merge(ecoregions[c("ECO_ID", "REALM")], 
-                          by.x = "ecoregion_id",
-                          by.y = "ECO_ID") %>%
-                    rename(realm = REALM) %>%
-                    filter(ecoregion_id != 0)
+                            merge(ecoregion_country_df[c("ECO_ID", 
+                                                         "CNTRY_NAME")], 
+                                  by.x = "ecoregion_id", by.y = "ECO_ID",
+                                  all.x = TRUE, all.y = FALSE) %>%
+                            distinct(.) %>%
+                            rename(country = CNTRY_NAME) %>%
+                            merge(ecoregions[c("ECO_ID", "REALM")], 
+                                  by.x = "ecoregion_id",
+                                  by.y = "ECO_ID") %>%
+                            rename(realm = REALM) %>%
+                            filter(ecoregion_id != 0) %>%
+                            filter(indicator != "RLI Reptilia") %>%
+                            mutate(indicator_abbreviated = 
+                                   ifelse(indicator == "proportion at risk",
+                                            "threatened",
+                                   ifelse(indicator == "proportion extinct",
+                                                   "extinct",
+                                   ifelse(indicator == "abundance biodiversity intactness index",
+                                                   "BIIab",
+                                   ifelse(indicator == "richness biodiversity intactness index",
+                                                    "BIIri",
+                                   ifelse(indicator == "mean human footprint index",
+                                                       "HFP",
+                                   ifelse(indicator == "RLI Aves",
+                                                 "BirdRLI",
+                                   ifelse(indicator == "RLI Amphibia",
+                                                 "AmphRLI",
+                                    ifelse(indicator == "RLI Mammalia",
+                                                 "MammRLI",
+                                            indicator))))))))) %>%
+                            mutate(indicator_year = paste(indicator_abbreviated, 
+                                                          year, sep = " ")) 
+
+summary(indicator_values_master)
 
 saveRDS(indicator_values_master, file.path(indicator_outputs,
                                            paste(location, eco_version,
                                                  "indicator_values_master.rds",
                                                  sep = "_")))
+
+write.csv(indicator_values_master, file.path(indicator_outputs,
+                                             paste(location, eco_version,
+                                                   "indicator_values_master.csv",
+                                                   sep = "_")))
 
 }
 
@@ -1568,13 +1727,13 @@ summary(indicators_wide)
 # * Invert ----
 # For negatively valanced variables (where high values = negative outcome)
 
-cols_to_invert <- c("human.footprint.index.1990", "human.footprint.index.2010",
-                    "proportion.at.risk.1980", "proportion.at.risk.1990",
-                    "proportion.at.risk.2000", "proportion.at.risk.2005",
-                    "proportion.at.risk.2010","proportion.at.risk.2015", 
-                    "proportion.extinct.1980", "proportion.extinct.1990",
-                    "proportion.extinct.2000", "proportion.extinct.2005",
-                    "proportion.extinct.2010", "proportion.extinct.2015")
+cols_to_invert <- c("HFP.2000","HFP.2005","HFP.2010", "HFP.2013",
+                    "threatened.1980", "threatened.1990",
+                    "threatened.2000", "threatened.2005",
+                    "threatened.2010","threatened.2015", 
+                    "extinct.1980", "extinct.1990",
+                    "extinct.2000", "extinct.2005",
+                    "extinct.2010", "extinct.2015")
 
 col_index <- names(indicators_wide) %in% cols_to_invert
 cols_min <- as.numeric(sapply(indicators_wide, min, na.rm = TRUE))
@@ -1595,13 +1754,13 @@ summary(indicators_wide_inv)
 
 # test
 
-ECO <- mascarene
-HFP <- indicators_wide %>% filter(ecoregion_id == ECO) %>% select(human.footprint.index.1990, 
-                                                                  human.footprint.index.2010)
+ECO <- east_australia
+HFP <- indicators_wide %>% filter(ecoregion_id == ECO) %>% select(HFP.2000, 
+                                                                  HFP.2010)
 HFP
 
 HFP_inv <- indicators_wide_inv %>% filter(ecoregion_id == ECO) %>% 
-            select(`human.footprint.index.1990-`, `human.footprint.index.2010-`)
+            select(`HFP.2000-`, `HFP.2010-`)
 HFP_inv
 
 # * Centre ----
@@ -1813,29 +1972,33 @@ saveRDS(indicator_values_transformed, file.path(indicator_outputs,
 #                      "RLI_Mamm_2005", "BII_R_2005")
 
 
-indicator_names <- c("Ecoregion_id", "BII","BHI", "BHI_2010", "BHI_2015",
-                     "HFP_1990", "HFP","Endangered_1980", "Endangered_1990",
-                     "At_risk_2000", "Endangered", "At_risk_2010", 
-                     "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
-                     "Extinction_2000", "Extinction_2005",   "Extinction_2010",
-                     "Extinction_2015", "RLI_Amph_1980", "RLI_Amph",
-                     "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
-                     "RLI_Birds", "RLI_Birds_2010", "RLI_Mamm_1990",
-                     "RLI_Mammals", "BII_R_2005")
-
-colnames(indicators_wide_inv_centred) <- indicator_names
+# indicator_names <- c("Ecoregion_id", "BII","BHI", "BHI_2010", "BHI_2015",
+#                      "HFP_1990", "HFP","Endangered_1980", "Endangered_1990",
+#                      "At_risk_2000", "Endangered", "At_risk_2010", 
+#                      "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
+#                      "Extinction_2000", "Extinction_2005",   "Extinction_2010",
+#                      "Extinction_2015", "RLI_Amph_1980", "RLI_Amph",
+#                      "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
+#                      "RLI_Birds", "RLI_Birds_2010", "RLI_Mamm_1990",
+#                      "RLI_Mammals", "BII_R_2005")
+# 
+# colnames(indicators_wide_inv_centred) <- indicator_names
                                      
                    
 indicator_matrix <- indicators_wide_inv_centred %>%
-                    select(-Ecoregion_id) %>%
+                    select(-ecoregion_id) %>%
                     na.omit(.)
 
 # Split by location
 
-indicators_wic <- indicators_wide_inv_centred %>%
-                  merge(ecoregion_map[c("ecoregion_id", "REALM")],
-                        by.x = "Ecoregion_id",
-                        by.y = "ecoregion_id") 
+# Get 2005 only
+indicators_wide_inv_centred_2005 <- indicators_wide_inv_centred[,c(1,2,5,6,10,14,17,21)]
+
+
+indicators_wic <- indicators_wide_inv_centred_2005 %>%
+                  merge(ecoregion_map[c("ECO_ID", "REALM")],
+                        by.x = "ecoregion_id",
+                        by.y = "ECO_ID") 
 
 indicators_wic_realm <- split(indicators_wic, indicators_wic$REALM)
 
@@ -1850,7 +2013,7 @@ realm_matrices <- list()
 for (i in seq_along(indicators_wic_realm)) {
   
   realm_matrices[[i]] <- indicators_wic_realm[[i]] %>%
-                         select(-Ecoregion_id, -REALM, - geometry) %>%
+                         select(-ecoregion_id, -REALM, - geometry) %>%
                          na.omit(.)
 
 }
@@ -1865,7 +2028,7 @@ for (i in seq_along(realm_matrices)) {
   
   name <- paste(names(realm_matrices)[i], "indicator correlation matrix", sep = " ")
   
-  subset_matrix <- realm_matrices[[i]][, c(1,2,6,10,20,24,27)]
+  subset_matrix <- realm_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
   
   if(nrow(subset_matrix) == 0) {
     
@@ -1984,7 +2147,75 @@ spearman_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t,
 
 # Scatterplots ----
 
+indicator_values_master_1 <- indicator_values_master
+
+indicator_values_master_2 <- indicator_values_master_1 %>%
+     mutate(key2 = paste(ecoregion_id, indicator_year, sep = " ")) %>%
+     mutate(key = make.names(key2)) %>%
+     mutate(key = str_remove(key, "X")) %>%
+     select(-key2) 
+
+indicators_scaled <- indicators_scaled %>%
+                     mutate(variable = str_remove(variable, "-"))
+
+indicator_values_scaled <- indicators_scaled %>%
+                           mutate(key = paste(ecoregion_id, variable, sep = ".")) %>%
+                           rename(centred_indicator_value = value)
+
+unique(indicator_values_scaled$variable)
+unique(indicator_values_master$indicator_year)
+
+indicator_values_master <- indicator_values_master_2 %>%
+                           merge(indicator_values_scaled[c("key", 
+                                 "centred_indicator_value")], by = "key") 
+
+unique(indicator_values_master$indicator_year)
+
+# * Subset by indicator ----
+
+indicator_values_master_list <- split(indicator_values_master, 
+                                      indicator_values_master$indicator)
+
+indicator_values_master_wide <- list()
+indicator_by_time_plots <- list()
+
+for (i in seq_along(indicator_values_master_list)) {
+  
+wide_indicator_data <- indicator_values_master_list[[i]] %>%
+                                     select(ecoregion_id, indicator_year, 
+                                            centred_indicator_value) %>%
+                                     distinct(.) %>%
+                                     spread(key = indicator_year, 
+                                             value = centred_indicator_value) %>%
+                                    select(-ecoregion_id)
+
+indicator_plot <- ggpairs(wide_indicator_data)
+
+indicator_name <- indicator_values_master_list[[i]][1,2]
+
+indicator_values_master_wide[[i]] <- wide_indicator_data
+indicator_by_time_plots[[i]] <- indicator_plot
+
+scatterplot_directory <- file.path(indicator_outputs, 
+                                   "scatterplots")
+
+if( !dir.exists( scatterplot_directory ) ) {
+  
+  dir.create( scatterplot_directory, recursive = TRUE )
+  
+}
+
+ggsave(file.path(scatterplot_directory, paste(location, eco_version,
+                                              indicator_name, 
+                                              "time_scatterplots.png", 
+                                              sep = "_")),
+       indicator_plot,  device = "png")
+
+}
+
+
 # * Subset by time ----
+
 
 # Non-transformed
 
@@ -1997,11 +2228,12 @@ for (i in seq_along(indicators_by_year)){
   
   scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
                                                     indicators_by_year_names[[i]],
-                                                    save = FALSE)
+                                                    save = TRUE, "centred")
   
 }
 
 scatterplots_by_year[[4]]
+
 
 # Centred and inverted 
 
@@ -2021,6 +2253,30 @@ indicator_values_wic <- indicators_wic_long  %>%
   mutate(indicator = removeNumbers(indicator_year)) %>%
   mutate(indicator = str_replace_all(indicator,
                                      '[[:punct:]]',' '))
+
+indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
+indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
+
+scatterplots_by_year <- list()
+
+for (i in seq_along(indicators_by_year)){
+  
+  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+                                                    indicators_by_year_names[[i]],
+                                                    save = FALSE)
+  
+}
+
+scatterplots_by_year[[1]]
+
+
+# RLI and HFP 2005 only ---
+
+indicator_values_rli_hfp <- indicator_values_wic %>%
+                            filter(indicator_year == "HFP.2005-" |
+                                   indicator_year ==  "RLI.2005") 
+
+rli_hfp_corr <- produce_scatterplots(indicator_values_rli_hfp, "test", save = FALSE,"raw")
 
 indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
 indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
@@ -2354,7 +2610,7 @@ ecoregion_map <- ecoregion_map %>% rename(ecoregion_id = "ECO_ID")
 # Prepare the data (inverted and centred)
 
 indicators_wic <- indicators_wic %>%
-                  rename(ecoregion_id = Ecoregion_id) %>%
+                  #rename(ecoregion_id = Ecoregion_id) %>%
                   select(-geometry, -REALM)
 
 indicators_wic_long <- melt(indicators_wic, 
@@ -2380,6 +2636,29 @@ indicator_map_data <- left_join(ecoregion_map, indicator_values_wic,
                                 by = "ecoregion_id")
 indicator_map_data_countries <- indicator_map_data %>%
         merge(indicator_values_master[c("ecoregion_id", "country")], by = "ecoregion_id")
+
+# * LPI ----
+
+unique(indicator_map_data$indicator)
+
+indicator_map_data_2005 <- indicator_map_data %>% filter(year == 2005)
+
+lpi_map <- indicator_map_data %>%
+           filter(indicator == 
+                     "LPI ") %>%
+           map_indicators(.$raw_indicator_value,
+                           "LPI", 
+                           "right")
+lpi_map
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "lpi_ecoregion_map.png", 
+                                            sep = "_")), 
+         lpi_map,  device = "png")
+  
+}
 
 # * BII Richness ----
 
@@ -2420,8 +2699,8 @@ if (save_outputs == "yes") {
 }
 # * BHI Plants ----
 
-bhi_map <- indicator_map_data %>%
-           filter(indicator == "BHI ") %>%
+bhi_map <- indicator_map_data_2005 %>%
+           filter(indicator == "BHI plants ") %>%
            map_indicators(.$raw_indicator_value,
                           "BHI plants", 
                           "right")
@@ -2429,11 +2708,11 @@ bhi_map
 
 # Create a separate sf object to save as shapefile
 
-bhi_2015_plants_sf <- indicator_map_data %>%
-                      filter(indicator == "biodiversity habitat index plants") %>%
-                      select(eco_id, ecoregion_name, eco_objectid,
-                             raw_indicator_value, geometry) %>%
-                      rename(BHI = raw_indicator_value)
+# bhi_2015_plants_sf <- indicator_map_data %>%
+#                       filter(indicator == "biodiversity habitat index plants") %>%
+#                       select(eco_id, ecoregion_name, eco_objectid,
+#                              raw_indicator_value, geometry) %>%
+#                       rename(BHI = raw_indicator_value)
 
 if (save_outputs == "yes") {
   
@@ -2494,25 +2773,25 @@ if(save_outputs == "yes") {
   
 # Map the Red List Index by class
 
-# * RLI Birds ----
+# * RLI ----
 
-indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
+#indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
 
 
-birds_rli_map <- indicator_map_data %>%
-                 filter(indicator == "RLI Birds ") %>%
+rli_map <- indicator_map_data_2005 %>%
+                 filter(indicator == "RLI ") %>%
                  map_indicators(.$raw_indicator_value,
-                                "Red List\nIndex (Birds)", 
+                                "Red List\nIndex", 
                                 "right")
 
-birds_rli_map
+rli_map
 
 if (save_outputs == "yes") {
   
   ggsave(file.path(indicator_outputs, paste(location,
-                                            "2005_birds_rli_ecoregion_map.png", 
+                                            "2005_rli_ecoregion_map.png", 
                                             sep = "_")),  
-         birds_rli_map,  device = "png")
+         rli_map,  device = "png")
   
 }
 
@@ -2592,7 +2871,7 @@ indicator_map_data <- indicator_map_data_all[indicator_map_data_all$ecoregion_id
   
 save_outputs == "yes"
 
-indicator_map_data <- indicator_map_data_all %>% filter(year == 2010)
+indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
 
 hfp_map <- indicator_map_data %>%
            filter(indicator == "HFP ") %>%
@@ -2616,6 +2895,109 @@ if (save_outputs == "yes") {
 # RLI vs HFP scatterplot ----
 
 # Make the scatterplot with colours mapped to RLI, size mapped to HFP
+names(indicators_wic) <- c("ecoregion_id", "BHI.plants.2005",
+                           "BIIab.2005", "BIIri.2005", "extinct.2005",
+                           "HFP.2005", "RLI.2005", "threatened.2005",
+                           "REALM", "geometry")
+
+rli_hfp_data <- indicators_wic %>% 
+                select(ecoregion_id, HFP.2005, RLI.2005, REALM) %>%
+                merge(lpi_record_values[c("ecoregion_id", "raw_indicator_value")],
+                      by = "ecoregion_id") %>%
+                rename(LPI.Records.2005 = raw_indicator_value)
+  
+rli_hfp <- ggplot(rli_hfp_data, aes(x = HFP.2005, y = RLI.2005, col = REALM)) + 
+           geom_point(aes(size = LPI.Records.2005), alpha = 0.6) +
+           scale_colour_viridis(discrete = TRUE ) +
+           theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                panel.background = element_blank(), 
+                axis.line = element_line(colour = "black")) +
+          labs(x = "Human Footprint Index Ecoregion Values", 
+               y = "Red List Index Ecoregion Values") +
+          theme(plot.background = element_rect(fill = NA),
+                axis.text = element_text(size = 14),
+                axis.title = element_text(size = 14)) 
+# + 
+#           scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
+#                              limits = c(0.00,1.00)) +
+#           scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
+
+rli_hfp
+
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "rli_hfp_scatterplot.png", 
+                                            sep = "_")), 
+         rli_hfp,  device = "png")
+  
+}
+
+rli_hfp_bw <- ggplot(rli_hfp_data, aes(x = HFP.2005, y = RLI.2005)) + 
+  geom_point(alpha = 0.6, size = 2) +
+  scale_colour_viridis(discrete = TRUE ) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black")) +
+  labs(x = "Human Footprint Index Ecoregion Values", 
+       y = "Red List Index Ecoregion Values") +
+  theme(plot.background = element_rect(fill = NA),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14)) 
+# + 
+#           scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
+#                              limits = c(0.00,1.00)) +
+#           scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
+
+rli_hfp_bw
+
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location, "rli_hfp_scatterplot_bw.png", 
+                                            sep = "_")), 
+         rli_hfp_bw,  device = "png")
+  
+}
+
+# By realm
+
+hfp_rli_data_realms <- split(rli_hfp_data, rli_hfp_data$REALM)
+
+plots <- list()
+
+for (i in seq_along(hfp_rli_data_realms)) {
+  
+  realm <- hfp_rli_data_realms[[i]]$REALM[1]
+  
+  plots[[i]] <- ggplot(hfp_rli_data_realms[[i]], aes(x = HFP.2005, y = RLI.2005)) + 
+    geom_point(aes(size = LPI.Records.2005),alpha = 0.6) +
+    scale_colour_viridis(discrete = TRUE ) +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(), 
+          axis.line = element_line(colour = "black")) +
+    labs(x = "Human Footprint Index Ecoregion Values", 
+         y = "Red List Index Ecoregion Values") +
+    theme(plot.background = element_rect(fill = NA),
+          axis.text = element_text(size = 14),
+          axis.title = element_text(size = 14)) +
+    labs(title = paste(realm, 
+                  "Human Footprint Index x Red List Index ecoregion values", 
+                  sep = " "))
+  # + 
+  #           scale_y_continuous(breaks = c(0.00,0.25,0.50,0.75,1.00),
+  #                              limits = c(0.00,1.00)) +
+  #           scale_x_continuous(breaks = c(0,5,10,15,20,25,30))
+
+}
+
+plots[[4]]
+
+
+
 
 rli_hfp <- ggplot(indicator_values, aes(x = HFP_adjusted,
                                         y = RLI_scaled,

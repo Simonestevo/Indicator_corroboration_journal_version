@@ -1023,40 +1023,6 @@ hfp_values <- readRDS(file.path(indicator_outputs,
               dplyr::select(indicator, year, ecoregion_id, 
                             raw_indicator_value)
   
-  # # * HFP 2013 ----
-  # 
-  # if (paste(location, "hfp_2013_ecoregion_values.rds", sep = "_") %in% 
-  #     list.files(indicator_outputs)) {
-  #   
-  #   hfp_2013_ecoregion_values <- readRDS(file.path(indicator_outputs, 
-  #                                                  paste(location, 
-  #                                                        "hfp_2013_ecoregion_values.rds",
-  #                                                        sep = "_"))) 
-  # } else {
-  #   
-  #   hfp_2013_map <- hfp_maps[[grep("2013", names(hfp_maps))]]
-  #   
-  #   # SLOW CODE - 
-  #   
-  #   # system.time(hfp_2005_ecoregion_values <- ecoregion_map %>%
-  #   #               mutate(hfpmean = raster::extract(hfp_2005_map, ecoregion_map, fun = mean, na.rm = TRUE),
-  #   #                      hfpsd = raster::extract(hfp_2005_map, ecoregion_map, fun = sd, na.rm = TRUE),
-  #   #                      hfpmax = raster::extract(hfp_2005_map, ecoregion_map, fun = max, na.rm = TRUE),
-  #   #                      hfpmin = raster::extract(hfp_2005_map, ecoregion_map, fun = min, na.rm = TRUE)))
-  #   
-  #   system.time(hfp_2013_ecoregion_values <- ecoregion_map %>%
-  #                 mutate(hfpmean = raster::extract(hfp_2013_map, 
-  #                                                  ecoregion_map, fun = mean, 
-  #                                                  na.rm = TRUE)))
-  #   
-  #   
-  #   saveRDS(hfp_2013_ecoregion_values, file.path(indicator_outputs, 
-  #                                                paste(location, 
-  #                                                "hfp_2013_ecoregion_values.rds",
-  #                                                sep = "_")))
-  # }
-  
-  
 # * HFP 2013 ----
 
 # Read in the Human Footprint Index data 

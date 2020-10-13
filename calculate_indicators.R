@@ -260,6 +260,25 @@ return(indicator_map)
 
 }
 
+get_lpi <- function(data, name) {
+  
+  y <- str_remove(name, "ecoregion_") 
+  y <- str_remove(y, "_infile_Results.txt")
+  x <- data %>%
+    rownames_to_column(var = "year") %>%
+    mutate(ecoregion_id = as.numeric(y),
+           indicator = "LPI") %>%
+    rename(raw_indicator_value = LPI_final) %>%
+    select(indicator, year, ecoregion_id, raw_indicator_value) %>%
+    mutate(year = as.numeric(year)) %>%
+    filter(raw_indicator_value != - 99.0)
+  
+  print(paste("retrieved ecoregion", y, sep = " "))
+  
+  return(x)
+  
+}
+
 # Get ecoregions and their attributes ----
 
 if (("Ecoregions2017Valid.rds" %in% list.files(file.path(inputs, 
@@ -1238,24 +1257,7 @@ gc()
 
 out <- list.files(lpi_ecoregion_directory)[grepl("Results",list.files(lpi_ecoregion_directory))]
 
-get_lpi <- function(data, name) {
-  
-  y <- str_remove(name, "ecoregion_") 
-  y <- str_remove(y, "_infile_Results.txt")
-  x <- data %>%
-       rownames_to_column(var = "year") %>%
-       mutate(ecoregion_id = as.numeric(y),
-              indicator = "LPI") %>%
-       rename(raw_indicator_value = LPI_final) %>%
-       select(indicator, year, ecoregion_id, raw_indicator_value) %>%
-       mutate(year = as.numeric(year)) %>%
-       filter(raw_indicator_value != - 99.0)
-  
-  print(paste("retrieved ecoregion", y, sep = " "))
-  
-  return(x)
-  
-}
+# Calculate the indicator
 
 lpi_values_formatted <- list()
 
@@ -1288,6 +1290,7 @@ saveRDS(lpi_values, file.path(indicator_outputs,
                                      paste(location, eco_version, 
                                            "lpi.rds",
                                            sep = "_")))
+  }
 }
 
 # Richness Biodiversity Intactness Index 2005 ----
@@ -1420,13 +1423,6 @@ saveRDS(bii_abundance_values, file.path(indicator_outputs,
                                        paste(location, eco_version,
                                              "abundance_BII.rds", sep = "_")))
 }
-
-# Wilderness Intactness Index ----
-
-# wii_map_data <- st_read("N:\\Quantitative-Ecology\\Simone\\extinction_test\\inputs\\intactness\\intactness\\Ecoregions2017_intactness.shp")
-# 
-# wii_data <- as.data.frame(wii_map_data) %>%
-#   dplyr::select(OBJECTID, ECO_NAME, ECO_ID, Q2009_LL, Q2009, Q2009_UL, PLOTCAT)
 
 # Analyse indicators ----
 

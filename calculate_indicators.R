@@ -239,9 +239,10 @@ produce_scatterplots <- function(indicator_values, name, save, variable) {
 #' TODO: Get rid of grid background
 #' 
 
-map_indicators <- function(data, indicator_variable, title, legend) {
+map_indicators <- function(data, indicator_variable, title, legend, year) {
 
-  
+if(missing(year)) {
+    
 indicator_map <-  ggplot(data) +
                   geom_sf(aes(fill = indicator_variable), colour = "black", 
                           size = 0.05, show.legend = 'fill') +
@@ -257,6 +258,28 @@ indicator_map <-  ggplot(data) +
                   facet_wrap(~ year)
 
 return(indicator_map)
+
+  } else {
+
+data <- data %>%
+        filter(year == year)
+
+indicator_map <-  ggplot(data) +
+                  geom_sf(aes(fill = indicator_variable), colour = "black", 
+                          size = 0.05, show.legend = 'fill') +
+                  scale_fill_viridis_c(trans = "reverse",
+                                       alpha = .8,
+                                       na.value = "grey70") +
+                  theme(axis.line = element_line(),
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(),
+                        panel.background = element_blank()) +
+                  labs(fill = title) +
+                  theme(legend.position = legend) 
+                
+return(indicator_map)
+    
+  }
 
 }
 
@@ -374,16 +397,16 @@ if (!is.na(country)) {
 
 # Check if indicators have already been calculated ----
 
-# if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in% 
-#      list.files(indicator_outputs))) {
-#   
-# 
-#   
-# indicator_values_master <- readRDS(file.path(indicator_outputs,
-#                                        paste(location, eco_version,
-#                                              "indicator_values_master.rds",
-#                                            sep = "_")))
-# } else {
+if ((paste(location, eco_version, "indicator_values_master.rds", sep = "_") %in%
+     list.files(indicator_outputs))) {
+
+
+
+indicator_values_master <- readRDS(file.path(indicator_outputs,
+                                       paste(location, eco_version,
+                                             "indicator_values_master.rds",
+                                           sep = "_")))
+} else {
   
 
 # Load species data ----
@@ -435,6 +458,9 @@ species_data <- species_data_all %>%
                       redlist_assessment_year != 2019) %>%
                drop_na(decade)
 
+# * Tidy species data ----
+
+#' TODO: Sort this out in the build_database script
 
 # Check for duplicates (same tsn but different binomials)
 
@@ -454,14 +480,11 @@ species_data2 <- species_data %>%
   filter(n() > 1) %>%
   filter(source == "birdlife_international")
 
-unique(species_data2$source)
-
-length(unique(species_data2$binomial))
-length(unique(species_data2$tsn))
-
 # Combine
 
 species_data <- rbind(species_data1, species_data2)
+
+rm(species_data1, species_data2)
 
 # Check the distribution of data over years
 
@@ -485,6 +508,8 @@ duplicates <- species_data %>%
 
 species_data  <- species_data[! species_data$binomial %in% 
                      duplicates$binomial,] 
+
+rm(duplicates)
 
 # Check for species that have complete data for most time points
 
@@ -891,22 +916,6 @@ saveRDS(rli_all_2005_values, file.path(indicator_outputs,
 
 # Human Footprint Index  ----
 
-# Read in each raster (each raster is a time point)
-
-hfp_maps_file_names <-   list.files(file.path(inputs,
-                         "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/"),
-                         recursive = FALSE)
-
-hfp_maps_file_names <- hfp_maps_file_names[grep(".tif", hfp_maps_file_names)]
-
-hfp_maps_files <- paste(inputs,
-                        "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/",
-                        hfp_maps_file_names,
-                        sep = "")
-
-hfp_maps <- lapply(hfp_maps_files, raster)
-
-names(hfp_maps) <- hfp_maps_file_names
 
 # Extract values from each raster
 
@@ -918,6 +927,24 @@ hfp_values <- readRDS(file.path(indicator_outputs,
                                 paste(location, eco_version,
                                       "human_footprint_index.rds", sep = "_")))
 } else {
+  
+  # Read in each raster (each raster is a time point)
+  
+  hfp_maps_file_names <-   list.files(file.path(inputs,
+                                                "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/"),
+                                      recursive = FALSE)
+  
+  hfp_maps_file_names <- hfp_maps_file_names[grep(".tif", hfp_maps_file_names)]
+  
+  hfp_maps_files <- paste(inputs,
+                          "/williams_human_footprint_index/williams_human_footprint_index_WGS1984/",
+                          hfp_maps_file_names,
+                          sep = "")
+  
+  hfp_maps <- lapply(hfp_maps_files, raster)
+  
+  names(hfp_maps) <- hfp_maps_file_names
+  
 
 # * HFP 2000 ----
 
@@ -1188,7 +1215,7 @@ lpi_inputs <- lpi_data %>%
 lpi_inputs <- lpi_inputs %>%
               filter(System == "Terrestrial")
 
-# Have a look
+# * LPI number of records ----
 
 lpi_input_summary <- lpi_inputs %>%
                      group_by(ECO_ID) %>%
@@ -1201,7 +1228,13 @@ lpi_record_values <- lpi_input_summary %>%
                       rename(ecoregion_id = ECO_ID,
                              raw_indicator_value = number_of_records) %>%
                      select(indicator_columns)
-                     
+
+#' TODO: figure out how to load this automatically
+#' 
+saveRDS(lpi_record_values, file.path(indicator_outputs, 
+                              paste(location, eco_version, 
+                                    "LPI_record_values.rds",
+                                    sep = "_")))
 
 # Save input data
 
@@ -1424,6 +1457,8 @@ saveRDS(bii_abundance_values, file.path(indicator_outputs,
                                              "abundance_BII.rds", sep = "_")))
 }
 
+}
+
 # Combine indicator values into a single dataframe ----
 
 indicator_values <- rbind(extinction_values, 
@@ -1432,6 +1467,7 @@ indicator_values <- rbind(extinction_values,
                           hfp_values,
                           bhi_plants_values,
                           lpi_values,
+                          lpi_record_values,
                           bii_richness_values,
                           bii_abundance_values)
 
@@ -1463,11 +1499,12 @@ indicator_values_master <- indicator_values %>%
                                                  "BirdRLI",
                                    ifelse(indicator == "RLI Amphibia",
                                                  "AmphRLI",
-                                    ifelse(indicator == "RLI Mammalia",
+                                   ifelse(indicator == "RLI Mammalia",
                                                  "MammRLI",
                                             indicator))))))))) %>%
                             mutate(indicator_year = paste(indicator_abbreviated, 
-                                                          year, sep = " ")) 
+                                                          year, sep = " ")) %>%
+                            mutate(ecoregion_id = as.numeric(ecoregion_id))
 
 summary(indicator_values_master)
 
@@ -1481,71 +1518,48 @@ write.csv(indicator_values_master, file.path(indicator_outputs,
                                                    "indicator_values_master.csv",
                                                    sep = "_")))
 
+# Tidy the workspace
+
+rm(extinction_values, 
+   at_risk_values, 
+   rli_all_2005_values,
+   hfp_values,
+   bhi_plants_values,
+   lpi_values,
+   lpi_record_values,
+   lpi_input_summary,
+   lpi_inputs,
+   bii_richness_values,
+   bii_abundance_values,
+   species_data_all,
+   species_by_ecoregion,
+   indicator_values)
 
 # Map the indicators ----
 
-ecoregion_map <- ecoregion_map %>% rename(ecoregion_id = "ECO_ID")
+ecoregion_map_data <- ecoregion_map %>%
+                     rename(ecoregion_id = ECO_ID) %>%
+                     select(ecoregion_id, geometry)
 
-# Prepare the data (inverted and centred)
+indicator_values_map <- indicator_values_master %>%
+                        select(ecoregion_id, indicator, year, raw_indicator_value) %>%
+                        distinct(.)
 
-indicators_wic <- indicators_wic %>%
-                  #rename(ecoregion_id = Ecoregion_id) %>%
-                  select(-geometry, -REALM)
-
-indicators_wic_long <- melt(indicators_wic, 
-                            id.vars = 'ecoregion_id')
-
-
-indicator_values_wic <- indicators_wic_long  %>%
-  rename(indicator_year = variable,
-         raw_indicator_value = value) %>% # TODO: Change to transformed
-  mutate(year = str_sub(indicator_year, start= -4)) %>%
-  mutate(indicator_year = as.character(indicator_year)) %>%
-  mutate(indicator = removeNumbers(indicator_year)) %>%
-  mutate(indicator = str_replace_all(indicator,
-                                     '[[:punct:]]',' ')) 
-# %>%
-#   merge(indicator_values_master[c("ecoregion_id",
-#                                   "country",
-#                                   "realm")],
-#         by = "ecoregion_id")
-# 
-
-indicator_map_data <- left_join(ecoregion_map, indicator_values_wic,
+indicator_map_data <- left_join(ecoregion_map_data, indicator_values_map,
                                 by = "ecoregion_id")
-indicator_map_data_countries <- indicator_map_data %>%
-        merge(indicator_values_master[c("ecoregion_id", "country")], by = "ecoregion_id")
 
-# * LPI ----
+indicator_map_data <- indicator_map_data %>%
+                      select(-country) %>%
+                      distinct(.)
 
-unique(indicator_map_data$indicator)
-
-indicator_map_data_2005 <- indicator_map_data %>% filter(year == 2005)
-
-lpi_map <- indicator_map_data %>%
-           filter(indicator == 
-                     "LPI ") %>%
-           map_indicators(.$raw_indicator_value,
-                           "LPI", 
-                           "right")
-lpi_map
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "lpi_ecoregion_map.png", 
-                                            sep = "_")), 
-         lpi_map,  device = "png")
-  
-}
 
 # * BII Richness ----
 
 richness_bii_map <- indicator_map_data %>%
                     filter(indicator == 
-                             "BII R ") %>%
+                           "richness biodiversity intactness index") %>%
                     map_indicators(.$raw_indicator_value,
-                                   "Richness BII 2005", 
+                                   "BII\n(richness)", 
                                    "right")
 richness_bii_map
 
@@ -1561,11 +1575,11 @@ ggsave(file.path(indicator_outputs, paste(location,
 # * BII Abundance ----
 
 abundance_bii_map <- indicator_map_data %>%
-  filter(indicator == 
-           "BII A ") %>%
-  map_indicators(.$raw_indicator_value,
-                 "Abundance BII 2005", 
-                 "right")
+                     filter(indicator == 
+                               "abundance biodiversity intactness index") %>%
+                     map_indicators(.$raw_indicator_value,
+                                    "BII\n(abundance)", 
+                                     "right")
 abundance_bii_map
 
 if (save_outputs == "yes") {
@@ -1578,8 +1592,8 @@ if (save_outputs == "yes") {
 }
 # * BHI Plants ----
 
-bhi_map <- indicator_map_data_2005 %>%
-           filter(indicator == "BHI plants ") %>%
+bhi_map <- indicator_map_data %>%
+           filter(indicator == "BHI plants") %>%
            map_indicators(.$raw_indicator_value,
                           "BHI plants", 
                           "right")
@@ -1612,7 +1626,7 @@ if (save_outputs == "yes") {
 # * Proportion at risk ----
 
 at_risk_map <- indicator_map_data %>%
-               filter(indicator == "At risk ") %>%
+               filter(indicator == "proportion at risk") %>%
                map_indicators(.$raw_indicator_value,
                              "Proportion\nof species\nat risk", 
                              "right")
@@ -1632,7 +1646,7 @@ at_risk_map,  device = "png")
 # * Proportion extinct ----
 
 extinct_map <- indicator_map_data %>%
-               filter(indicator == "Extinction ") %>%
+               filter(indicator == "proportion extinct") %>%
                map_indicators(.$raw_indicator_value,
                                "Proportion\nof species\nextinct", 
                                "right")
@@ -1649,17 +1663,14 @@ if(save_outputs == "yes") {
   
 }
   
-  
-# Map the Red List Index by class
-
 # * RLI ----
 
 #indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
 
 
-rli_map <- indicator_map_data_2005 %>%
-                 filter(indicator == "RLI ") %>%
-                 map_indicators(.$raw_indicator_value,
+rli_map <- indicator_map_data %>%
+           filter(indicator == "RLI") %>%
+           map_indicators(.$raw_indicator_value,
                                 "Red List\nIndex", 
                                 "right")
 
@@ -1768,7 +1779,25 @@ if (save_outputs == "yes") {
   
 }
 
+# * LPI ----
 
+lpi_map <- indicator_map_data %>%
+  filter(indicator == 
+           "LPI") %>%
+  map_indicators(.$raw_indicator_value,
+                 "LPI", 
+                 "right",
+                 2005)
+lpi_map
+
+if (save_outputs == "yes") {
+  
+  ggsave(file.path(indicator_outputs, paste(location,
+                                            "lpi_ecoregion_map.png", 
+                                            sep = "_")), 
+         lpi_map,  device = "png")
+  
+}
 
 
 # RLI vs HFP scatterplot ----

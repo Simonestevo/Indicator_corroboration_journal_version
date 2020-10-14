@@ -239,7 +239,9 @@ produce_scatterplots <- function(indicator_values, name, save, variable) {
 #' TODO: Get rid of grid background
 #' 
 
-map_indicators <- function(data, indicator_variable, title, legend, year) {
+map_indicators <- function(data, indicator_variable, title, legend, reverse, year) {
+  
+if(reverse == TRUE) {
 
 if(missing(year)) {
     
@@ -280,8 +282,49 @@ indicator_map <-  ggplot(data) +
 return(indicator_map)
     
   }
+  
+} else {
 
+  if(missing(year)) {
+    
+    indicator_map <-  ggplot(data) +
+      geom_sf(aes(fill = indicator_variable), colour = "black", 
+              size = 0.05, show.legend = 'fill') +
+      scale_fill_viridis_c(alpha = .8,
+                           na.value = "grey70") +
+      theme(axis.line = element_line(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank()) +
+      labs(fill = title) +
+      theme(legend.position = legend) +
+      facet_wrap(~ year)
+    
+    return(indicator_map)
+    
+  } else {
+    
+    data <- data %>%
+      filter(year == year)
+    
+    indicator_map <-  ggplot(data) +
+      geom_sf(aes(fill = indicator_variable), colour = "black", 
+              size = 0.05, show.legend = 'fill') +
+      scale_fill_viridis_c(alpha = .8,
+                           na.value = "grey70") +
+      theme(axis.line = element_line(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank()) +
+      labs(fill = title) +
+      theme(legend.position = legend) 
+    
+    return(indicator_map)
+    
+    }
+  }
 }
+
 
 get_lpi <- function(data, name) {
   
@@ -1560,7 +1603,9 @@ richness_bii_map <- indicator_map_data %>%
                            "richness biodiversity intactness index") %>%
                     map_indicators(.$raw_indicator_value,
                                    "BII\n(richness)", 
-                                   "right")
+                                   "right",
+                                   TRUE,
+                                   2005)
 richness_bii_map
 
 if (save_outputs == "yes") {
@@ -1572,6 +1617,8 @@ ggsave(file.path(indicator_outputs, paste(location,
 
 }
 
+rm(richness_bii_map)
+
 # * BII Abundance ----
 
 abundance_bii_map <- indicator_map_data %>%
@@ -1579,7 +1626,9 @@ abundance_bii_map <- indicator_map_data %>%
                                "abundance biodiversity intactness index") %>%
                      map_indicators(.$raw_indicator_value,
                                     "BII\n(abundance)", 
-                                     "right")
+                                     "right",
+                                    TRUE,
+                                    2005)
 abundance_bii_map
 
 if (save_outputs == "yes") {
@@ -1590,13 +1639,16 @@ if (save_outputs == "yes") {
          abundance_bii_map,  device = "png")
 
 }
+
+rm(abundance_bii_map)
+
 # * BHI Plants ----
 
 bhi_map <- indicator_map_data %>%
            filter(indicator == "BHI plants") %>%
            map_indicators(.$raw_indicator_value,
                           "BHI plants", 
-                          "right")
+                          "right", 2005)
 bhi_map
 
 # Create a separate sf object to save as shapefile
@@ -1623,13 +1675,17 @@ if (save_outputs == "yes") {
   
 }
 
+rm(bhi_map)
+
 # * Proportion at risk ----
 
 at_risk_map <- indicator_map_data %>%
                filter(indicator == "proportion at risk") %>%
                map_indicators(.$raw_indicator_value,
                              "Proportion\nof species\nat risk", 
-                             "right")
+                             "right",
+                             FALSE,
+                             2005)
 
 at_risk_map
 
@@ -1643,13 +1699,17 @@ at_risk_map,  device = "png")
 
 }
 
+rm(at_risk_map)
+
 # * Proportion extinct ----
 
 extinct_map <- indicator_map_data %>%
                filter(indicator == "proportion extinct") %>%
                map_indicators(.$raw_indicator_value,
                                "Proportion\nof species\nextinct", 
-                               "right")
+                               "right",
+                              FALSE,
+                              2005)
 
 extinct_map
 
@@ -1665,14 +1725,13 @@ if(save_outputs == "yes") {
   
 # * RLI ----
 
-#indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
-
-
 rli_map <- indicator_map_data %>%
            filter(indicator == "RLI") %>%
            map_indicators(.$raw_indicator_value,
                                 "Red List\nIndex", 
-                                "right")
+                                "right",
+                          TRUE,
+                          2005)
 
 rli_map
 
@@ -1686,88 +1745,16 @@ if (save_outputs == "yes") {
 }
 
 
-# * RLI Mammals ----
 
-indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
-
-mammals_rli_map <- indicator_map_data %>%
-                   filter(indicator == "RLI Mamm ") %>%
-                   map_indicators(.$raw_indicator_value,
-                                   "Red List\nIndex (Mammals)", 
-                                   "right")
-
-mammals_rli_map
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "mammals_rli_ecoregion_map.png", 
-                                            sep = "_")),  
-         mammals_rli_map,  device = "png")
-  
-}
-
-# * RLI Amphibians ----
-
-indicator_map_data <- indicator_map_data_countries %>%
-                      mutate(country = as.character(country)) %>%
-                      filter(country == "Fiji")
-
-amphibians_rli_map <- indicator_map_data %>%
-                      filter(indicator == "RLI Amph ") %>%
-                      map_indicators(.$raw_indicator_value,
-                                     "Red List\nIndex (Amphibians)", 
-                                     "right")
-
-amphibians_rli_map
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "amphibians_rli_ecoregion_map.png", 
-                                            sep = "_")),  
-         amphibians_rli_map,  device = "png")
-  
-}
-
-# * RLI Reptiles ----
-
-# reptiles_rli_map <- indicator_map_data %>%
-#   filter(indicator == "red list index Amphibia") %>%
-#   map_indicators(.$raw_indicator_value,
-#                  "Red List\nIndex (Amphibians)", 
-#                  "right")
-# 
-# reptiles_rli_map
-# 
-# if (save_outputs == "yes") {
-#   
-#   ggsave(file.path(indicator_outputs, paste(location,
-#                                             "reptiles_rli_ecoregion_map.png", 
-#                                             sep = "_")),  
-#          reptiles_rli_map,  device = "png")
-#   
-# }
 # * HFP ----
-
-indicator_map_data_all <- indicator_map_data
-  
-ecoregion_subset <- ecoregion_country_df %>%
-    filter(CNTRY_NAME == "Australia") %>%
-    unique(.)
-  
-indicator_map_data <- indicator_map_data_all[indicator_map_data_all$ecoregion_id %in% 
-                                   ecoregion_subset$ECO_ID,] 
-  
-save_outputs == "yes"
-
-indicator_map_data <- indicator_map_data_all %>% filter(year == 2005)
 
 hfp_map <- indicator_map_data %>%
            filter(indicator == "HFP ") %>%
            map_indicators(.$raw_indicator_value,
-                          "Human\nFootprint\nIndex 2010",
-                          "right")
+                          "Human\nFootprint\nIndex",
+                          "right",
+                          FALSE,
+                          2005)
 hfp_map
 
 
@@ -1787,6 +1774,7 @@ lpi_map <- indicator_map_data %>%
   map_indicators(.$raw_indicator_value,
                  "LPI", 
                  "right",
+                 TRUE,
                  2005)
 lpi_map
 

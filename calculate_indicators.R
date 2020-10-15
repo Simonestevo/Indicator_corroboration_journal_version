@@ -1258,26 +1258,6 @@ lpi_inputs <- lpi_data %>%
 lpi_inputs <- lpi_inputs %>%
               filter(System == "Terrestrial")
 
-# * LPI number of records ----
-
-lpi_input_summary <- lpi_inputs %>%
-                     group_by(ECO_ID) %>%
-                     summarise(number_of_records = n_distinct(Binomial),
-                               .groups = "drop_last")
-
-lpi_record_values <- lpi_input_summary %>%
-                     mutate(indicator = "LPI_records",
-                            year = 2005) %>%
-                      rename(ecoregion_id = ECO_ID,
-                             raw_indicator_value = number_of_records) %>%
-                     select(indicator_columns)
-
-#' TODO: figure out how to load this automatically
-#' 
-saveRDS(lpi_record_values, file.path(indicator_outputs, 
-                              paste(location, eco_version, 
-                                    "LPI_record_values.rds",
-                                    sep = "_")))
 
 # Save input data
 
@@ -1501,6 +1481,103 @@ saveRDS(bii_abundance_values, file.path(indicator_outputs,
 }
 
 }
+
+# ADDITIONAL VARIABLES ---
+
+# LPI number of records ----
+
+if (paste(location, eco_version, "LPI_record_values.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+lpi_record_values <- readRDS(file.path(indicator_outputs, 
+                                            paste(location, eco_version,
+                                                  "LPI_record_values.rds", 
+                                                  sep = "_")))
+} else {
+
+lpi_inputs <- readRDS(file.path(indicator_outputs, 
+                                paste(location, eco_version,
+                                      "LPI_2020_input_data_with_ecoregions.rds", 
+                                      sep = "_")))
+
+lpi_input_summary <- lpi_inputs %>%
+                     group_by(ECO_ID) %>%
+                     summarise(number_of_records = n_distinct(Binomial),
+                                .groups = "drop_last")
+
+lpi_record_values <- lpi_input_summary %>%
+                      mutate(indicator = "LPI_records",
+                             year = NA) %>%
+                      rename(ecoregion_id = ECO_ID,
+                             raw_indicator_value = number_of_records) %>%
+                      select(indicator_columns)
+
+saveRDS(lpi_record_values, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "LPI_record_values.rds",
+                                        sep = "_")))
+}
+
+# Red List number of records ----
+
+if (paste(location, eco_version, "RLI_record_values.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+rli_record_values <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version,
+                                               "RLI_record_values.rds", 
+                                               sep = "_")))
+} else {
+
+rli_record_values <- species_by_ecoregion %>%
+                     select(ecoregion_id, decade, number_of_species) %>%
+                     distinct(.) %>%
+                     mutate(indicator = "RLI_records") %>%
+                     rename(raw_indicator_value = number_of_species) %>%
+                     select(-decade) %>%
+                     mutate(year = NA) %>%
+                     dplyr::select(indicator_columns) %>%
+                     distinct(.)
+
+saveRDS(rli_record_values, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "RLI_record_values.rds",
+                                           sep = "_")))
+}
+
+# Ecoregion area ----
+
+ecoregion_area_km2 <- read.csv(paste(file.path(inputs, "ecoregions_2017",
+                               "ecoregions2017_area_km2.csv", sep ="")))
+
+ecoregion_area_values <- ecoregion_area_km2 %>%
+                         rename(ecoregion_id = Eco..ID,
+                                raw_indicator_value = Ecoregion.area..km2.) %>%
+                         mutate(indicator = "ecoregion area km sq",
+                                year = NA) %>%
+                         select(indicator_columns)
+
+# Ecoregion biome ----
+
+ecoregion_realm_values <- ecoregion_map_all %>%
+                          select(ECO_ID, BIOME_NAME) %>%
+                          mutate(indicator = "Biome",
+                                 year = NA) %>%
+                          rename(ecoregion_id = ECO_ID,
+                                 raw_indicator_value = BIOME_NAME) %>%
+                          st_set_geometry(NULL) %>%
+                          select(indicator_columns)
+
+# Islands ----
+
+continents_wm <- st_read(file.path(inputs,"global_islands_explorer","continents.shp"))
+big_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","big_islands.shp"))
+small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","small_islands.shp"))
+ver_small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","very_small_islands.shp"))
+
+continents <- st_transform(continents_wm, crs = crs(ecoregion_map_all))
+
+ecoregions_continents <- st_join(continents, ecoregion_map, join = st_intersects)
 
 # Combine indicator values into a single dataframe ----
 

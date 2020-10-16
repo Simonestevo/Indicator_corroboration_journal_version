@@ -1545,6 +1545,8 @@ saveRDS(rli_record_values, file.path(indicator_outputs,
                                            sep = "_")))
 }
 
+rm(species_data, species_by_ecoregion)
+
 # Ecoregion area ----
 
 ecoregion_area_km2 <- read.csv(paste(file.path(inputs, "ecoregions_2017",
@@ -1570,14 +1572,133 @@ ecoregion_realm_values <- ecoregion_map_all %>%
 
 # Islands ----
 
+# Simplify the ecoregion map so it doesn't take forever. Note - this produces
+# a warning that st_simplify doesn't work on long/lat data, but it's just 
+# a warning because all our maps *are* in decimal degrees
+
+ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
+                                    dTolerance = 0.1)
+
+# Get continents
+
 continents_wm <- st_read(file.path(inputs,"global_islands_explorer","continents.shp"))
+
+# Remove unnecessary columns 
+
+continents_wm <- continents_wm %>%
+                 select(OBJECTID, geometry) %>%
+                 mutate(classification = "continent")
+
+# Reproject to WGS 1984
+
+continents <- st_transform(continents_wm, crs = crs(ecoregion_map))
+
+# Remove mw projection
+
+rm(contintents_wm)
+
+continents <- st_simplify(continents, preserveTopology = TRUE,
+              dTolerance = 0.1)
+
+# Join continents and ecoregions
+
+ecoregions_continents <- st_join(continents, ecoregion_map_simple, join = st_intersects)
+
+ecoregions_continents <- ecoregions_continents %>%
+                         st_set_geometry(NULL) %>%
+                         select(ECO_ID, ECO_NAME, classification) %>%
+                         distinct(.)
+
+rm(continents)
+
+# Big islands
+
 big_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","big_islands.shp"))
+head(big_islands_wm)
+
+big_islands_wm <- big_islands_wm %>%
+                  select(OBJECTID, geometry) %>%
+                  mutate(classification = "big_island")
+
+big_islands <- st_transform(big_islands_wm, crs = crs(ecoregion_map))
+
+rm(big_islands_wm)
+
+# Simplify the big islands file
+
+big_islands <- st_simplify(big_islands, preserveTopology = TRUE,
+                           dTolerance = 0.1)
+
+# Join it to the ecoregion map
+
+system.time(ecoregions_big_islands <- st_join(big_islands, ecoregion_map_simple, 
+                                              join = st_intersects))
+
+rm(big_islands)
+
+ecoregions_big_islands <- ecoregions_big_islands %>%
+                          st_set_geometry(NULL) %>%
+                          select(ECO_ID, ECO_NAME, classification) %>%
+                          distinct(.)
+
+# Small islands
+
 small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","small_islands.shp"))
-ver_small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","very_small_islands.shp"))
 
-continents <- st_transform(continents_wm, crs = crs(ecoregion_map_all))
+small_islands_wm <- small_islands_wm %>%
+  select(OBJECTID, geometry) %>%
+  mutate(classification = "big_island")
 
-ecoregions_continents <- st_join(continents, ecoregion_map, join = st_intersects)
+small_islands <- st_transform(small_islands_wm, crs = crs(ecoregion_map))
+
+rm(small_islands_wm)
+
+# Simplify the small islands file
+
+small_islands <- st_simplify(small_islands, preserveTopology = TRUE,
+                           dTolerance = 0.1)
+
+# Join it to the ecoregion map
+
+system.time(ecoregions_small_islands <- st_join(small_islands, ecoregion_map_simple, 
+                                              join = st_intersects))
+
+rm(small_islands)
+
+ecoregions_small_islands <- ecoregions_small_islands %>%
+                            st_set_geometry(NULL) %>%
+                            select(ECO_ID, ECO_NAME, classification) %>%
+                            distinct(.)
+
+# Very small islands
+
+very_small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","very_small_islands.shp"))
+
+very_small_islands_wm <- very_small_islands_wm %>%
+  select(OBJECTID, geometry) %>%
+  mutate(classification = "big_island")
+
+very_small_islands <- st_transform(very_small_islands_wm, crs = crs(ecoregion_map))
+
+rm(very_small_islands_wm)
+
+# Simplify the big islands file
+
+very_small_islands <- st_simplify(very_small_islands, preserveTopology = TRUE,
+                             dTolerance = 0.1)
+
+# Join it to the ecoregion map
+
+system.time(ecoregions_very_small_islands <- st_join(very_small_islands, ecoregion_map_simple, 
+                                                join = st_intersects))
+
+rm(very_small_islands)
+
+ecoregions_very_small_islands <- ecoregions_very_small_islands %>%
+  st_set_geometry(NULL) %>%
+  select(ECO_ID, ECO_NAME, classification) %>%
+  distinct(.)
+
 
 # Combine indicator values into a single dataframe ----
 

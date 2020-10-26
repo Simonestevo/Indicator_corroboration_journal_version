@@ -537,6 +537,46 @@ get_redlist_history <- function(names, class_name) {
 }
 
 
+get_redlist_threats <- function(names, class_name) {
+  
+  out_list <- list()
+  
+  for (i in seq_along(names)) {
+    
+    species_name <- names[i]
+    
+    species_redlist_threats <- rl_threats(species_name, parse = TRUE)[[2]] 
+    
+    Sys.sleep(4) # Make loop pause before next, otherwise iucn web access cuts out
+    
+    if (length(species_redlist_threats) == 0) { # if there are no results create dummy dataframe
+      
+      species_redlist_threats <- data.frame(code = NA, title = NA,
+                                            timing = NA, scope = NA,
+                                            severity = NA, score = NA,
+                                            invasive = NA, binomial = species_name,
+                                            class = class_name)
+      
+      print(paste("threat data not available for", species_name, sep = " "))
+      
+    } else {# otherwise create results dataframe
+      
+      species_redlist_threats <-  species_redlist_threats %>%
+        mutate(binomial = species_name,
+               class = class_name)
+      
+      print(paste("threat data retrieved for", species_name, sep = " "))
+      
+    }
+    
+    out_list[[i]] <- species_redlist_threats
+    
+  }
+  
+  return(out_list)
+  
+}
+
 
 summarise_species_data <- function(data, number, class_name) {
     
@@ -2015,8 +2055,6 @@ saveRDS(species_data_2, file.path(interim_outputs,
   extinct_species_without_ecoregions <- extinct_species_names_df[!extinct_species_names_df$extinct_species_names %in% 
                                         extinct_species_ecoregions$binomial,] 
  
-  #### UP TO HERE!!! THE BELOW WON'T WORK PROPERLY ####
-  
    # Join ecoregion and redlist data
   
  extinct_species_ecoregion_redlist <- extinct_species_ecoregions %>%
@@ -2056,7 +2094,207 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
   
   }
+  
+# Get threats ----
 
+# Get the list of species names and their synonyms
+  
+synonym_files <- list.files(interim_outputs)[grepl("synonyms",list.files(interim_outputs))]
+synonym_list <- lapply(file.path(interim_outputs, synonym_files), readRDS)
+
+threat_directory <- file.path(interim_outputs, 
+                              "iucn_species_threat_data")
+
+if( !dir.exists( file.path(interim_outputs, "iucn_species_threat_data") ) ) {
+  
+  dir.create( file.path(interim_outputs, "iucn_species_threat_data"), 
+              recursive = TRUE )
+  
+}
+  
+# * Amphibians ----
+
+amphibian_synonyms <- do.call(rbind, synonym_list) %>%
+                distinct(.) %>%
+                filter(class == "Amphibia") %>%
+                pull(binomial) %>%
+                unique(.)
+
+amphibian_list <- split(amphibian_synonyms, 
+                        ceiling(seq_along(amphibian_synonyms)/50))
+
+# Loop through the names and get redlist threat data, saving the output in
+# sections
+
+# WARNING - SLOW CODE, TAKES AROUND ? HOURS
+
+out <- list()
+
+for (i in seq_along(amphibian_list)) {
+  
+  section_list <- amphibian_list[[i]]
+  
+  Sys.time(section_out <- retry(get_redlist_threats(section_list, "amphibian"),
+                       maxErrors = 1000, sleep = 300)) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  
+  df <- do.call(rbind, section_out)
+  
+  saveRDS(df, file.path(threat_directory, paste("section", i ,
+                                          "iucn_amphibian_threat_data.rds", 
+                                                         sep = "_")))
+  out[[i]] <- df
+
+}
+
+
+# Convert list of threat data back into a nice dataframe 
+
+# all_amphibians_out <- list.files(threat_directory)
+# out <- lapply(file.path(threat_directory, all_amphibians_out), readRDS)
+
+amphibian_threat_data <- do.call(rbind, out)
+
+saveRDS(amphibian_threat_data, 
+        file.path(interim_outputs, paste(location, "amphibian_threat_data.rds",
+                                         sep = "_")))
+
+
+# * Mammals ----
+
+mammal_synonyms <- do.call(rbind, synonym_list) %>%
+  distinct(.) %>%
+  filter(class == "Mammalia") %>%
+  pull(binomial) %>%
+  unique(.)
+
+mammal_list <- split(mammal_synonyms, 
+                        ceiling(seq_along(mammal_synonyms)/50))
+
+# Loop through the names and get redlist threat data, saving the output in
+# sections
+
+# WARNING - SLOW CODE, TAKES AROUND ? HOURS
+
+out <- list()
+
+for (i in seq_along(mammal_list)) {
+  
+  section_list <- mammal_list[[i]]
+  
+  section_out <- retry(get_redlist_threats(section_list, "mammal"),
+                       maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  
+  df <- do.call(rbind, section_out)
+  
+  saveRDS(df, file.path(threat_directory, paste("section", i ,
+                                                "iucn_mammal_threat_data.rds", 
+                                                sep = "_")))
+  out[[i]] <- df
+  
+}
+
+# Convert list of threat data back into a nice dataframe 
+
+# all_mammals_out <- list.files(threat_directory)
+# out <- lapply(file.path(threat_directory, all_mammals_out), readRDS)
+
+mammal_threat_data <- do.call(rbind, out)
+
+saveRDS(mammal_threat_data, 
+        file.path(interim_outputs, paste(location, "mammal_threat_data.rds",
+                                         sep = "_")))
+# * Birds ----
+
+bird_synonyms <- do.call(rbind, synonym_list) %>%
+  distinct(.) %>%
+  filter(class == "Aves") %>%
+  pull(binomial) %>%
+  unique(.)
+
+bird_list <- split(bird_synonyms, 
+                     ceiling(seq_along(bird_synonyms)/50))
+
+# Loop through the names and get redlist threat data, saving the output in
+# sections
+
+# WARNING - SLOW CODE, TAKES AROUND ? HOURS
+
+out <- list()
+
+for (i in seq_along(bird_list)) {
+  
+  section_list <- bird_list[[i]]
+  
+  section_out <- retry(get_redlist_threats(section_list, "bird"),
+                       maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  
+  df <- do.call(rbind, section_out)
+  
+  saveRDS(df, file.path(threat_directory, paste("section", i ,
+                                                "iucn_bird_threat_data.rds", 
+                                                sep = "_")))
+  out[[i]] <- df
+  
+}
+
+# Convert list of threat data back into a nice dataframe 
+
+# all_mammals_out <- list.files(threat_directory)
+# out <- lapply(file.path(threat_directory, all_mammals_out), readRDS)
+
+bird_threat_data <- do.call(rbind, out)
+
+saveRDS(bird_threat_data, 
+        file.path(interim_outputs, paste(location, "bird_threat_data.rds",
+                                         sep = "_")))
+
+# * Reptiles ----
+
+reptile_synonyms <- do.call(rbind, synonym_list) %>%
+  distinct(.) %>%
+  filter(class == "Aves") %>%
+  pull(binomial) %>%
+  unique(.)
+
+reptile_list <- split(reptile_synonyms, 
+                   ceiling(seq_along(reptile_synonyms)/50))
+
+# Loop through the names and get redlist threat data, saving the output in
+# sections
+
+# WARNING - SLOW CODE, TAKES AROUND ? HOURS
+
+out <- list()
+
+for (i in seq_along(reptile_list)) {
+  
+  section_list <- reptile_list[[i]]
+  
+  section_out <- retry(get_redlist_threats(section_list, "bird"),
+                       maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  
+  df <- do.call(rbind, section_out)
+  
+  saveRDS(df, file.path(threat_directory, paste("section", i ,
+                                                "iucn_reptile_threat_data.rds", 
+                                                sep = "_")))
+  out[[i]] <- df
+  
+}
+
+# Convert list of threat data back into a nice dataframe 
+
+# all_mammals_out <- list.files(threat_directory)
+# out <- lapply(file.path(threat_directory, all_mammals_out), readRDS)
+
+reptile_threat_data <- do.call(rbind, out)
+
+saveRDS(reptile_threat_data, 
+        file.path(interim_outputs, paste(location, "reptile_threat_data.rds",
+                                         sep = "_")))
+
+
+# Combine data
 
 
 # Check data for gaps ----

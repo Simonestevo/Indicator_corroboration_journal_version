@@ -545,7 +545,10 @@ get_redlist_threats <- function(names, class_name) {
     
     species_name <- names[i]
     
-    species_redlist_threats <- rl_threats(species_name, parse = TRUE)[[2]] 
+    #species_redlist_threats <- rl_threats(species_name, parse = TRUE)[[2]] 
+    
+    species_redlist_threats <- retry((rl_threats(species_name, parse = TRUE)[[2]]),
+          maxErrors = 1000, sleep = 300)
     
     Sys.sleep(4) # Make loop pause before next, otherwise iucn web access cuts out
     
@@ -2132,11 +2135,15 @@ out <- list()
 
 for (i in seq_along(amphibian_list)) {
   
+  i <- i + 92
+  
   section_list <- amphibian_list[[i]]
   
-  Sys.time(section_out <- retry(get_redlist_threats(section_list, "amphibian"),
-                       maxErrors = 1000, sleep = 300)) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  # system.time(section_out <- retry(get_redlist_threats(section_list, "amphibian"),
+  #                      maxErrors = 1000, sleep = 300)) # retry function pauses the loop and tries again later when IUCN server isn't accessible
   
+  section_out <- get_redlist_threats(section_list, "amphibian")
+    
   df <- do.call(rbind, section_out)
   
   saveRDS(df, file.path(threat_directory, paste("section", i ,

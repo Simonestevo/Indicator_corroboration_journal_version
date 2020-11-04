@@ -1595,7 +1595,7 @@ continents <- st_transform(continents_wm, crs = crs(ecoregion_map))
 
 # Remove mw projection
 
-rm(contintents_wm)
+rm(continents_wm)
 
 continents <- st_simplify(continents, preserveTopology = TRUE,
               dTolerance = 0.1)
@@ -1603,6 +1603,9 @@ continents <- st_simplify(continents, preserveTopology = TRUE,
 # Join continents and ecoregions
 
 ecoregions_continents <- st_join(continents, ecoregion_map_simple, join = st_intersects)
+
+# NB - compared this to non-simplified versions and produced the same result, although
+# unsurprising given how big continents are
 
 ecoregions_continents <- ecoregions_continents %>%
                          st_set_geometry(NULL) %>%
@@ -1626,41 +1629,69 @@ rm(big_islands_wm)
 
 # Simplify the big islands file
 
-big_islands <- st_simplify(big_islands, preserveTopology = TRUE,
-                           dTolerance = 0.1)
+#big_islands_all <- big_islands
 
+big_islands <- big_islands_all
+
+plot(big_islands$geometry)
+
+big_islands <- st_simplify(big_islands, preserveTopology = TRUE,
+                           dTolerance = 0.3)
+
+plot(big_islands$geometry)
+
+# Remove the continental ecoregions
+
+`%notin%` <- Negate(`%in%`)
+
+ecoregion_map_islands <- ecoregion_map_simple[ecoregion_map_simple$ECO_ID %notin% 
+                                              ecoregions_continents$ECO_ID,] 
 # Join it to the ecoregion map
 
-system.time(ecoregions_big_islands <- st_join(big_islands, ecoregion_map_simple, 
-                                              join = st_intersects))
+system.time(ecoregions_big_islands <- st_join(big_islands, ecoregion_map_islands,
+                                             join = st_intersects))
 
-rm(big_islands)
+rm(big_islands, big_islands_all)
 
 ecoregions_big_islands <- ecoregions_big_islands %>%
                           st_set_geometry(NULL) %>%
                           select(ECO_ID, ECO_NAME, classification) %>%
                           distinct(.)
 
+saveRDS(ecoregions_big_islands, file.path(indicator_outputs, 
+                                      paste(location, eco_version, 
+                                            "ecoregions_big_islands.rds",
+                                            sep = "_")))
+
 # Small islands
 
 small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","small_islands.shp"))
 
 small_islands_wm <- small_islands_wm %>%
-  select(OBJECTID, geometry) %>%
-  mutate(classification = "big_island")
+                    select(OBJECTID, geometry) %>%
+                    mutate(classification = "small_island")
 
 small_islands <- st_transform(small_islands_wm, crs = crs(ecoregion_map))
 
 rm(small_islands_wm)
 
+small_islands_all <- small_islands
+
+
 # Simplify the small islands file
 
-small_islands <- st_simplify(small_islands, preserveTopology = TRUE,
-                           dTolerance = 0.1)
+# small_islands <- st_simplify(small_islands, preserveTopology = TRUE,
+#                            dTolerance = 0.1)
 
 # Join it to the ecoregion map
 
-system.time(ecoregions_small_islands <- st_join(small_islands, ecoregion_map_simple, 
+# ecoregion_map_islands <- ecoregion_map_simple[ecoregion_map_simple$ECO_ID %notin% 
+#                                                 ecoregions_continents$ECO_ID,]
+# 
+# ecoregion_map_islands <- ecoregion_map_islands[ecoregion_map_islands$ECO_ID %notin% 
+#                                                 ecoregions_big_islands$ECO_ID,]
+
+system.time(ecoregions_small_islands <- st_join(small_islands, ecoregion_map_islands, 
                                               join = st_intersects))
 
 rm(small_islands)
@@ -1670,26 +1701,31 @@ ecoregions_small_islands <- ecoregions_small_islands %>%
                             select(ECO_ID, ECO_NAME, classification) %>%
                             distinct(.)
 
+saveRDS(ecoregions_small_islands, file.path(indicator_outputs, 
+                                          paste(location, eco_version, 
+                                                "ecoregions_small_islands.rds",
+                                                sep = "_")))
+
 # Very small islands
 
 very_small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","very_small_islands.shp"))
 
 very_small_islands_wm <- very_small_islands_wm %>%
   select(OBJECTID, geometry) %>%
-  mutate(classification = "big_island")
+  mutate(classification = "very_small_island")
 
 very_small_islands <- st_transform(very_small_islands_wm, crs = crs(ecoregion_map))
 
 rm(very_small_islands_wm)
 
-# Simplify the big islands file
+# Simplify the small islands file
 
 very_small_islands <- st_simplify(very_small_islands, preserveTopology = TRUE,
                              dTolerance = 0.1)
 
 # Join it to the ecoregion map
 
-system.time(ecoregions_very_small_islands <- st_join(very_small_islands, ecoregion_map_simple, 
+system.time(ecoregions_very_small_islands <- st_join(very_small_islands, ecoregion_map_islands, 
                                                 join = st_intersects))
 
 rm(very_small_islands)
@@ -1699,6 +1735,66 @@ ecoregions_very_small_islands <- ecoregions_very_small_islands %>%
   select(ECO_ID, ECO_NAME, classification) %>%
   distinct(.)
 
+saveRDS(ecoregions_very_small_islands, file.path(indicator_outputs, 
+                                          paste(location, eco_version, 
+                                                "ecoregions_very_small_islands.rds",
+                                                sep = "_")))
+
+x<- rbind(ecoregions_continents, ecoregions_big_islands, ecoregions_small_islands,
+          ecoregions_very_small_islands)
+
+
+# Threats ----
+
+threat_files <-  list.files(interim_outputs, recursive = FALSE)[grepl("threat_data.rds",list.files(interim_outputs))]
+threat_list <- lapply(file.path(interim_outputs, threat_files), readRDS)
+all_threat_data <- do.call(rbind, threat_list)
+
+threat_scheme <- read.csv(file.path(inputs, "iucn_threats\\iucn_threat_classification_scheme.csv"))
+threat_scheme$code <- as.character(threat_scheme$code)
+
+formatted_threat_data <- all_threat_data %>%
+                         merge(threat_scheme[c("code", "headline", "headline_name")], by = "code") %>%
+                         filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>%
+                         filter(timing != "Future") %>%
+                         filter(score == "Medium Impact: 6" |
+                                 score == "Medium Impact: 7"|
+                                 score == "High Impact: 8"|
+                                 score == "High Impact: 9") %>%
+                         distinct(.) %>%
+                         merge(species_data[c("binomial", "tsn", "ecoregion_id")], by = "binomial") %>%
+                         dplyr::select(-code, - invasive) %>%
+                         dplyr::select(ecoregion_id, binomial, tsn, headline, headline_name) %>%
+                         distinct(.) %>%
+                         group_by(ecoregion_id, headline_name) %>%
+                         mutate(number_of_species_affected = n_distinct(tsn)) %>%
+                         group_by(ecoregion_id) %>%
+                         mutate(number_of_species = n_distinct(tsn)) %>%
+                         select(ecoregion_id, headline_name, number_of_species_affected, number_of_species) %>%
+                         distinct(.) %>%
+                         mutate(proportion_affected = number_of_species_affected/number_of_species)
+
+head(formatted_threat_data)
+
+x <- formatted_threat_data %>%
+     group_by(ecoregion_id) %>%
+    filter(proportion_affected == max(proportion_affected))
+
+formatted_threat_data_wide <- formatted_threat_data %>%
+                              spread(key = headline_name, 
+                                     value = proportion_affected) %>%
+                              select(-number_of_species_affected) 
+
+formatted_threat_data_wide[is.na(formatted_threat_data_wide)] <- 0
+
+predominant_threat <-  names(formatted_threat_data_wide[,3:ncol(
+  formatted_threat_data_wide)])[max.col(formatted_threat_data_wide[,3:ncol(
+    formatted_threat_data_wide)])]
+
+a <- cbind(formatted_threat_data_wide,predominant_threat = predominant_threat)
+
+ecoregion_threats <- a %>%
+  select(ecoregion_id, predominant_threat, number_of_species, everything())
 
 # Combine indicator values into a single dataframe ----
 

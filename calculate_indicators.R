@@ -1764,37 +1764,26 @@ formatted_threat_data <- all_threat_data %>%
                          distinct(.) %>%
                          merge(species_data[c("binomial", "tsn", "ecoregion_id")], by = "binomial") %>%
                          dplyr::select(-code, - invasive) %>%
-                         dplyr::select(ecoregion_id, binomial, tsn, headline, headline_name) %>%
+                         dplyr::select(ecoregion_id, binomial, tsn, headline, headline_name, title) %>%
                          distinct(.) %>%
-                         group_by(ecoregion_id, headline_name) %>%
+                         group_by(ecoregion_id, title) %>%
                          mutate(number_of_species_affected = n_distinct(tsn)) %>%
                          group_by(ecoregion_id) %>%
                          mutate(number_of_species = n_distinct(tsn)) %>%
-                         select(ecoregion_id, headline_name, number_of_species_affected, number_of_species) %>%
+                         select(ecoregion_id, headline_name, title, number_of_species_affected, number_of_species) %>%
                          distinct(.) %>%
-                         mutate(proportion_affected = number_of_species_affected/number_of_species)
+                         mutate(proportion_affected = number_of_species_affected/number_of_species) %>%
+                         group_by(ecoregion_id) %>%
+                         filter(proportion_affected == max(proportion_affected)) %>%
+                         group_by(ecoregion_id) %>%
+                         mutate(threat_count = n()) %>%
+                         summarise_all(~ toString(unique(.))) %>%
+                         rename(predominant_threat = title)
 
 head(formatted_threat_data)
 
-x <- formatted_threat_data %>%
-     group_by(ecoregion_id) %>%
-    filter(proportion_affected == max(proportion_affected))
-
-formatted_threat_data_wide <- formatted_threat_data %>%
-                              spread(key = headline_name, 
-                                     value = proportion_affected) %>%
-                              select(-number_of_species_affected) 
-
-formatted_threat_data_wide[is.na(formatted_threat_data_wide)] <- 0
-
-predominant_threat <-  names(formatted_threat_data_wide[,3:ncol(
-  formatted_threat_data_wide)])[max.col(formatted_threat_data_wide[,3:ncol(
-    formatted_threat_data_wide)])]
-
-a <- cbind(formatted_threat_data_wide,predominant_threat = predominant_threat)
-
-ecoregion_threats <- a %>%
-  select(ecoregion_id, predominant_threat, number_of_species, everything())
+ecoregion_threats <- formatted_threat_data %>%
+                     select(ecoregion_id, predominant_threat, threat_count)
 
 # Combine indicator values into a single dataframe ----
 

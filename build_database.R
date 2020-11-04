@@ -2123,25 +2123,25 @@ amphibian_synonyms <- do.call(rbind, synonym_list) %>%
                 pull(binomial) %>%
                 unique(.)
 
+# Check for errant quotation marks
+
+amphibian_synonyms <- sapply(amphibian_synonyms, str_remove, "'")
+amphibian_synonyms <- sapply(amphibian_synonyms, str_remove, "'")
+
 amphibian_list <- split(amphibian_synonyms, 
                         ceiling(seq_along(amphibian_synonyms)/50))
 
 # Loop through the names and get redlist threat data, saving the output in
 # sections
 
-# WARNING - SLOW CODE, TAKES AROUND ? HOURS
+# WARNING - SLOW CODE, TAKES AROUND 2-3 days
 
 out <- list()
 
 for (i in seq_along(amphibian_list)) {
   
-  i <- i + 92
-  
   section_list <- amphibian_list[[i]]
-  
-  # system.time(section_out <- retry(get_redlist_threats(section_list, "amphibian"),
-  #                      maxErrors = 1000, sleep = 300)) # retry function pauses the loop and tries again later when IUCN server isn't accessible
-  
+
   section_out <- get_redlist_threats(section_list, "amphibian")
     
   df <- do.call(rbind, section_out)
@@ -2174,6 +2174,9 @@ mammal_synonyms <- do.call(rbind, synonym_list) %>%
   pull(binomial) %>%
   unique(.)
 
+mammal_synonyms <- sapply(mammal_synonyms, str_remove, "'")
+mammal_synonyms <- sapply(mammal_synonyms, str_remove, "'")
+
 mammal_list <- split(mammal_synonyms, 
                         ceiling(seq_along(mammal_synonyms)/50))
 
@@ -2188,8 +2191,7 @@ for (i in seq_along(mammal_list)) {
   
   section_list <- mammal_list[[i]]
   
-  section_out <- retry(get_redlist_threats(section_list, "mammal"),
-                       maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  section_out <- get_redlist_threats(section_list, "mammal")
   
   df <- do.call(rbind, section_out)
   
@@ -2218,6 +2220,9 @@ bird_synonyms <- do.call(rbind, synonym_list) %>%
   pull(binomial) %>%
   unique(.)
 
+bird_synonyms <- sapply(bird_synonyms, str_remove, "'")
+bird_synonyms <- sapply(bird_synonyms, str_remove, "'")
+
 bird_list <- split(bird_synonyms, 
                      ceiling(seq_along(bird_synonyms)/50))
 
@@ -2232,8 +2237,7 @@ for (i in seq_along(bird_list)) {
   
   section_list <- bird_list[[i]]
   
-  section_out <- retry(get_redlist_threats(section_list, "bird"),
-                       maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
+  section_out <- get_redlist_threats(section_list, "bird")
   
   df <- do.call(rbind, section_out)
   
@@ -2259,7 +2263,7 @@ saveRDS(bird_threat_data,
 
 reptile_synonyms <- do.call(rbind, synonym_list) %>%
   distinct(.) %>%
-  filter(class == "Aves") %>%
+  filter(class == "Lepidosauria") %>%
   pull(binomial) %>%
   unique(.)
 
@@ -2277,7 +2281,7 @@ for (i in seq_along(reptile_list)) {
   
   section_list <- reptile_list[[i]]
   
-  section_out <- retry(get_redlist_threats(section_list, "bird"),
+  section_out <- retry(get_redlist_threats(section_list, "reptile"),
                        maxErrors = 1000, sleep = 300) # retry function pauses the loop and tries again later when IUCN server isn't accessible
   
   df <- do.call(rbind, section_out)
@@ -2291,17 +2295,11 @@ for (i in seq_along(reptile_list)) {
 
 # Convert list of threat data back into a nice dataframe 
 
-# all_mammals_out <- list.files(threat_directory)
-# out <- lapply(file.path(threat_directory, all_mammals_out), readRDS)
-
 reptile_threat_data <- do.call(rbind, out)
 
 saveRDS(reptile_threat_data, 
         file.path(interim_outputs, paste(location, "reptile_threat_data.rds",
                                          sep = "_")))
-
-
-# Combine data
 
 
 # Check data for gaps ----

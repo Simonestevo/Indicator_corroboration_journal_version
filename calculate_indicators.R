@@ -1572,6 +1572,16 @@ ecoregion_realm_values <- ecoregion_map_all %>%
 
 # Islands ----
 
+if ((paste(location, eco_version, "island_status.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+ecoregions_islands <- readRDS(file.path(indicator_outputs, 
+                                      paste(location, eco_version, 
+                                            "island_status.rds",
+                                            sep = "_")))
+
+} else {
+
 # Simplify the ecoregion map so it doesn't take forever. Note - this produces
 # a warning that st_simplify doesn't work on long/lat data, but it's just 
 # a warning because all our maps *are* in decimal degrees
@@ -1580,6 +1590,16 @@ ecoregion_map_simple <- st_simplify(ecoregion_map, preserveTopology = TRUE,
                                     dTolerance = 0.1)
 
 # Get continents
+
+if ((paste(location, eco_version, "continents.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  
+ecoregions_continents <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "continents.rds",
+                                               sep = "_"))) 
+} else {
 
 continents_wm <- st_read(file.path(inputs,"global_islands_explorer","continents.shp"))
 
@@ -1614,9 +1634,26 @@ ecoregions_continents <- ecoregions_continents %>%
 
 rm(continents)
 
+saveRDS(ecoregions_continents, file.path(indicator_outputs, 
+                  paste(location, eco_version, 
+                        "continents.rds",
+                        sep = "_")))
+}
+
 # Big islands
 
+if ((paste(location, eco_version, "big_islands.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  
+ecoregions_big_islands <- readRDS(file.path(indicator_outputs, 
+                                             paste(location, eco_version, 
+                                                   "big_islands.rds",
+                                                   sep = "_"))) 
+} else {
+
 big_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","big_islands.shp"))
+
 head(big_islands_wm)
 
 big_islands_wm <- big_islands_wm %>%
@@ -1660,10 +1697,22 @@ ecoregions_big_islands <- ecoregions_big_islands %>%
 
 saveRDS(ecoregions_big_islands, file.path(indicator_outputs, 
                                       paste(location, eco_version, 
-                                            "ecoregions_big_islands.rds",
+                                            "big_islands.rds",
                                             sep = "_")))
 
+}
+
 # Small islands
+
+if ((paste(location, eco_version, "small_islands.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  
+ecoregions_small_islands <- readRDS(file.path(indicator_outputs, 
+                                              paste(location, eco_version, 
+                                                    "small_islands.rds",
+                                                    sep = "_"))) 
+} else {
 
 small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","small_islands.shp"))
 
@@ -1703,11 +1752,22 @@ ecoregions_small_islands <- ecoregions_small_islands %>%
 
 saveRDS(ecoregions_small_islands, file.path(indicator_outputs, 
                                           paste(location, eco_version, 
-                                                "ecoregions_small_islands.rds",
+                                                "small_islands.rds",
                                                 sep = "_")))
+
+}
 
 # Very small islands
 
+if ((paste(location, eco_version, "very_small_islands.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  
+ecoregions_very_small_islands <- readRDS(file.path(indicator_outputs, 
+                                              paste(location, eco_version, 
+                                                    "very_small_islands.rds",
+                                                    sep = "_"))) 
+} else {
 very_small_islands_wm <- st_read(file.path(inputs,"global_islands_explorer","very_small_islands.shp"))
 
 very_small_islands_wm <- very_small_islands_wm %>%
@@ -1737,12 +1797,32 @@ ecoregions_very_small_islands <- ecoregions_very_small_islands %>%
 
 saveRDS(ecoregions_very_small_islands, file.path(indicator_outputs, 
                                           paste(location, eco_version, 
-                                                "ecoregions_very_small_islands.rds",
+                                                "very_small_islands.rds",
                                                 sep = "_")))
+}
 
-x<- rbind(ecoregions_continents, ecoregions_big_islands, ecoregions_small_islands,
+all_classifications <- rbind(ecoregions_continents, ecoregions_big_islands, ecoregions_small_islands,
           ecoregions_very_small_islands)
 
+ecoregions_islands <- all_classifications %>%
+     mutate(classification_new = factor(classification, ordered = TRUE, 
+                                     levels = c("very_small_island", 
+                                                "small_island", "big_island", 
+                                                "continent"))) %>%
+     group_by(ECO_ID) %>%
+     mutate(raw_indicator_value = ifelse(classification == "continent", "continent", "island")) %>%
+     select(ECO_ID, raw_indicator_value) %>%
+     distinct(.) %>%
+     mutate(year = NA,
+            indicator = "island status") %>%
+     rename(ecoregion_id = ECO_ID) %>%
+     select(all_of(indicator_columns))
+
+saveRDS(ecoregions_islands, file.path(indicator_outputs, 
+                                      paste(location, eco_version, 
+                                            "island_status.rds",
+                                            sep = "_")))
+}
 
 # Threats ----
 
@@ -1784,6 +1864,48 @@ head(formatted_threat_data)
 
 ecoregion_threats <- formatted_threat_data %>%
                      select(ecoregion_id, predominant_threat, threat_count)
+
+# Scientific capacity ----
+
+# From https://www.scimagojr.com/countryrank.php, years 1996 - 2019,
+# category = "Conservation"
+
+publications_all <- read.csv(file.path(inputs, "scientific_capacity\\conservation_scimagoj_country_rank_1996-2019.csv"))
+
+total_publications <- sum(publications_all$Citable.documents)
+
+publications <- publications_all %>%
+                select(Country, Citable.documents) %>%
+                rename(country = Country,
+                       citable_documents = Citable.documents)
+
+ecoregion_publications_all <- ecoregion_country_df %>%
+                              merge(publications, by.x = "CNTRY_NAME",
+                                    by.y = "country", all = TRUE) %>%
+                              group_by(ECO_ID) %>%
+  mutate(citable_documents = replace_na(citable_documents, 0)) %>%
+                             mutate(mean_publications = mean(citable_documents, 
+                                                              na.rm = TRUE),
+                                    proportion_publications = mean_publications/
+                                      total_publications)
+
+ecoregion_scientific_capacity <- ecoregion_publications_all %>%
+                                 select(ECO_ID, proportion_publications) %>%
+                                 rename(raw_indicator_value = proportion_publications) %>%
+                                 mutate(indicator = "mean scientific publications",
+                                        year = NA) %>%
+                                 distinct(.)
+                                 
+
+# ecoregion_scientific_capacity_map <- left_join(ecoregion_map, 
+#                                                ecoregion_scientific_capacity,
+#                                                by = "ECO_ID")
+# 
+# plot(ecoregion_scientific_capacity_map["raw_indicator_value"],
+#      breaks = "quantile")
+
+rm(publications_all, publications, ecoregion_publications_all)
+
 
 # Combine indicator values into a single dataframe ----
 

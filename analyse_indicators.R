@@ -1,4 +1,88 @@
 
+# Using R version 4.0.3
+
+# Load packages ----
+
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(viridis)
+library(png)
+library(gridExtra)
+library(reshape2)
+library(GGally)
+library(mapview)
+library(psych)
+library(e1071)
+library(tm)
+library(PerformanceAnalytics)
+
+# Set input and output locations ----
+
+create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
+date <- Sys.Date()
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+save_outputs <- "yes" #only applies to maps, other things will always save
+eco_version <- "ecoregions_2017"
+parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+#eco_version <- "official_teow_wwf"
+indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+
+# Set up some ecoregions that we know how they should behave
+
+east_australia <- 168 # Decline over time
+amazon <- 473 # Decline over time
+cardamom <- 223 # In good shape
+mascarene <- 20 #Had a lot of extinctions
+
+
+if (!is.na(country)) {
+  
+  location <- tolower(country)
+  
+} else {
+  
+  location <- "global"
+  
+}
+
+# Set output directory
+
+db_version <- tail(sort(list.files(parent_outputs)), 1)
+db_interim <- list.files(file.path(parent_outputs,db_version))[
+  grepl("interim",list.files(file.path(parent_outputs,db_version)))]
+db_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("database",list.files(file.path(parent_outputs,db_version)))]
+ind_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("indicator",list.files(file.path(parent_outputs,db_version)))]
+analysis_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("analysis",list.files(file.path(parent_outputs,db_version)))]
+
+interim_outputs <- file.path(parent_outputs, db_version, db_interim)
+outputs <- file.path(parent_outputs, db_version, db_outputs)
+
+if( (length(analysis_outputs)) == 0 ) {
+  
+  analysis_outputs <- file.path(parent_outputs, db_version, paste(date,
+                                 "_analysis_output_files",sep="") )
+  
+  dir.create(analysis_outputs, recursive = TRUE ) # create a new directory for today's outputs
+  
+  
+} else {
+  
+  analysis_outputs <- file.path(parent_outputs, db_version, analysis_outputs)
+  
+}
+
+
+# Load functions ----
+
+# Read in data ----
+
+
+
 
 # Remove some outliers
 

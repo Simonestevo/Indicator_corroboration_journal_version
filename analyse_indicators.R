@@ -76,6 +76,12 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
+# Create a folder for the day because you'll probably make lots of version
+
+
+current_analysis_outputs <- dir.create(file.path(analysis_outputs,paste(date,
+                                            "_analysis_output_files",sep="")))
+
 
 # Load functions ----
 

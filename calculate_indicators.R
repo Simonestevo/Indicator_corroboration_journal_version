@@ -1974,7 +1974,6 @@ indicator_values <- rbind(extinction_values,
                           hfp_values,
                           bhi_plants_values,
                           lpi_values,
-                          lpi_record_values,
                           bii_richness_values,
                           bii_abundance_values)
 
@@ -2011,7 +2010,8 @@ indicator_values_master <- indicator_values %>%
                                             indicator))))))))) %>%
                             mutate(indicator_year = paste(indicator_abbreviated, 
                                                           year, sep = " ")) %>%
-                            mutate(ecoregion_id = as.numeric(ecoregion_id))
+                            mutate(ecoregion_id = as.numeric(ecoregion_id),
+                                   year = as.numeric(year))
 
 summary(indicator_values_master)
 
@@ -2033,7 +2033,6 @@ rm(extinction_values,
    hfp_values,
    bhi_plants_values,
    lpi_values,
-   lpi_record_values,
    lpi_input_summary,
    lpi_inputs,
    bii_richness_values,

@@ -22,12 +22,13 @@ library(PerformanceAnalytics)
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
-inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
 eco_version <- "ecoregions_2017"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+timepoint <- 2005
 
 # Set up some ecoregions that we know how they should behave
 
@@ -85,10 +86,89 @@ current_analysis_outputs <- dir.create(file.path(analysis_outputs,paste(date,
 
 # Load functions ----
 
+# Function to scale the values of a vector from 0 to 1
+
+scale_to_1 <- function(vector){
+  
+  (vector-min(vector, na.rm = TRUE))/
+    (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
+}
+
 # Read in data ----
 
+raw_indicators_long <- readRDS(file.path(analysis_inputs,
+                          "global_ecoregions_2017_indicator_values_master.rds"))
+raw_indicators_wide <- readRDS(file.path(analysis_inputs,
+                          "global_ecoregions_2017_indicator_values_master_wide.rds"))
+raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
+                         "global_ecoregions_2017_ecoregion_values_master.rds")) 
+raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
+                         "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
+
+if(!is.na(timepoint)) {
+
+raw_indicators_long <- raw_indicators_long %>%
+                         filter(year == timepoint) %>%
+                         dplyr::select(ecoregion_id, indicator_year,
+                                      raw_indicator_value) %>%
+                         distinct(.)
+
+raw_indicators_wide <- raw_indicators_long %>%
+                         spread(key = indicator_year, 
+                                value = raw_indicator_value) 
+}
+
+# Data transformations ----
+
+# * Invert ----
+# For negatively valanced variables (where high values = negative outcome)
+
+negatives_index <- names(raw_indicators_wide) %like% 'HFP|extinct|threatened'
+negatives <- names(raw_indicators_wide)[negatives_index]
+
+cols_min <- as.numeric(sapply(raw_indicators_wide, min, na.rm = TRUE))
+cols_max <- as.numeric(sapply(raw_indicators_wide, max, na.rm = TRUE))
 
 
+keys <- as.data.frame(negatives_index) %>%
+        mutate(keys = ifelse(negatives_index == FALSE, 1, -1)) %>%
+        select(keys) %>%
+        pull(.)
+
+indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
+                                 mini = cols_min, maxi = cols_max))
+
+
+# test
+
+ECO <- east_australia # This ecoregion has a low HFP value (bad outcome)
+HFP <- raw_indicators_wide %>% filter(ecoregion_id == ECO) %>% select(`HFP 2005`)
+HFP
+
+# Once inverted, it should have a high ecoregion value to represent the bad outcome
+HFP_inv <- indicators_wide %>% filter(ecoregion_id == ECO) %>% 
+  select(`HFP 2005-`)
+HFP_inv
+
+# * Centre ----
+
+indicators_wide_centred <- indicators_wide %>%
+  mutate_at(c(2:ncol(indicators_wide)), funs(c(scale(.)))) 
+
+summary(indicators_wide_centred)
+
+# ** Centred boxplots ----
+
+indicators_scaled <- melt(indicators_wide_centred, 
+                          id.vars = 'ecoregion_id')
+
+boxplots <- ggplot(indicators_scaled) +
+            geom_boxplot(aes(x = variable, y = value)) +
+            theme(axis.text.x=element_text(angle= 45,hjust=1))
+
+boxplots
+
+# Manage outliers ----
 
 # Remove some outliers
 
@@ -101,86 +181,6 @@ current_analysis_outputs <- dir.create(file.path(analysis_outputs,paste(date,
 # extinction_values_subset <- extinction_values %>%
 #                             filter(ecoregion_id != 20) %>%
 #                             filter(ecoregion_id != 637)
-
-
-
-# Analyse indicators ----
-
-# Data transformations ----
-
-indicator_values_2 <- indicator_values_master %>%
-  dplyr::select(ecoregion_id, indicator_year,
-                raw_indicator_value) %>%
-  distinct(.)
-
-# * Convert to wide ----
-
-indicators_wide <- indicator_values_2 %>%
-  spread(key = indicator_year, 
-         value = raw_indicator_value) 
-
-
-names(indicators_wide) <- make.names(names(indicators_wide), 
-                                     unique = TRUE)
-
-summary(indicators_wide)
-
-# * Invert ----
-# For negatively valanced variables (where high values = negative outcome)
-
-cols_to_invert <- c("HFP.2000","HFP.2005","HFP.2010", "HFP.2013",
-                    "threatened.1980", "threatened.1990",
-                    "threatened.2000", "threatened.2005",
-                    "threatened.2010","threatened.2015", 
-                    "extinct.1980", "extinct.1990",
-                    "extinct.2000", "extinct.2005",
-                    "extinct.2010", "extinct.2015")
-
-col_index <- names(indicators_wide) %in% cols_to_invert
-cols_min <- as.numeric(sapply(indicators_wide, min, na.rm = TRUE))
-cols_max <- as.numeric(sapply(indicators_wide, max, na.rm = TRUE))
-
-
-keys <- as.data.frame(col_index) %>%
-  mutate(keys = ifelse(col_index == FALSE, 1, -1)) %>%
-  select(keys) %>%
-  pull(.)
-
-indicators_wide$ecoregion_id <- as.numeric(indicators_wide$ecoregion_id)
-
-indicators_wide_inv <- as.data.frame(reverse.code(keys,indicators_wide,
-                                                  mini = cols_min, maxi = cols_max))
-
-summary(indicators_wide_inv)
-
-# test
-
-ECO <- east_australia
-HFP <- indicators_wide %>% filter(ecoregion_id == ECO) %>% select(HFP.2000, 
-                                                                  HFP.2010)
-HFP
-
-HFP_inv <- indicators_wide_inv %>% filter(ecoregion_id == ECO) %>% 
-  select(`HFP.2000-`, `HFP.2010-`)
-HFP_inv
-
-# * Centre ----
-
-indicators_wide_inv_centred <- indicators_wide_inv %>%
-  mutate_at(c(2:ncol(indicators_wide_inv)), funs(c(scale(.)))) 
-
-summary(indicators_wide_inv_centred)
-
-# ** Centred boxplots ----
-
-indicators_scaled <- melt(indicators_wide_inv_centred, 
-                          id.vars = 'ecoregion_id')
-
-boxplots <- ggplot(indicators_scaled) +
-  geom_boxplot(aes(x = variable, y = value)) +
-  theme(axis.text.x=element_text(angle= 45,hjust=1))
-
-boxplots
 
 # * Transform ----
 # https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/

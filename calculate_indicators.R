@@ -1855,17 +1855,22 @@ formatted_threat_data <- all_threat_data %>%
                                  score == "High Impact: 8"|
                                  score == "High Impact: 9") %>%
                          distinct(.) %>%
-                         merge(species_data[c("binomial", "tsn", "ecoregion_id")], by = "binomial") %>%
+                         merge(species_data[c("binomial", "tsn", 
+                                              "ecoregion_id")], 
+                               by = "binomial") %>%
                          dplyr::select(-code, - invasive) %>%
-                         dplyr::select(ecoregion_id, binomial, tsn, headline, headline_name, title) %>%
+                         dplyr::select(ecoregion_id, binomial, tsn, headline,
+                                       headline_name, title) %>%
                          distinct(.) %>%
                          group_by(ecoregion_id, title) %>%
                          mutate(number_of_species_affected = n_distinct(tsn)) %>%
                          group_by(ecoregion_id) %>%
                          mutate(number_of_species = n_distinct(tsn)) %>%
-                         select(ecoregion_id, headline_name, title, number_of_species_affected, number_of_species) %>%
+                         select(ecoregion_id, headline_name, title, 
+                                number_of_species_affected, number_of_species) %>%
                          distinct(.) %>%
-                         mutate(proportion_affected = number_of_species_affected/number_of_species) %>%
+                         mutate(proportion_affected = 
+                                  number_of_species_affected/number_of_species) %>%
                          group_by(ecoregion_id) %>%
                          filter(proportion_affected == max(proportion_affected)) %>%
                          group_by(ecoregion_id) %>%
@@ -1903,6 +1908,17 @@ saveRDS(ecoregion_pr_threat_count, file.path(indicator_outputs,
                                                        "predominant_threat_count.rds",
                                                        sep = "_")))
 
+ecoregion_headline_threats <- formatted_threat_data %>%
+                              select(ecoregion_id, headline_name) %>%
+                              mutate(indicator = "headline threat type",
+                                     year = NA) %>%
+                              rename(raw_indicator_value = headline_name) %>%
+                              select(indicator_columns)
+
+saveRDS(ecoregion_headline_threats, file.path(indicator_outputs, 
+                                    paste(location, eco_version, 
+                                    "headline_threats.rds",
+                                                   sep = "_")))
 
 
 }
@@ -2044,6 +2060,16 @@ names(indicators_wide) <- make.names(names(indicators_wide),
 
 summary(indicators_wide)
 
+saveRDS(indicators_wide, file.path(indicator_outputs,
+                                           paste(location, eco_version,
+                                                 "indicator_values_master_wide.rds",
+                                                 sep = "_")))
+
+write.csv(indicators_wide, file.path(indicator_outputs,
+                                             paste(location, eco_version,
+                                                   "indicator_values_master_wide.csv",
+                                                   sep = "_")))
+
 # Combine ecoregion characteristics ----
 
 ecoregion_values_master <- rbind(lpi_record_values,
@@ -2053,6 +2079,7 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_islands,
                     ecoregion_predominant_threats,
                     ecoregion_pr_threat_count,
+                    ecoregion_headline_threats,
                     ecoregion_scientific_capacity) %>%
                     select(ecoregion_id, indicator, year, raw_indicator_value)
 
@@ -2075,6 +2102,7 @@ rm(lpi_record_values,
    ecoregion_islands,
    ecoregion_predominant_threats,
    ecoregion_pr_threat_count,
+   ecoregion_headline_threats,
    ecoregion_scientific_capacity)
 
 # Convert to wide format and save
@@ -2126,7 +2154,7 @@ ecoregion_values_map_data <- left_join(ecoregion_map_renamed,
                                        ecoregion_values_master,
                                        by = "ecoregion_id")
 
-
+plot(ecoregion_values_map["headline.threat.type"])
 ecoregion_area <- plot(ecoregion_values_map["ecoregion.area.km.2"])
 island_status <- plot(ecoregion_values_map["island.status"])
 lpi_records_map <- plot(ecoregion_values_map["LPI_records"])

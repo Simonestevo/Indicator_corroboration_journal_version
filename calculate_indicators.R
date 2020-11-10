@@ -371,7 +371,7 @@ saveRDS(ecoregion_map_all, file.path(paste(inputs, "ecoregions_2017", sep = "/")
 # Pull out only required variables
 
 ecoregion_map <- ecoregion_map_all %>% 
-                 select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 
 # As data frame
 
@@ -1557,18 +1557,18 @@ ecoregion_area_values <- ecoregion_area_km2 %>%
                                 raw_indicator_value = Ecoregion.area..km2.) %>%
                          mutate(indicator = "ecoregion area km sq",
                                 year = NA) %>%
-                         select(indicator_columns)
+                         dplyr::select(indicator_columns)
 
 # Ecoregion biome ----
 
 ecoregion_biomes <- ecoregion_map_all %>%
-                          select(ECO_ID, BIOME_NAME) %>%
+  dplyr::select(ECO_ID, BIOME_NAME) %>%
                           mutate(indicator = "Biome",
                                  year = NA) %>%
                           rename(ecoregion_id = ECO_ID,
                                  raw_indicator_value = BIOME_NAME) %>%
                           st_set_geometry(NULL) %>%
-                          select(indicator_columns)
+  dplyr::select(indicator_columns)
 
 # Islands ----
 
@@ -1826,7 +1826,7 @@ saveRDS(ecoregion_islands, file.path(indicator_outputs,
 
 # Threats ----
 
-if ((paste(location, eco_version, "ecoregion_threats.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "predominant_threat_type.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
 ecoregion_predominant_threats <- readRDS(file.path(indicator_outputs, 
@@ -1836,6 +1836,11 @@ ecoregion_predominant_threats <- readRDS(file.path(indicator_outputs,
 ecoregion_pr_threat_count <- readRDS(file.path(indicator_outputs, 
                                      paste(location, eco_version, 
                                      "predominant_threat_count.rds", sep = "_")))
+
+ecoregion_headline_threats <- readRDS(file.path(indicator_outputs, 
+                              paste(location, eco_version, 
+                                    "headline_threats.rds",
+                                    sep = "_")))
   
 } else {
 
@@ -1896,11 +1901,11 @@ saveRDS(ecoregion_predominant_threats, file.path(indicator_outputs,
                                        "predominant_threat_type.rds", sep = "_")))
 
 ecoregion_pr_threat_count <- ecoregion_threats %>%
-  select(ecoregion_id, threat_count) %>%
-  mutate(indicator = "predominant threat count",
-         year = NA) %>%
-  rename(raw_indicator_value = threat_count) %>%
-  select(indicator_columns)
+                             select(ecoregion_id, threat_count) %>%
+                             mutate(indicator = "predominant threat count",
+                                       year = NA) %>%
+                             rename(raw_indicator_value = threat_count) %>%
+                             select(indicator_columns)
 
 
 saveRDS(ecoregion_pr_threat_count, file.path(indicator_outputs, 
@@ -1933,7 +1938,7 @@ publications_all <- read.csv(file.path(inputs, "scientific_capacity\\conservatio
 total_publications <- sum(publications_all$Citable.documents)
 
 publications <- publications_all %>%
-                select(Country, Citable.documents) %>%
+                dplyr::select(Country, Citable.documents) %>%
                 rename(country = Country,
                        citable_documents = Citable.documents)
 
@@ -1948,13 +1953,13 @@ ecoregion_publications_all <- ecoregion_country_df %>%
                                       total_publications)
 
 ecoregion_scientific_capacity <- ecoregion_publications_all %>%
-                                 select(ECO_ID, proportion_publications) %>%
+                                 dplyr::select(ECO_ID, proportion_publications) %>%
                                  rename(raw_indicator_value = proportion_publications,
                                         ecoregion_id = ECO_ID) %>%
                                  mutate(indicator = "mean scientific publications",
                                         year = NA) %>%
                                  distinct(.) %>%
-                                 select(indicator_columns)
+                                 dplyr::select(all_of(indicator_columns))
                                  
 
 # ecoregion_scientific_capacity_map <- left_join(ecoregion_map, 
@@ -1965,6 +1970,17 @@ ecoregion_scientific_capacity <- ecoregion_publications_all %>%
 #      breaks = "quantile")
 
 rm(publications_all, publications, ecoregion_publications_all)
+
+# Realms ----
+
+ecoregion_realms <- ecoregions %>%
+                    dplyr::select(ECO_ID, REALM) %>%
+                    rename(raw_indicator_value = REALM,
+                           ecoregion_id = ECO_ID) %>%
+                    mutate(indicator = "realm",
+                           year = NA) %>%
+                    distinct(.) %>%
+                    dplyr::select(all_of(indicator_columns))
 
 # Combine indicator values into a single dataframe ----
 
@@ -2079,8 +2095,10 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_predominant_threats,
                     ecoregion_pr_threat_count,
                     ecoregion_headline_threats,
-                    ecoregion_scientific_capacity) %>%
-                    select(ecoregion_id, indicator, year, raw_indicator_value)
+                    ecoregion_scientific_capacity,
+                    ecoregion_realms) %>%
+                    dplyr::select(ecoregion_id, indicator, year, 
+                                  raw_indicator_value)
 
 saveRDS(ecoregion_values_master, file.path(indicator_outputs,
                                            paste(location, eco_version,

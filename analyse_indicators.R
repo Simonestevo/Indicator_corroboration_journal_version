@@ -168,6 +168,7 @@ HFP_inv
 # * Centre ----
 
 #TODO: Do we need to transform any variables? bc probably need to do so before scaling
+# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 
 indicators_wide_centred <- indicators_wide %>%
   mutate_at(c(2:ncol(indicators_wide)), funs(c(scale(.)))) 
@@ -187,197 +188,29 @@ boxplots <- ggplot(indicator_boxplot_data) +
 
 boxplots
 
+boxplot(indicators_wide_centred$`HFP 2005-`)
+
 # Manage outliers ----
 
 indicators_wide_centred <- indicators_wide_centred %>%
                            filter(`LPI 2005` < quantile(`LPI 2005`, 
                                                         0.99, na.rm = TRUE)) %>%
                            filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-                                                        0.99, na.rm = TRUE)) 
+                                                        0.99, na.rm = TRUE)) %>%
+                           filter(`HFP 2005-` < quantile(`HFP 2005-`, 
+                                                            0.99, na.rm = TRUE)) 
+
+summary(indicators_wide_centred)
 
 indicator_boxplot_data_2 <- reshape2::melt(x, id.vars = 'ecoregion_id')
 
 boxplots_2 <- ggplot(indicator_boxplot_data_2) +
-  geom_boxplot(aes(x = variable, y = value)) +
-  theme(axis.text.x = element_text(angle= 45,hjust=1))
+              geom_boxplot(aes(x = variable, y = value)) +
+              theme(axis.text.x = element_text(angle = 45,hjust = 1))
 
 boxplots_2
 
 # * Transform ----
-# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
-
-# Check distributions
-
-histograms <- lapply(indicators_wide_inv_centred, hist)
-names(histograms) <- colnames(indicators_wide_inv_centred)
-hist(indicators_wide_inv_centred$red.list.index.Amphibia.2000)
-
-# Measure skew (nearly all negatively skewed)
-
-indicators_skew <- sapply(indicators_wide_inv_centred, skewness, na.rm = TRUE)
-indicators_skew_index <- as.data.frame(indicators_skew) %>%
-  mutate(logtransform = ifelse(indicators_skew < -0.05, 
-                               TRUE, FALSE)) %>%
-  select(logtransform) %>%
-  pull(.)
-
-hist(indicators_wide_inv_centred$`human.footprint.index.2010-`)
-new <- log10(max(indicators_wide_inv_centred$`human.footprint.index.2010-`+1, na.rm = TRUE) - indicators_wide_inv_centred$`human.footprint.index.2010-`) 
-hist(new)
-skewness(new, na.rm = TRUE)
-
-indicators_transformed <- indicators_wide_inv_centred 
-
-# HFP 2010
-indicators_transformed$`human.footprint.index.2010-` <- log10(max(indicators_transformed$`human.footprint.index.2010-`+1, 
-                                                                  na.rm = TRUE) - 
-                                                                indicators_transformed$`human.footprint.index.2010-`) 
-skewness(indicators_wide_inv_centred$`human.footprint.index.2010-`, na.rm = TRUE)
-hist(indicators_wide_inv_centred$`human.footprint.index.2010-`)
-skewness(indicators_transformed$`human.footprint.index.2010-`, na.rm = TRUE)
-hist(indicators_transformed$`human.footprint.index.2010-`)
-
-#HFP 1990
-
-skewness(indicators_wide_inv_centred$`human.footprint.index.1990-`, na.rm = TRUE)
-hist(indicators_wide_inv_centred$`human.footprint.index.1990-`)
-
-indicators_transformed$`human.footprint.index.1990-` <- log10(max(indicators_transformed$`human.footprint.index.1990-`+1, 
-                                                                  na.rm = TRUE) - 
-                                                                indicators_transformed$`human.footprint.index.1990-`) 
-skewness(indicators_transformed$`human.footprint.index.1990-`, na.rm = TRUE)
-hist(indicators_transformed$`human.footprint.index.1990-`)
-
-#At risk 1980
-
-skewness(indicators_wide_inv_centred$`proportion.at.risk.1980-`, na.rm = TRUE)
-hist(indicators_wide_inv_centred$`proportion.at.risk.1980-`)
-
-indicators_transformed$`proportion.at.risk.1980-` <- 1/(max(indicators_wide_inv_centred$`proportion.at.risk.1980-`+1, 
-                                                            na.rm = TRUE) - 
-                                                          indicators_wide_inv_centred$`proportion.at.risk.1980-`) 
-skewness(indicators_transformed$`proportion.at.risk.1980-`, na.rm = TRUE)
-hist(indicators_transformed$`proportion.at.risk.1980-`)
-
-#At risk 1990
-
-to_transform <- indicators_wide_inv_centred$`proportion.at.risk.1990-`
-transformed <- indicators_transformed$`proportion.at.risk.1990-`
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$`proportion.at.risk.1990-` <- 1/(max(to_transform + 1, na.rm = TRUE) - to_transform) 
-skewness(transformed, na.rm = TRUE)
-hist(transformed)
-
-#At risk 2000
-
-to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2000-`
-transformed <- indicators_transformed$`proportion.at.risk.2000-`
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$`proportion.at.risk.2000-` <- 1/(max(to_transform + 1, 
-                                                            na.rm = TRUE) - to_transform) 
-skewness(indicators_transformed$`proportion.at.risk.2000-`, na.rm = TRUE)
-hist(indicators_transformed$`proportion.at.risk.2000-`)
-
-#At risk 2005
-
-to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2005-`
-transformed <- indicators_transformed$`proportion.at.risk.2005-`
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$`proportion.at.risk.2005-` <- 1/(max(to_transform + 1, 
-                                                            na.rm = TRUE) - to_transform) 
-skewness(indicators_transformed$`proportion.at.risk.2005-`, na.rm = TRUE)
-hist(indicators_transformed$`proportion.at.risk.2005-`)
-
-#At risk 2010
-
-to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2010-`
-transformed <- indicators_transformed$`proportion.at.risk.2010-`
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$`proportion.at.risk.2010-` <- 1/(max(to_transform + 1, 
-                                                            na.rm = TRUE) - to_transform) 
-skewness(indicators_transformed$`proportion.at.risk.2010-`, na.rm = TRUE)
-hist(indicators_transformed$`proportion.at.risk.2010-`)
-
-#At risk 2015
-
-to_transform <- indicators_wide_inv_centred$`proportion.at.risk.2015-`
-transformed <- indicators_transformed$`proportion.at.risk.2015-`
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$`proportion.at.risk.2015-` <- 1/(max(to_transform + 1, 
-                                                            na.rm = TRUE) - to_transform) 
-skewness(indicators_transformed$`proportion.at.risk.2015-`, na.rm = TRUE)
-hist(indicators_transformed$`proportion.at.risk.2015-`)
-
-# Red List Index Aves 2005
-
-to_transform <- indicators_wide_inv_centred$red.list.index.Aves.2005
-transformed <- indicators_transformed$red.list.index.Aves.2005
-
-skewness(to_transform, na.rm = TRUE)
-hist(to_transform)
-
-indicators_transformed$red.list.index.Aves.2005 <- 1/(max(to_transform + 1, 
-                                                          na.rm = TRUE) - to_transform) 
-skewness(indicators_transformed$red.list.index.Aves.2005, na.rm = TRUE)
-hist(indicators_transformed$red.list.index.Aves.2005)
-
-
-# ** Transformed boxplots ----
-
-indicators_transformed_long <- melt(indicators_transformed, 
-                                    id.vars = 'ecoregion_id')
-
-transformed_boxplots <- ggplot(indicators_transformed_long) +
-  geom_boxplot(aes(x = variable, y = value)) +
-  theme(axis.text.x=element_text(angle= 45,hjust=1))
-
-transformed_boxplots
-
-indicator_values_transformed <- indicators_transformed_long %>%
-  merge(indicator_values_master[c("ecoregion_id",
-                                  "country",
-                                  "realm")],
-        by = "ecoregion_id") %>%
-  rename(indicator_year = variable,
-         raw_indicator_value = value) %>% # TODO: Change to transformed
-  mutate(year = str_sub(indicator_year, start= -4)) %>%
-  mutate(indicator_year = as.character(indicator_year)) %>%
-  mutate(year = ifelse(year == "980-", "1980",
-                       ifelse(year == "015-",
-                              "2015",
-                              ifelse(year == "000-",
-                                     "2000",
-                                     ifelse(year == "990-",
-                                            "1990",
-                                            ifelse(year == "005-", 
-                                                   "2005",
-                                                   ifelse(year == "010-", 
-                                                          "2010", 
-                                                          ifelse(year == "2005", 
-                                                                 "2005", NA)))))))) %>%
-  mutate(indicator = removeNumbers(indicator_year)) %>%
-  mutate(indicator = str_replace_all(indicator,
-                                     '[[:punct:]]',' ')) 
-
-saveRDS(indicator_values_transformed, file.path(indicator_outputs,
-                                                paste(location, eco_version,
-                                                      "indicator_vals_transformed.rds",
-                                                      sep = "_")))
 
 # Correlations ----
 

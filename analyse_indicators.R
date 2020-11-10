@@ -3,19 +3,34 @@
 
 # Load packages ----
 
+# install.packages("tidyverse", dependencies = TRUE)
+# install.packages("ggplot2", dependencies = TRUE)
+# #install.packages("grid")
+# install.packages("viridis", dependencies = TRUE)
+# install.packages("png", dependencies = TRUE)
+# install.packages("gridExtra", dependencies = TRUE)
+# install.packages("reshape2", dependencies = TRUE)
+# install.packages("GGally", dependencies = TRUE)
+# install.packages("mapview", dependencies = TRUE)
+# install.packages("psych", dependencies = TRUE)
+# install.packages("e1071", dependencies = TRUE)
+# install.packages("tm", dependencies = TRUE)
+# install.packages("PerformanceAnalytics", dependencies = TRUE)
+
 library(tidyverse)
 library(ggplot2)
-library(grid)
+#library(grid)
 library(viridis)
 library(png)
 library(gridExtra)
 library(reshape2)
 library(GGally)
 library(mapview)
-library(psych)
+library(psych) #not loaded
 library(e1071)
-library(tm)
-library(PerformanceAnalytics)
+library(tm) #notloaded
+library(PerformanceAnalytics) #not loaded
+library(data.table)
 
 # Set input and output locations ----
 
@@ -105,7 +120,7 @@ raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
                          "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
 
-if(!is.na(timepoint)) {
+if (!is.na(timepoint)) {
 
 raw_indicators_long <- raw_indicators_long %>%
                          filter(year == timepoint) %>%
@@ -152,6 +167,8 @@ HFP_inv
 
 # * Centre ----
 
+#TODO: Do we need to transform any variables? bc probably need to do so before scaling
+
 indicators_wide_centred <- indicators_wide %>%
   mutate_at(c(2:ncol(indicators_wide)), funs(c(scale(.)))) 
 
@@ -159,28 +176,32 @@ summary(indicators_wide_centred)
 
 # ** Centred boxplots ----
 
-indicators_scaled <- melt(indicators_wide_centred, 
+#' TODO: IMPORTANT - DECIDE WHETHER TO REMOVE LPI ALTOGETHER
+
+indicator_boxplot_data <- reshape2::melt(indicators_wide_centred, 
                           id.vars = 'ecoregion_id')
 
-boxplots <- ggplot(indicators_scaled) +
+boxplots <- ggplot(indicator_boxplot_data) +
             geom_boxplot(aes(x = variable, y = value)) +
-            theme(axis.text.x=element_text(angle= 45,hjust=1))
+            theme(axis.text.x = element_text(angle= 45,hjust=1))
 
 boxplots
 
 # Manage outliers ----
 
-# Remove some outliers
+indicators_wide_centred <- indicators_wide_centred %>%
+                           filter(`LPI 2005` < quantile(`LPI 2005`, 
+                                                        0.99, na.rm = TRUE)) %>%
+                           filter(`extinct 2005-` < quantile(`extinct 2005-`, 
+                                                        0.99, na.rm = TRUE)) 
 
-# lpi_values_subset <- lpi_values_subset %>%
-#                      filter(raw_indicator_value < 2)
-# 
-# hfp_values_subset <- hfp_values %>%
-#                      filter(raw_indicator_value < 40)
-# 
-# extinction_values_subset <- extinction_values %>%
-#                             filter(ecoregion_id != 20) %>%
-#                             filter(ecoregion_id != 637)
+indicator_boxplot_data_2 <- reshape2::melt(x, id.vars = 'ecoregion_id')
+
+boxplots_2 <- ggplot(indicator_boxplot_data_2) +
+  geom_boxplot(aes(x = variable, y = value)) +
+  theme(axis.text.x = element_text(angle= 45,hjust=1))
+
+boxplots_2
 
 # * Transform ----
 # https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/

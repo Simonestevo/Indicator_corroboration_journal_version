@@ -31,6 +31,8 @@ library(e1071)
 library(tm) #notloaded
 library(PerformanceAnalytics) #not loaded
 library(data.table)
+library(rlist)
+library(factoextra)
 
 # Set input and output locations ----
 
@@ -95,8 +97,10 @@ if( (length(analysis_outputs)) == 0 ) {
 # Create a folder for the day because you'll probably make lots of version
 
 
-current_analysis_outputs <- dir.create(file.path(analysis_outputs,paste(date,
-                                            "_analysis_output_files",sep="")))
+current_analysis_outputs <- file.path(analysis_outputs,paste(date,
+                                            "_analysis_output_files",sep=""))
+
+dir.create(current_analysis_outputs)
 
 
 # Load functions ----
@@ -109,6 +113,16 @@ scale_to_1 <- function(vector){
     (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
 }
 
+add_grouping_variable <- function(variable) {
+  
+  out <- indicators_wide_centred %>%
+    merge(ecoregions_wide[c("ecoregion_id", variable)],
+          by = "ecoregion_id") 
+  
+  return(out)
+  
+}
+
 # Read in data ----
 
 raw_indicators_long <- readRDS(file.path(analysis_inputs,
@@ -119,6 +133,12 @@ raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
                          "global_ecoregions_2017_ecoregion_values_master.rds")) 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
                          "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
+
+
+### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
+
+raw_indicators_long <- raw_indicators_long %>%
+                       filter(indicator != "LPI")
 
 if (!is.na(timepoint)) {
 
@@ -133,7 +153,25 @@ raw_indicators_wide <- raw_indicators_long %>%
                                 value = raw_indicator_value) 
 }
 
-# Data transformations ----
+# Ecoregion value cleaning ----
+
+# Convert numeric to factors
+
+ecoregions_wide <- raw_ecoregions_wide
+
+ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 5, 
+                            labels = c("very_low", "low", "medium","high", "very_high"))
+
+ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 5, 
+                                  labels = c("very_small", "small", "medium","large", "very_large"))
+
+ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, breaks = 5, 
+                                   labels = c("very_low", "low", "medium","high", "very_high"))
+
+ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = 5, 
+                                   labels = c("very_low", "low", "medium","high", "very_high"))
+
+# Indicator data cleaning ----
 
 # * Invert ----
 # For negatively valanced variables (where high values = negative outcome)
@@ -190,19 +228,20 @@ boxplots
 
 boxplot(indicators_wide_centred$`HFP 2005-`)
 
-# Manage outliers ----
+# * Manage outliers ----
 
-indicators_wide_centred <- indicators_wide_centred %>%
-                           filter(`LPI 2005` < quantile(`LPI 2005`, 
-                                                        0.99, na.rm = TRUE)) %>%
+indicators_wide_centred_trunc <- indicators_wide_centred %>%
+                           # filter(`LPI 2005` < quantile(`LPI 2005`, 
+                           #                              0.99, na.rm = TRUE)) %>%
                            filter(`extinct 2005-` < quantile(`extinct 2005-`, 
                                                         0.99, na.rm = TRUE)) %>%
                            filter(`HFP 2005-` < quantile(`HFP 2005-`, 
                                                             0.99, na.rm = TRUE)) 
 
-summary(indicators_wide_centred)
+summary(indicators_wide_centred_trunc)
 
-indicator_boxplot_data_2 <- reshape2::melt(x, id.vars = 'ecoregion_id')
+indicator_boxplot_data_2 <- reshape2::melt(indicators_wide_centred_trunc, 
+                                           id.vars = 'ecoregion_id')
 
 boxplots_2 <- ggplot(indicator_boxplot_data_2) +
               geom_boxplot(aes(x = variable, y = value)) +
@@ -212,68 +251,30 @@ boxplots_2
 
 # * Transform ----
 
-# Correlations ----
+# Correlation plots ----
 
-# Non-transformed
+# * Realm ----
 
-# indicator_names <- c("Ecoregion_id", "BII_A_2005","BHI_2005", "BHI_2010", "BHI_2015",
-#                      "HFP_1990", "HFP_2010","Endangered_1980", "Endangered_1990",
-#                      "At_risk_2000", "At_risk_2005", "At_risk_2010", 
-#                      "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
-#                      "Extinction_2000", "Extinction_2005",   "Extinction_2010",
-#                      "Extinction_2015", "RLI_Amph_1980", "RLI_Amph_2000",
-#                      "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
-#                      "RLI_Birds_2005", "RLI_Birds_2010", "RLI_Mamm_1990",
-#                      "RLI_Mamm_2005", "BII_R_2005")
+names(raw_ecoregions_wide)
 
+realm_indicators <- add_grouping_variable("realm")
 
-# indicator_names <- c("Ecoregion_id", "BII","BHI", "BHI_2010", "BHI_2015",
-#                      "HFP_1990", "HFP","Endangered_1980", "Endangered_1990",
-#                      "At_risk_2000", "Endangered", "At_risk_2010", 
-#                      "At_risk_2015",  "Extinction_1980",   "Extinction_1990",
-#                      "Extinction_2000", "Extinction_2005",   "Extinction_2010",
-#                      "Extinction_2015", "RLI_Amph_1980", "RLI_Amph",
-#                      "RLI_Birds_1980", "RLI_Birds_1990", "RLI_Birds_2000",
-#                      "RLI_Birds", "RLI_Birds_2010", "RLI_Mamm_1990",
-#                      "RLI_Mammals", "BII_R_2005")
-# 
-# colnames(indicators_wide_inv_centred) <- indicator_names
+realm_indicator_list <- split(realm_indicators, realm_indicators$realm)
 
-
-indicator_matrix <- indicators_wide_inv_centred %>%
-  select(-ecoregion_id) %>%
-  na.omit(.)
-
-# Split by location
-
-# Get 2005 only
-indicators_wide_inv_centred_2005 <- indicators_wide_inv_centred[,c(1,2,5,6,10,14,17,21)]
-
-
-indicators_wic <- indicators_wide_inv_centred_2005 %>%
-  merge(ecoregion_map[c("ECO_ID", "REALM")],
-        by.x = "ecoregion_id",
-        by.y = "ECO_ID") 
-
-indicators_wic_realm <- split(indicators_wic, indicators_wic$REALM)
-
-indicators_wic_oceania <- indicators_wic_realm[["Oceania"]]
-
-indicators_wic_australasia <- indicators_wic_realm[["Australasia"]]
-
-indicators_wic_realm[["Global"]] <- indicators_wic
+realm_indicator_list[["Global"]] <- indicators_wide_centred %>%
+                                    mutate(realm = "Global")
 
 realm_matrices <- list()
 
-for (i in seq_along(indicators_wic_realm)) {
+for (i in seq_along(realm_indicator_list)) {
   
-  realm_matrices[[i]] <- indicators_wic_realm[[i]] %>%
-    select(-ecoregion_id, -REALM, - geometry) %>%
+  realm_matrices[[i]] <- realm_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -realm) %>%
     na.omit(.)
   
 }
 
-names(realm_matrices) <- names(indicators_wic_realm)
+names(realm_matrices) <- names(realm_indicator_list)
 
 # Get pictoral correlation matrices
 
@@ -285,16 +286,16 @@ for (i in seq_along(realm_matrices)) {
   
   subset_matrix <- realm_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
   
-  if(nrow(subset_matrix) == 0) {
+  if (nrow(subset_matrix) == 0) {
     
-    print("no data for this realm")
+    print(paste("no data for", names(realm_matrices)[i], sep = " "))
     
   } else {
     
     correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
       ggtitle(name)
     
-    ggsave(file.path(indicator_outputs, 
+    ggsave(file.path(current_analysis_outputs, 
                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
            correlation_matrix, device = "png")
     
@@ -305,555 +306,965 @@ for (i in seq_along(realm_matrices)) {
 realm_correlations[[9]]
 
 
+# * Headline threat ----
+
+threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+
+headline_threats <- threat_scheme %>%
+                    dplyr::select(headline_name) %>%
+                    distinct(.) %>%
+                    pull()
+
+headline_threats <- c(headline_threats, "All threats")
+
+headline_threat_indicators <- add_grouping_variable("headline.threat.type")
+
+headline_threat_indicator_list <- split(headline_threat_indicators, 
+                                        headline_threat_indicators$headline.threat.type)
+
+headline_threat_indicator_list[["All threats"]] <- indicators_wide_centred %>%
+  mutate(headline.threat.type = "All threats")
+
+headline_threat_indicator_list <- headline_threat_indicator_list[headline_threats]
+headline_threat_indicator_list <- list.clean(headline_threat_indicator_list)
 
 
-pearson_correlations_all_years <- as.data.frame(cor(indicator_matrix, 
-                                                    method = "pearson"))
+
+headline_threat_matrices <- list()
+
+for (i in seq_along(headline_threat_indicator_list)) {
+  
+  headline_threat_matrices[[i]] <- headline_threat_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -headline.threat.type) %>%
+    na.omit(.)
+  
+}
+
+names(headline_threat_matrices) <- names(headline_threat_indicator_list)
+
+# Get pictoral correlation matrices
+
+headline_threat_correlations <- list()
+
+for (i in seq_along(headline_threat_matrices)) {
+  
+  subset_matrix <- headline_threat_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(headline_threat_matrices)[i], "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) == 0) {
+    
+    print(paste("no data for", names(headline_threat_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_matrix, device = "png")
+    
+    headline_threat_correlations[[i]] <- correlation_matrix
+  }
+}
+
+headline_threat_correlations[[7]]
+
+# * Island status ----
+
+names(raw_ecoregions_wide)
+
+island_status_indicators <- add_grouping_variable("island.status")
+
+island_status_indicator_list <- split(island_status_indicators, 
+                                      island_status_indicators$island.status)
+
+island_status_indicator_list[["Global"]] <- indicators_wide_centred %>%
+  mutate(island.status = "Global")
+
+island_status_matrices <- list()
+
+for (i in seq_along(island_status_indicator_list)) {
+  
+  island_status_matrices[[i]] <- island_status_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -island.status) %>%
+    na.omit(.)
+  
+}
+
+names(island_status_matrices) <- names(island_status_indicator_list)
+
+# Get pictoral correlation matrices
+
+island_status_correlations <- list()
+
+for (i in seq_along(island_status_matrices)) {
+  
+  name <- paste(names(island_status_matrices)[i], "indicator correlation matrix", sep = " ")
+  
+  subset_matrix <- island_status_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  if (nrow(subset_matrix) == 0) {
+    
+    print(paste("no data for", names(island_status_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_matrix, device = "png")
+    
+    island_status_correlations[[i]] <- correlation_matrix
+  }
+}
+
+island_status_correlations[[2]]
+
+# * Scientific capacity ----
+
+#' TODO: Is this actually a proxy for data bias?
+
+names(ecoregions_wide)
+
+scientific_capacity_indicators <- add_grouping_variable("scientific.publications.factor")
+
+scientific_capacity_indicator_list <- split(scientific_capacity_indicators, 
+                                      scientific_capacity_indicators$scientific.publications.factor)
+
+scientific_capacity_indicator_list[["All capacities"]] <- indicators_wide_centred %>%
+  mutate(scientific.publications.factor = "All capacities")
+
+scientific_capacity_matrices <- list()
+
+for (i in seq_along(scientific_capacity_indicator_list)) {
+  
+  scientific_capacity_matrices[[i]] <- scientific_capacity_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -scientific.publications.factor) %>%
+    na.omit(.)
+  
+}
+
+names(scientific_capacity_matrices) <- names(scientific_capacity_indicator_list)
+
+# Get pictoral correlation matrices
+
+scientific_capacity_correlations <- list()
+
+for (i in seq_along(scientific_capacity_matrices)) {
+  
+  subset_matrix <- scientific_capacity_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(scientific_capacity_matrices)[i], 
+                "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  
+  if (nrow(subset_matrix) == 0) {
+    
+    print(paste("no data for", names(scientific_capacity_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_matrix, device = "png")
+    
+    scientific_capacity_correlations[[i]] <- correlation_matrix
+  }
+}
+
+scientific_capacity_correlations[[6]]
+
+# * Number of records ----
+
+names(ecoregions_wide)
+
+lpi_records_indicators <- add_grouping_variable("lpi.records.factor")
+
+lpi_records_indicator_list <- split(lpi_records_indicators, 
+                                    lpi_records_indicators$lpi.records.factor)
+
+lpi_records_indicator_list[["All records"]] <- indicators_wide_centred %>%
+  mutate(lpi.records.factor = "All records")
+
+lpi_records_matrices <- list()
+
+for (i in seq_along(lpi_records_indicator_list)) {
+  
+  lpi_records_matrices[[i]] <- lpi_records_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -lpi.records.factor) %>%
+    na.omit(.)
+  
+}
+
+names(lpi_records_matrices) <- names(lpi_records_indicator_list)
+
+# Get pictoral correlation matrices
+
+lpi_records_correlations <- list()
+
+for (i in seq_along(lpi_records_matrices)) {
+  
+  subset_matrix <- lpi_records_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(lpi_records_matrices)[i], 
+                "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  
+  if (nrow(subset_matrix) == 0) {
+    
+    print(paste("no data for", names(lpi_records_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_matrix, device = "png")
+    
+    lpi_records_correlations[[i]] <- correlation_matrix
+  }
+}
+
+lpi_records_correlations[[6]]
+
+# Correlation matrices ----
 
 spearman_correlations_all_years <- as.data.frame(cor(indicator_matrix, 
                                                      method = "spearman"))
 
-# All indicators with 2005 data
-
-indicator_matrix_2005 <- indicator_matrix[, c(1,2,10,16,23,27,28)]
-
-indicator_correlations_2005 <- ggcorr(indicator_matrix_2005)
-
-# All indicators with 2010 data
-
-indicator_matrix_2010 <- indicator_matrix[, c(3,6,11,17,25)]
-
-indicator_correlations_2010 <- ggcorr(indicator_matrix_2010)
-
-# RLI all timepoints and 1990 HFP
-
-indicator_matrix_rli <- indicator_matrix[, c(5,21,22,23,24,25)]
-
-indicator_correlations_rli <- ggcorr(indicator_matrix_rli)
-
-# BHI all timepoints and 1990 HFP
-
-indicator_matrix_bhi <- indicator_matrix[, c(5,2, 3, 4)]
-
-indicator_correlations_bhi <- ggcorr(indicator_matrix_bhi)
-
-# Extinctions all timepoints and 1990 HFP
-
-indicator_matrix_ex <- indicator_matrix[, c(5,13,14,15,16,17,18)]
-
-indicator_correlations_ex <- ggcorr(indicator_matrix_ex)
-
-# Indicators from different data sources 2005 - 2010
-
-indicator_matrix_ind <- indicator_matrix[, c(1,2,6,10,20,24,27)]
-
-indicator_correlations_ind <- ggcorr(indicator_matrix_ind, palette = "BuPu",
-                                     label = TRUE)
-
-
-# RLI Birds 1980 and following extinctions
-
-indicator_matrix_er <- indicator_matrix[, c(21, 13, 14,15,16,17,18)]
-
-indicator_correlations_er <- ggcorr(indicator_matrix_er)
-
-
-# Transformed
-
-indicator_matrix_t <- indicators_transformed %>%
-  select(-ecoregion_id) %>%
-  na.omit(.)
-
-pearson_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
-                                                      method = "pearson"))
-
-spearman_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
-                                                       method = "spearman"))
-
-# mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
-#                                  33.29037, raw_indicator_value)) %>%
-# mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
-#                ifelse(raw_indicator_value > 0 & 
-#                         raw_indicator_value < 0.9538,
-#                       0.9538, raw_indicator_value))) %>%
-# mutate(year = as.numeric(year)) %>%
-# mutate(HFP_adjusted_old = ifelse(indicator != 
-#                           "mean human footprint index", NA,
-#                           HFP_adjusted_old)) %>%
-# mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
-#                                 indicator), 
-#                                 RLI_adjusted_old, NA)) %>%
-# mutate(HFP_adjusted =
-#          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
-#                                          .005, na.rm = TRUE)),
-#               quantile(raw_indicator_value, .995,
-#                        na.rm = TRUE))) %>%
-# mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
-# mutate(HFP_scaled_adjusted_inverted =
-#          1 - HFP_scaled_adjusted) %>%
-# mutate(scaled = scale_to_1(raw_indicator_value)) %>%
-# mutate(inverted = 1 - raw_indicator_value) %>%
-# mutate(scaled_inverted = 1 - scaled) %>%
-# mutate(RLI_adjusted = ifelse(raw_indicator_value == 0, NA,
-#                              pmin(pmax(raw_indicator_value,
-#                   quantile(raw_indicator_value, .05, 
-#                            na.rm = TRUE))))) %>%
-# mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
-
-# Scatterplots ----
-
-indicator_values_master_1 <- indicator_values_master
-
-indicator_values_master_2 <- indicator_values_master_1 %>%
-  mutate(key2 = paste(ecoregion_id, indicator_year, sep = " ")) %>%
-  mutate(key = make.names(key2)) %>%
-  mutate(key = str_remove(key, "X")) %>%
-  select(-key2) 
-
-indicators_scaled <- indicators_scaled %>%
-  mutate(variable = str_remove(variable, "-"))
-
-indicator_values_scaled <- indicators_scaled %>%
-  mutate(key = paste(ecoregion_id, variable, sep = ".")) %>%
-  rename(centred_indicator_value = value)
-
-unique(indicator_values_scaled$variable)
-unique(indicator_values_master$indicator_year)
-
-indicator_values_master <- indicator_values_master_2 %>%
-  merge(indicator_values_scaled[c("key", 
-                                  "centred_indicator_value")], by = "key") 
-
-unique(indicator_values_master$indicator_year)
-
-# * Subset by indicator ----
-
-indicator_values_master_list <- split(indicator_values_master, 
-                                      indicator_values_master$indicator)
-
-indicator_values_master_wide <- list()
-indicator_by_time_plots <- list()
-
-for (i in seq_along(indicator_values_master_list)) {
-  
-  wide_indicator_data <- indicator_values_master_list[[i]] %>%
-    select(ecoregion_id, indicator_year, 
-           centred_indicator_value) %>%
-    distinct(.) %>%
-    spread(key = indicator_year, 
-           value = centred_indicator_value) %>%
-    select(-ecoregion_id)
-  
-  indicator_plot <- ggpairs(wide_indicator_data)
-  
-  indicator_name <- indicator_values_master_list[[i]][1,2]
-  
-  indicator_values_master_wide[[i]] <- wide_indicator_data
-  indicator_by_time_plots[[i]] <- indicator_plot
-  
-  scatterplot_directory <- file.path(indicator_outputs, 
-                                     "scatterplots")
-  
-  if( !dir.exists( scatterplot_directory ) ) {
-    
-    dir.create( scatterplot_directory, recursive = TRUE )
-    
-  }
-  
-  ggsave(file.path(scatterplot_directory, paste(location, eco_version,
-                                                indicator_name, 
-                                                "time_scatterplots.png", 
-                                                sep = "_")),
-         indicator_plot,  device = "png")
-  
-}
-
-
-# * Subset by time ----
-
-
-# Non-transformed
-
-indicators_by_year <- split(indicator_values_master, indicator_values_master$year)
-indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
-
-scatterplots_by_year <- list()
-
-for (i in seq_along(indicators_by_year)){
-  
-  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
-                                                    indicators_by_year_names[[i]],
-                                                    save = TRUE, "centred")
-  
-}
-
-scatterplots_by_year[[4]]
-
-
-# Centred and inverted 
-
-indicators_wic <- indicators_wic %>%
-  rename(ecoregion_id = Ecoregion_id) %>%
-  select(-geometry, -REALM)
-
-indicators_wic_long <- melt(indicators_wic, 
-                            id.vars = 'ecoregion_id')
-
-
-indicator_values_wic <- indicators_wic_long  %>%
-  rename(indicator_year = variable,
-         raw_indicator_value = value) %>% # TODO: Change to transformed
-  mutate(year = str_sub(indicator_year, start= -4)) %>%
-  mutate(indicator_year = as.character(indicator_year)) %>%
-  mutate(indicator = removeNumbers(indicator_year)) %>%
-  mutate(indicator = str_replace_all(indicator,
-                                     '[[:punct:]]',' '))
-
-indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
-indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
-
-scatterplots_by_year <- list()
-
-for (i in seq_along(indicators_by_year)){
-  
-  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
-                                                    indicators_by_year_names[[i]],
-                                                    save = FALSE)
-  
-}
-
-scatterplots_by_year[[1]]
-
-
-# RLI and HFP 2005 only ---
-
-indicator_values_rli_hfp <- indicator_values_wic %>%
-  filter(indicator_year == "HFP.2005-" |
-           indicator_year ==  "RLI.2005") 
-
-rli_hfp_corr <- produce_scatterplots(indicator_values_rli_hfp, "test", save = FALSE,"raw")
-
-indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
-indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
-
-scatterplots_by_year <- list()
-
-for (i in seq_along(indicators_by_year)){
-  
-  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
-                                                    indicators_by_year_names[[i]],
-                                                    save = FALSE)
-  
-}
-
-scatterplots_by_year[[1]]
-
-# Oceania ----
-
-indicators_wic <- indicators_wic_oceania %>%
-  rename(ecoregion_id = Ecoregion_id) %>%
-  select(-geometry, -REALM)
-
-indicators_wic_long <- melt(indicators_wic, 
-                            id.vars = 'ecoregion_id')
-
-
-indicator_values_wic <- indicators_wic_long  %>%
-  rename(indicator_year = variable,
-         raw_indicator_value = value) %>% # TODO: Change to transformed
-  mutate(year = NA) %>%
-  mutate(indicator = as.character(indicator_year)) 
-
-oceania_comparisons <- indicator_values_wic %>%
-  filter(indicator == "BII"| 
-           indicator == "BHI"|
-           indicator == "HFP"|
-           indicator == "Endangered"|
-           indicator == "RLI_Amph"|
-           indicator == "RLI_Birds"|
-           indicator == "RLI_Mammals")
-
-length(unique(oceania_comparisons$ecoregion_id))
-
-oceania_bhi_amph <- oceania_comparisons %>%
-  filter(indicator == "RLI_Amph"| 
-           indicator == "BHI")
-
-produce_scatterplots(oceania_bhi_amph, "oceania_bhi_amph", save = TRUE)
-
-oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
-
-plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
-
-oceania_master <- indicator_values_master %>%
-  filter(realm == "Oceania")
-
-oceania_master_bhi <- oceania_master %>%
-  filter(indicator == "BHI plants") %>%
-  select(-country) %>%
-  distinct(.) %>%
-  group_by(ecoregion_id, year) %>%
-  arrange(.)
-
-ggplot(oceania_master_bhi) +
-  geom_line(aes(x = year, 
-                y = raw_indicator_value, 
-                color = ecoregion_id))
-
-
-# Australasia ----
-
-indicators_wic <- indicators_wic_australasia %>%
-  rename(ecoregion_id = Ecoregion_id) %>%
-  select(-geometry, -REALM)
-
-indicators_wic_long <- melt(indicators_wic, 
-                            id.vars = 'ecoregion_id')
-
-
-indicator_values_wic <- indicators_wic_long  %>%
-  rename(indicator_year = variable,
-         raw_indicator_value = value) %>% # TODO: Change to transformed
-  mutate(year = NA) %>%
-  mutate(indicator = as.character(indicator_year)) 
-
-australasia_comparisons <- indicator_values_wic %>%
-  filter(indicator == "BII"| 
-           indicator == "BHI"|
-           indicator == "HFP"|
-           indicator == "Endangered"|
-           indicator == "RLI_Amph"|
-           indicator == "RLI_Birds"|
-           indicator == "RLI_Mammals")
-
-length(unique(oceania_comparisons$ecoregion_id))
-
-aus_bhi_amph <- australasia_comparisons %>%
-  filter(indicator == "RLI_Amph"| 
-           indicator == "BHI")
-
-aus_bhi_amph$RLI_Amph_t <- 1/(max(aus_bhi_amph$RLI_Amph_t + 1, na.rm = TRUE) - 
-                                aus_bhi_amph$RLI_Amph_t)
-
-1/(max(indicators_wide_inv_centred$`proportion.at.risk.1980-`+1, 
-       na.rm = TRUE) - 
-     indicators_wide_inv_centred$`proportion.at.risk.1980-`) 
-
-produce_scatterplots(aus_bhi_amph, "aus_bhi_amph", save = TRUE)
-
-oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
-
-plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
-
-oceania_master <- indicator_values_master %>%
-  filter(realm == "Oceania")
-
-oceania_master_bhi <- oceania_master %>%
-  filter(indicator == "BHI plants") %>%
-  select(-country) %>%
-  distinct(.) %>%
-  group_by(ecoregion_id, year) %>%
-  arrange(.)
-
-ggplot(oceania_master_bhi) +
-  geom_line(aes(x = year, 
-                y = raw_indicator_value, 
-                color = ecoregion_id))
-
-# Transformed
-
-indicators_by_year <- split(indicators_values_transformed, indicator_values_transformed$year)
-indicators_by_year_names <- paste(location, "transformed", names(indicators_by_year), sep = "_")
-
-scatterplots_by_year <- list()
-
-for (i in seq_along(indicators_by_year)) {
-  
-  scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
-                                                    indicators_by_year_names[[i]],
-                                                    save = FALSE)
-  
-}
-
-scatterplots_by_year[[2]]
-
-# * Subset by realm ----
-
-# * Subset by time by realm ----
-
-# Split data into nested list (level 1 = year, level 2 = realm)
-
-indicators_by_year_by_realm <- list()
-
-for (i in seq_along(indicators_by_year)) {
-  
-  indicators_timepoint <- indicators_by_year[[i]]
-  
-  indicators_by_year_by_realm[[i]] <- split(indicators_timepoint, 
-                                            indicators_timepoint$realm)
-}
-
-indicators_by_year_by_realm <- flatten(indicators_by_year_by_realm)
-realm_names <- names(indicators_by_year_by_realm)
-timepoints <- names(indicators_by_year)
-time_names <- rep(timepoints, each = length(unique(realm_names)))
-indicators_by_year_by_realm_names <- paste(realm_names, time_names , sep = "_")
-
-scatterplots_by_year_by_realm <- list()
-
-for (i in seq_along(indicators_by_year_by_realm)){
-  
-  scatterplots_by_year_by_realm[[i]] <- produce_scatterplots(indicators_by_year_by_realm[[i]],
-                                                             indicators_by_year_by_realm_names[[i]],
-                                                             save = TRUE)
-  
-}
-
-names(scatterplots_by_year_by_realm) <- indicators_by_year_by_realm_names
-
-# Look at Australiasia 2005
-
-scatterplots_by_year_by_realm[[27]]
-
-# Look at Oceania 2005
-
-scatterplots_by_year_by_realm[[31]]
-
-# * Subset effect of land use on extinction risk ----
-
-land_use_atrisk_values <- indicator_values_master %>%
-  filter(indicator_year == "human footprint index 1990"|
-           indicator_year == "proportion at risk 1990"|
-           indicator_year == "proportion at risk 2000"|
-           indicator_year == "proportion at risk 2005"|
-           indicator_year == "proportion at risk 2010"|
-           indicator_year == "proportion at risk 2015")
-
-hfp_vs_atrisk_scatterplots <- produce_scatterplots(land_use_atrisk_values, 
-                                                   paste(location, eco_version,
-                                                         "HFP1990_vs_AtRisk_time_series",
-                                                         sep = "_"), save = TRUE)
-
-# * Subset effect of land use on extinction  ----
-
-land_use_extinction_values <- indicator_values_master %>%
-  filter(indicator_year == "human footprint index 1990"|
-           indicator_year == "proportion extinct 1990"|
-           indicator_year == "proportion extinct 2000"|
-           indicator_year == "proportion extinct 2005"|
-           indicator_year == "proportion extinct 2010"|
-           indicator_year == "proportion extinct 2015")
-
-hfp_vs_extinction_scatterplots <- produce_scatterplots(land_use_extinction_values, 
-                                                       paste(location, eco_version,
-                                                             "HFP1990_vs_Extinction_time_series",
-                                                             sep = "_"), save = TRUE)
-
-
-hfp_vs_extinction_scatterplots
-
-# * Subset only unrelated indicators  ----
-
-subset_values <- indicator_values_master %>%
-  filter(indicator_year == "human footprint index 1990"|
-           indicator_year == "human footprint index 2010"|
-           indicator_year == "abundance biodiversity intactness index 2005"|
-           indicator_year == "richness biodiversity intactness index 2005"|
-           indicator_year == "proportion extinct 2005")
-
-subset_scatterplots <- produce_scatterplots(subset_values, 
-                                            paste(location, eco_version,
-                                                  "subset_indicators",
-                                                  sep = "_"), save = FALSE)
-
-
-subset_scatterplots
-
-
-ggplot(data = indicator_values_master_wide_scaled, 
-       aes(x = abundance.biodiversity.intactness.index.2005, 
-           y = human.footprint.index.1990)) +
-  geom_point() + 
-  coord_trans(x = "log10", y = "log10")
-
-# Pairwise correlations and scatterplots ----
-
-#' TODO: Can we use ggpair with other ggplot syntax? Including attributes but
-#' also transformations? https://www.r-graph-gallery.com/199-correlation-matrix-with-ggally.html
-
-correlations <- list()
-scatterplots <- list()
-years <- list()
-
-for (i in seq_along(indicator_values_time_list)) {
-  
-  # Get the year name
-  
-  year <- range(indicator_values_time_list[[i]]$year)
-  
-  # Remove year column from dataframe
-  
-  step1 <- indicator_values_time_list[[i]] %>% 
-    select(ecoregion_id, 
-           raw_indicator_value, 
-           indicator_year, 
-           -year) %>%
-    distinct(.)
-  
-  # Convert into wide format
-  
-  # step2 <- dcast(step1, ecoregion_code ~ indicator, 
-  #                value.var = "raw_indicator_value", sum)
-  
-  step2 <- step1 %>%
-    spread(key = indicator_year, 
-           value = raw_indicator_value) 
-  
-  # Convert into matrix without id variables
-  
-  step3 <- as.matrix(step2[2:ncol(step2)])
-  
-  # Check if there's enough indicators to analyse correlation (ie more than 2)
-  
-  if(ncol(step3) == 1) {
-    
-    print(paste("Year", year, "does not have values for more than one indicator to test correlations between"))
-    
-    rm(step1, step2, step3)
-    
-  } else {
-    
-    # Analyse correlations between indicators 
-    
-    step4 <- step3[complete.cases(step3),]
-    
-    correlations[[i]] <- as.data.frame(cor(step4, method = "pearson"))
-    
-    scatterplots[[i]] <- ggpairs(as.data.frame(step4))
-    
-    years[[i]] <- year
-    
-    rm(step1, step2, step3, step4)
-    
-  }
-  
-}
-
-# Remove the empty lists with no data in them
-
-names(correlations) <- years
-
-correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
-
-names(scatterplots) <- years
-
-if(save_outputs == "yes") {
-  
-  for (i in seq_along(scatterplots)) {
-    
-    ggsave(file.path(outputs, paste(as.character(years[[i]]),"_scatterplot",
-                                    ".png", sep = "")), 
-           scatterplots[[i]],  device = "png")
-    
-  }
-}
+# PCA ----
+
+# Prepare data
+
+pca_data_1 <- gather(indicators_wide_centred_trunc, indicator, indicator_value, 
+                     `BHI plants 2005`:`threatened 2005-`, factor_key=TRUE)
+
+pca_data_2 <- pca_data_1 %>%
+              merge(ecoregions_wide[c("ecoregion_id",
+                                      "realm",
+                                      "headline.threat.type",
+                                      "Biome",
+                                      "island.status",
+                                      "scientific.publications.factor",
+                                      "area.factor",
+                                      "lpi.records.factor",
+                                      "rli.records.factor")], 
+                    by = "ecoregion_id") %>%
+              dplyr::select(ecoregion_id, realm, headline.threat.type,
+                            Biome, island.status, scientific.publications.factor,
+                            area.factor,
+                            lpi.records.factor,
+                            rli.records.factor,
+                            everything())
+
+pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
+
+pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,10:ncol(pca_data_3)]),]
+
+pca_data_5 <- pca_data_4[pca_data_4$headline.threat.type %in% headline_threats,]
+
+# Conduct the PCA
+
+pca=prcomp(pca_data_5[,10:ncol(pca_data_5)],center=TRUE,scale=TRUE)
+summary(pca)
+
+# look at the eigen values and cumulative variance plot
+
+screeplot(pca, type = "l", npcs = 5, main = "Screeplot of the first 10 PCs")
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+plot(cumpro[0:5], xlab = "PC #", ylab = "Amount of explained variance", 
+     main = "Cumulative variance plot")
+
+# first two principle components plot (the results seems clustered..)
+plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)", main = "PC1 / PC2 - plot")
+
+# plot in 2 dimentions (seems not good results...)
+# install.packages("factoextra")
+
+# * pca realms ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$realm),
+             legend.title = "realm") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# * pca threats ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$headline.threat.type),
+             legend.title = "threat type") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+# * pca islands ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$island.status),
+             legend.title = "island status") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+# * pca biomes ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$Biome),
+             legend.title = "biome") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# * pca scientific capacity ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$scientific.publications.factor),
+             legend.title = "scientific capacity") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# * pca area ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$area.factor),
+             legend.title = "ecoregion size") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# * pca RLI data ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$rli.records.factor),
+             legend.title = "RLI record numbers") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# * pca LPI data ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$lpi.records.factor),
+             legend.title = "LPI record numbers") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+#' # All indicators with 2005 data
+#' 
+#' indicator_matrix_2005 <- indicator_matrix[, c(1,2,10,16,23,27,28)]
+#' 
+#' indicator_correlations_2005 <- ggcorr(indicator_matrix_2005)
+#' 
+#' # All indicators with 2010 data
+#' 
+#' indicator_matrix_2010 <- indicator_matrix[, c(3,6,11,17,25)]
+#' 
+#' indicator_correlations_2010 <- ggcorr(indicator_matrix_2010)
+#' 
+#' # RLI all timepoints and 1990 HFP
+#' 
+#' indicator_matrix_rli <- indicator_matrix[, c(5,21,22,23,24,25)]
+#' 
+#' indicator_correlations_rli <- ggcorr(indicator_matrix_rli)
+#' 
+#' # BHI all timepoints and 1990 HFP
+#' 
+#' indicator_matrix_bhi <- indicator_matrix[, c(5,2, 3, 4)]
+#' 
+#' indicator_correlations_bhi <- ggcorr(indicator_matrix_bhi)
+#' 
+#' # Extinctions all timepoints and 1990 HFP
+#' 
+#' indicator_matrix_ex <- indicator_matrix[, c(5,13,14,15,16,17,18)]
+#' 
+#' indicator_correlations_ex <- ggcorr(indicator_matrix_ex)
+#' 
+#' # Indicators from different data sources 2005 - 2010
+#' 
+#' indicator_matrix_ind <- indicator_matrix[, c(1,2,6,10,20,24,27)]
+#' 
+#' indicator_correlations_ind <- ggcorr(indicator_matrix_ind, palette = "BuPu",
+#'                                      label = TRUE)
+#' 
+#' 
+#' # RLI Birds 1980 and following extinctions
+#' 
+#' indicator_matrix_er <- indicator_matrix[, c(21, 13, 14,15,16,17,18)]
+#' 
+#' indicator_correlations_er <- ggcorr(indicator_matrix_er)
+#' 
+#' 
+#' # Transformed
+#' 
+#' indicator_matrix_t <- indicators_transformed %>%
+#'   select(-ecoregion_id) %>%
+#'   na.omit(.)
+#' 
+#' pearson_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
+#'                                                       method = "pearson"))
+#' 
+#' spearman_correlations_all_years_t <- as.data.frame(cor(indicator_matrix_t, 
+#'                                                        method = "spearman"))
+#' 
+#' # mutate(HFP_adjusted_old = ifelse(raw_indicator_value > 33.29037,
+#' #                                  33.29037, raw_indicator_value)) %>%
+#' # mutate(RLI_adjusted_old = ifelse(raw_indicator_value == 0, NA,
+#' #                ifelse(raw_indicator_value > 0 & 
+#' #                         raw_indicator_value < 0.9538,
+#' #                       0.9538, raw_indicator_value))) %>%
+#' # mutate(year = as.numeric(year)) %>%
+#' # mutate(HFP_adjusted_old = ifelse(indicator != 
+#' #                           "mean human footprint index", NA,
+#' #                           HFP_adjusted_old)) %>%
+#' # mutate(RLI_adjusted_old = ifelse(grepl("red list index Aves",
+#' #                                 indicator), 
+#' #                                 RLI_adjusted_old, NA)) %>%
+#' # mutate(HFP_adjusted =
+#' #          pmin(pmax(raw_indicator_value,quantile(raw_indicator_value,
+#' #                                          .005, na.rm = TRUE)),
+#' #               quantile(raw_indicator_value, .995,
+#' #                        na.rm = TRUE))) %>%
+#' # mutate(HFP_scaled_adjusted = scale_to_1(HFP_adjusted)) %>%
+#' # mutate(HFP_scaled_adjusted_inverted =
+#' #          1 - HFP_scaled_adjusted) %>%
+#' # mutate(scaled = scale_to_1(raw_indicator_value)) %>%
+#' # mutate(inverted = 1 - raw_indicator_value) %>%
+#' # mutate(scaled_inverted = 1 - scaled) %>%
+#' # mutate(RLI_adjusted = ifelse(raw_indicator_value == 0, NA,
+#' #                              pmin(pmax(raw_indicator_value,
+#' #                   quantile(raw_indicator_value, .05, 
+#' #                            na.rm = TRUE))))) %>%
+#' # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
+#' 
+#' # Scatterplots ----
+#' 
+#' indicator_values_master_1 <- indicator_values_master
+#' 
+#' indicator_values_master_2 <- indicator_values_master_1 %>%
+#'   mutate(key2 = paste(ecoregion_id, indicator_year, sep = " ")) %>%
+#'   mutate(key = make.names(key2)) %>%
+#'   mutate(key = str_remove(key, "X")) %>%
+#'   select(-key2) 
+#' 
+#' indicators_scaled <- indicators_scaled %>%
+#'   mutate(variable = str_remove(variable, "-"))
+#' 
+#' indicator_values_scaled <- indicators_scaled %>%
+#'   mutate(key = paste(ecoregion_id, variable, sep = ".")) %>%
+#'   rename(centred_indicator_value = value)
+#' 
+#' unique(indicator_values_scaled$variable)
+#' unique(indicator_values_master$indicator_year)
+#' 
+#' indicator_values_master <- indicator_values_master_2 %>%
+#'   merge(indicator_values_scaled[c("key", 
+#'                                   "centred_indicator_value")], by = "key") 
+#' 
+#' unique(indicator_values_master$indicator_year)
+#' 
+#' # * Subset by indicator ----
+#' 
+#' indicator_values_master_list <- split(indicator_values_master, 
+#'                                       indicator_values_master$indicator)
+#' 
+#' indicator_values_master_wide <- list()
+#' indicator_by_time_plots <- list()
+#' 
+#' for (i in seq_along(indicator_values_master_list)) {
+#'   
+#'   wide_indicator_data <- indicator_values_master_list[[i]] %>%
+#'     select(ecoregion_id, indicator_year, 
+#'            centred_indicator_value) %>%
+#'     distinct(.) %>%
+#'     spread(key = indicator_year, 
+#'            value = centred_indicator_value) %>%
+#'     select(-ecoregion_id)
+#'   
+#'   indicator_plot <- ggpairs(wide_indicator_data)
+#'   
+#'   indicator_name <- indicator_values_master_list[[i]][1,2]
+#'   
+#'   indicator_values_master_wide[[i]] <- wide_indicator_data
+#'   indicator_by_time_plots[[i]] <- indicator_plot
+#'   
+#'   scatterplot_directory <- file.path(indicator_outputs, 
+#'                                      "scatterplots")
+#'   
+#'   if( !dir.exists( scatterplot_directory ) ) {
+#'     
+#'     dir.create( scatterplot_directory, recursive = TRUE )
+#'     
+#'   }
+#'   
+#'   ggsave(file.path(scatterplot_directory, paste(location, eco_version,
+#'                                                 indicator_name, 
+#'                                                 "time_scatterplots.png", 
+#'                                                 sep = "_")),
+#'          indicator_plot,  device = "png")
+#'   
+#' }
+#' 
+#' 
+#' # * Subset by time ----
+#' 
+#' 
+#' # Non-transformed
+#' 
+#' indicators_by_year <- split(indicator_values_master, indicator_values_master$year)
+#' indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
+#' 
+#' scatterplots_by_year <- list()
+#' 
+#' for (i in seq_along(indicators_by_year)){
+#'   
+#'   scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+#'                                                     indicators_by_year_names[[i]],
+#'                                                     save = TRUE, "centred")
+#'   
+#' }
+#' 
+#' scatterplots_by_year[[4]]
+#' 
+#' 
+#' # Centred and inverted 
+#' 
+#' indicators_wic <- indicators_wic %>%
+#'   rename(ecoregion_id = Ecoregion_id) %>%
+#'   select(-geometry, -REALM)
+#' 
+#' indicators_wic_long <- melt(indicators_wic, 
+#'                             id.vars = 'ecoregion_id')
+#' 
+#' 
+#' indicator_values_wic <- indicators_wic_long  %>%
+#'   rename(indicator_year = variable,
+#'          raw_indicator_value = value) %>% # TODO: Change to transformed
+#'   mutate(year = str_sub(indicator_year, start= -4)) %>%
+#'   mutate(indicator_year = as.character(indicator_year)) %>%
+#'   mutate(indicator = removeNumbers(indicator_year)) %>%
+#'   mutate(indicator = str_replace_all(indicator,
+#'                                      '[[:punct:]]',' '))
+#' 
+#' indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
+#' indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
+#' 
+#' scatterplots_by_year <- list()
+#' 
+#' for (i in seq_along(indicators_by_year)){
+#'   
+#'   scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+#'                                                     indicators_by_year_names[[i]],
+#'                                                     save = FALSE)
+#'   
+#' }
+#' 
+#' scatterplots_by_year[[1]]
+#' 
+#' 
+#' # RLI and HFP 2005 only ---
+#' 
+#' indicator_values_rli_hfp <- indicator_values_wic %>%
+#'   filter(indicator_year == "HFP.2005-" |
+#'            indicator_year ==  "RLI.2005") 
+#' 
+#' rli_hfp_corr <- produce_scatterplots(indicator_values_rli_hfp, "test", save = FALSE,"raw")
+#' 
+#' indicators_by_year <- split(indicator_values_wic, indicator_values_wic$year)
+#' indicators_by_year_names <- paste(location, names(indicators_by_year), sep = "_")
+#' 
+#' scatterplots_by_year <- list()
+#' 
+#' for (i in seq_along(indicators_by_year)){
+#'   
+#'   scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+#'                                                     indicators_by_year_names[[i]],
+#'                                                     save = FALSE)
+#'   
+#' }
+#' 
+#' scatterplots_by_year[[1]]
+#' 
+#' # Oceania ----
+#' 
+#' indicators_wic <- indicators_wic_oceania %>%
+#'   rename(ecoregion_id = Ecoregion_id) %>%
+#'   select(-geometry, -REALM)
+#' 
+#' indicators_wic_long <- melt(indicators_wic, 
+#'                             id.vars = 'ecoregion_id')
+#' 
+#' 
+#' indicator_values_wic <- indicators_wic_long  %>%
+#'   rename(indicator_year = variable,
+#'          raw_indicator_value = value) %>% # TODO: Change to transformed
+#'   mutate(year = NA) %>%
+#'   mutate(indicator = as.character(indicator_year)) 
+#' 
+#' oceania_comparisons <- indicator_values_wic %>%
+#'   filter(indicator == "BII"| 
+#'            indicator == "BHI"|
+#'            indicator == "HFP"|
+#'            indicator == "Endangered"|
+#'            indicator == "RLI_Amph"|
+#'            indicator == "RLI_Birds"|
+#'            indicator == "RLI_Mammals")
+#' 
+#' length(unique(oceania_comparisons$ecoregion_id))
+#' 
+#' oceania_bhi_amph <- oceania_comparisons %>%
+#'   filter(indicator == "RLI_Amph"| 
+#'            indicator == "BHI")
+#' 
+#' produce_scatterplots(oceania_bhi_amph, "oceania_bhi_amph", save = TRUE)
+#' 
+#' oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
+#' 
+#' plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
+#' 
+#' oceania_master <- indicator_values_master %>%
+#'   filter(realm == "Oceania")
+#' 
+#' oceania_master_bhi <- oceania_master %>%
+#'   filter(indicator == "BHI plants") %>%
+#'   select(-country) %>%
+#'   distinct(.) %>%
+#'   group_by(ecoregion_id, year) %>%
+#'   arrange(.)
+#' 
+#' ggplot(oceania_master_bhi) +
+#'   geom_line(aes(x = year, 
+#'                 y = raw_indicator_value, 
+#'                 color = ecoregion_id))
+#' 
+#' 
+#' # Australasia ----
+#' 
+#' indicators_wic <- indicators_wic_australasia %>%
+#'   rename(ecoregion_id = Ecoregion_id) %>%
+#'   select(-geometry, -REALM)
+#' 
+#' indicators_wic_long <- melt(indicators_wic, 
+#'                             id.vars = 'ecoregion_id')
+#' 
+#' 
+#' indicator_values_wic <- indicators_wic_long  %>%
+#'   rename(indicator_year = variable,
+#'          raw_indicator_value = value) %>% # TODO: Change to transformed
+#'   mutate(year = NA) %>%
+#'   mutate(indicator = as.character(indicator_year)) 
+#' 
+#' australasia_comparisons <- indicator_values_wic %>%
+#'   filter(indicator == "BII"| 
+#'            indicator == "BHI"|
+#'            indicator == "HFP"|
+#'            indicator == "Endangered"|
+#'            indicator == "RLI_Amph"|
+#'            indicator == "RLI_Birds"|
+#'            indicator == "RLI_Mammals")
+#' 
+#' length(unique(oceania_comparisons$ecoregion_id))
+#' 
+#' aus_bhi_amph <- australasia_comparisons %>%
+#'   filter(indicator == "RLI_Amph"| 
+#'            indicator == "BHI")
+#' 
+#' aus_bhi_amph$RLI_Amph_t <- 1/(max(aus_bhi_amph$RLI_Amph_t + 1, na.rm = TRUE) - 
+#'                                 aus_bhi_amph$RLI_Amph_t)
+#' 
+#' 1/(max(indicators_wide_inv_centred$`proportion.at.risk.1980-`+1, 
+#'        na.rm = TRUE) - 
+#'      indicators_wide_inv_centred$`proportion.at.risk.1980-`) 
+#' 
+#' produce_scatterplots(aus_bhi_amph, "aus_bhi_amph", save = TRUE)
+#' 
+#' oceania_scatterplots <- produce_scatterplots(oceania_comparisons, "oceania", save =FALSE)
+#' 
+#' plot(indicators_wic_oceania$HFP,indicators_wic_oceania$RLI_Amph)
+#' 
+#' oceania_master <- indicator_values_master %>%
+#'   filter(realm == "Oceania")
+#' 
+#' oceania_master_bhi <- oceania_master %>%
+#'   filter(indicator == "BHI plants") %>%
+#'   select(-country) %>%
+#'   distinct(.) %>%
+#'   group_by(ecoregion_id, year) %>%
+#'   arrange(.)
+#' 
+#' ggplot(oceania_master_bhi) +
+#'   geom_line(aes(x = year, 
+#'                 y = raw_indicator_value, 
+#'                 color = ecoregion_id))
+#' 
+#' # Transformed
+#' 
+#' indicators_by_year <- split(indicators_values_transformed, indicator_values_transformed$year)
+#' indicators_by_year_names <- paste(location, "transformed", names(indicators_by_year), sep = "_")
+#' 
+#' scatterplots_by_year <- list()
+#' 
+#' for (i in seq_along(indicators_by_year)) {
+#'   
+#'   scatterplots_by_year[[i]] <- produce_scatterplots(indicators_by_year[[i]],
+#'                                                     indicators_by_year_names[[i]],
+#'                                                     save = FALSE)
+#'   
+#' }
+#' 
+#' scatterplots_by_year[[2]]
+#' 
+#' # * Subset by realm ----
+#' 
+#' # * Subset by time by realm ----
+#' 
+#' # Split data into nested list (level 1 = year, level 2 = realm)
+#' 
+#' indicators_by_year_by_realm <- list()
+#' 
+#' for (i in seq_along(indicators_by_year)) {
+#'   
+#'   indicators_timepoint <- indicators_by_year[[i]]
+#'   
+#'   indicators_by_year_by_realm[[i]] <- split(indicators_timepoint, 
+#'                                             indicators_timepoint$realm)
+#' }
+#' 
+#' indicators_by_year_by_realm <- flatten(indicators_by_year_by_realm)
+#' realm_names <- names(indicators_by_year_by_realm)
+#' timepoints <- names(indicators_by_year)
+#' time_names <- rep(timepoints, each = length(unique(realm_names)))
+#' indicators_by_year_by_realm_names <- paste(realm_names, time_names , sep = "_")
+#' 
+#' scatterplots_by_year_by_realm <- list()
+#' 
+#' for (i in seq_along(indicators_by_year_by_realm)){
+#'   
+#'   scatterplots_by_year_by_realm[[i]] <- produce_scatterplots(indicators_by_year_by_realm[[i]],
+#'                                                              indicators_by_year_by_realm_names[[i]],
+#'                                                              save = TRUE)
+#'   
+#' }
+#' 
+#' names(scatterplots_by_year_by_realm) <- indicators_by_year_by_realm_names
+#' 
+#' # Look at Australiasia 2005
+#' 
+#' scatterplots_by_year_by_realm[[27]]
+#' 
+#' # Look at Oceania 2005
+#' 
+#' scatterplots_by_year_by_realm[[31]]
+#' 
+#' # * Subset effect of land use on extinction risk ----
+#' 
+#' land_use_atrisk_values <- indicator_values_master %>%
+#'   filter(indicator_year == "human footprint index 1990"|
+#'            indicator_year == "proportion at risk 1990"|
+#'            indicator_year == "proportion at risk 2000"|
+#'            indicator_year == "proportion at risk 2005"|
+#'            indicator_year == "proportion at risk 2010"|
+#'            indicator_year == "proportion at risk 2015")
+#' 
+#' hfp_vs_atrisk_scatterplots <- produce_scatterplots(land_use_atrisk_values, 
+#'                                                    paste(location, eco_version,
+#'                                                          "HFP1990_vs_AtRisk_time_series",
+#'                                                          sep = "_"), save = TRUE)
+#' 
+#' # * Subset effect of land use on extinction  ----
+#' 
+#' land_use_extinction_values <- indicator_values_master %>%
+#'   filter(indicator_year == "human footprint index 1990"|
+#'            indicator_year == "proportion extinct 1990"|
+#'            indicator_year == "proportion extinct 2000"|
+#'            indicator_year == "proportion extinct 2005"|
+#'            indicator_year == "proportion extinct 2010"|
+#'            indicator_year == "proportion extinct 2015")
+#' 
+#' hfp_vs_extinction_scatterplots <- produce_scatterplots(land_use_extinction_values, 
+#'                                                        paste(location, eco_version,
+#'                                                              "HFP1990_vs_Extinction_time_series",
+#'                                                              sep = "_"), save = TRUE)
+#' 
+#' 
+#' hfp_vs_extinction_scatterplots
+#' 
+#' # * Subset only unrelated indicators  ----
+#' 
+#' subset_values <- indicator_values_master %>%
+#'   filter(indicator_year == "human footprint index 1990"|
+#'            indicator_year == "human footprint index 2010"|
+#'            indicator_year == "abundance biodiversity intactness index 2005"|
+#'            indicator_year == "richness biodiversity intactness index 2005"|
+#'            indicator_year == "proportion extinct 2005")
+#' 
+#' subset_scatterplots <- produce_scatterplots(subset_values, 
+#'                                             paste(location, eco_version,
+#'                                                   "subset_indicators",
+#'                                                   sep = "_"), save = FALSE)
+#' 
+#' 
+#' subset_scatterplots
+#' 
+#' 
+#' ggplot(data = indicator_values_master_wide_scaled, 
+#'        aes(x = abundance.biodiversity.intactness.index.2005, 
+#'            y = human.footprint.index.1990)) +
+#'   geom_point() + 
+#'   coord_trans(x = "log10", y = "log10")
+#' 
+#' # Pairwise correlations and scatterplots ----
+#' 
+#' #' TODO: Can we use ggpair with other ggplot syntax? Including attributes but
+#' #' also transformations? https://www.r-graph-gallery.com/199-correlation-matrix-with-ggally.html
+#' 
+#' correlations <- list()
+#' scatterplots <- list()
+#' years <- list()
+#' 
+#' for (i in seq_along(indicator_values_time_list)) {
+#'   
+#'   # Get the year name
+#'   
+#'   year <- range(indicator_values_time_list[[i]]$year)
+#'   
+#'   # Remove year column from dataframe
+#'   
+#'   step1 <- indicator_values_time_list[[i]] %>% 
+#'     select(ecoregion_id, 
+#'            raw_indicator_value, 
+#'            indicator_year, 
+#'            -year) %>%
+#'     distinct(.)
+#'   
+#'   # Convert into wide format
+#'   
+#'   # step2 <- dcast(step1, ecoregion_code ~ indicator, 
+#'   #                value.var = "raw_indicator_value", sum)
+#'   
+#'   step2 <- step1 %>%
+#'     spread(key = indicator_year, 
+#'            value = raw_indicator_value) 
+#'   
+#'   # Convert into matrix without id variables
+#'   
+#'   step3 <- as.matrix(step2[2:ncol(step2)])
+#'   
+#'   # Check if there's enough indicators to analyse correlation (ie more than 2)
+#'   
+#'   if(ncol(step3) == 1) {
+#'     
+#'     print(paste("Year", year, "does not have values for more than one indicator to test correlations between"))
+#'     
+#'     rm(step1, step2, step3)
+#'     
+#'   } else {
+#'     
+#'     # Analyse correlations between indicators 
+#'     
+#'     step4 <- step3[complete.cases(step3),]
+#'     
+#'     correlations[[i]] <- as.data.frame(cor(step4, method = "pearson"))
+#'     
+#'     scatterplots[[i]] <- ggpairs(as.data.frame(step4))
+#'     
+#'     years[[i]] <- year
+#'     
+#'     rm(step1, step2, step3, step4)
+#'     
+#'   }
+#'   
+#' }
+#' 
+#' # Remove the empty lists with no data in them
+#' 
+#' names(correlations) <- years
+#' 
+#' correlations <- list.clean(correlations, fun = is.null, recursive = FALSE)
+#' 
+#' names(scatterplots) <- years
+#' 
+#' if(save_outputs == "yes") {
+#'   
+#'   for (i in seq_along(scatterplots)) {
+#'     
+#'     ggsave(file.path(outputs, paste(as.character(years[[i]]),"_scatterplot",
+#'                                     ".png", sep = "")), 
+#'            scatterplots[[i]],  device = "png")
+#'     
+#'   }
+#' }

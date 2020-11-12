@@ -1841,6 +1841,11 @@ ecoregion_headline_threats <- readRDS(file.path(indicator_outputs,
                               paste(location, eco_version, 
                                     "headline_threats.rds",
                                     sep = "_")))
+
+ecoregion_hfp_threats <- readRDS(file.path(indicator_outputs, 
+                                           paste(location, eco_version, 
+                                                 "HFP_threats.rds",
+                                                 sep = "_")))
   
 } else {
 
@@ -1852,7 +1857,10 @@ threat_scheme <- read.csv(file.path(inputs, "iucn_threats\\iucn_threat_classific
 threat_scheme$code <- as.character(threat_scheme$code)
 
 formatted_threat_data <- all_threat_data %>%
-                         merge(threat_scheme[c("code", "headline", "headline_name")], by = "code") %>%
+                         merge(threat_scheme[c("code", "headline", 
+                                               "headline_name", 
+                                               "included_in_hfp")], 
+                               by = "code") %>%
                          filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>%
                          filter(timing != "Future") %>%
                          filter(score == "Medium Impact: 6" |
@@ -1865,14 +1873,15 @@ formatted_threat_data <- all_threat_data %>%
                                by = "binomial") %>%
                          dplyr::select(-code, - invasive) %>%
                          dplyr::select(ecoregion_id, binomial, tsn, headline,
-                                       headline_name, title) %>%
+                                       headline_name, title, included_in_hfp) %>%
                          distinct(.) %>%
                          group_by(ecoregion_id, title) %>%
                          mutate(number_of_species_affected = n_distinct(tsn)) %>%
                          group_by(ecoregion_id) %>%
                          mutate(number_of_species = n_distinct(tsn)) %>%
-                         select(ecoregion_id, headline_name, title, 
-                                number_of_species_affected, number_of_species) %>%
+                         dplyr::select(ecoregion_id, headline_name, title, 
+                                number_of_species_affected, number_of_species, 
+                                included_in_hfp) %>%
                          distinct(.) %>%
                          mutate(proportion_affected = 
                                   number_of_species_affected/number_of_species) %>%
@@ -1881,19 +1890,26 @@ formatted_threat_data <- all_threat_data %>%
                          group_by(ecoregion_id) %>%
                          mutate(threat_count = n()) %>%
                          summarise_all(~ toString(unique(.))) %>%
-                         rename(predominant_threat = title)
+                         rename(predominant_threat = title) %>%
+                         mutate(included_in_hfp = ifelse(included_in_hfp == "1, 0",
+                                              "1",
+                                              ifelse(included_in_hfp == "0, 1",
+                                                     "1", included_in_hfp)))
+
+
 
 head(formatted_threat_data)
 
 ecoregion_threats <- formatted_threat_data %>%
-                     select(ecoregion_id, predominant_threat, threat_count)
+                     dplyr::select(ecoregion_id, predominant_threat, 
+                            threat_count,included_in_hfp)
 
 ecoregion_predominant_threats <- ecoregion_threats %>%
-                                 select(ecoregion_id, predominant_threat) %>%
+                                 dplyr::select(ecoregion_id, predominant_threat) %>%
                                  mutate(indicator = "predominant threat type",
                                         year = NA) %>%
                                  rename(raw_indicator_value = predominant_threat) %>%
-                                 select(indicator_columns)
+                                 dplyr::select(all_of(indicator_columns))
     
 
 saveRDS(ecoregion_predominant_threats, file.path(indicator_outputs, 
@@ -1901,11 +1917,11 @@ saveRDS(ecoregion_predominant_threats, file.path(indicator_outputs,
                                        "predominant_threat_type.rds", sep = "_")))
 
 ecoregion_pr_threat_count <- ecoregion_threats %>%
-                             select(ecoregion_id, threat_count) %>%
+                             dplyr::select(ecoregion_id, threat_count) %>%
                              mutate(indicator = "predominant threat count",
                                        year = NA) %>%
                              rename(raw_indicator_value = threat_count) %>%
-                             select(indicator_columns)
+                             dplyr::select(indicator_columns)
 
 
 saveRDS(ecoregion_pr_threat_count, file.path(indicator_outputs, 
@@ -1914,16 +1930,29 @@ saveRDS(ecoregion_pr_threat_count, file.path(indicator_outputs,
                                                        sep = "_")))
 
 ecoregion_headline_threats <- formatted_threat_data %>%
-                              select(ecoregion_id, headline_name) %>%
+                              dplyr::select(ecoregion_id, headline_name) %>%
                               mutate(indicator = "headline threat type",
                                      year = NA) %>%
                               rename(raw_indicator_value = headline_name) %>%
-                              select(indicator_columns)
+                              dplyr::select(indicator_columns)
 
 saveRDS(ecoregion_headline_threats, file.path(indicator_outputs, 
                                     paste(location, eco_version, 
                                     "headline_threats.rds",
                                                    sep = "_")))
+
+
+ecoregion_hfp_threats <- formatted_threat_data %>%
+                         dplyr::select(ecoregion_id, included_in_hfp) %>%
+                         mutate(indicator = "included in HFP",
+                                 year = NA) %>%
+                         rename(raw_indicator_value = included_in_hfp) %>%
+                         dplyr::select(indicator_columns)
+
+saveRDS(ecoregion_hfp_threats, file.path(indicator_outputs, 
+                                              paste(location, eco_version, 
+                                                    "HFP_threats.rds",
+                                                    sep = "_")))
 
 
 }
@@ -2095,6 +2124,7 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_predominant_threats,
                     ecoregion_pr_threat_count,
                     ecoregion_headline_threats,
+                    ecoregion_hfp_threats,
                     ecoregion_scientific_capacity,
                     ecoregion_realms) %>%
                     dplyr::select(ecoregion_id, indicator, year, 

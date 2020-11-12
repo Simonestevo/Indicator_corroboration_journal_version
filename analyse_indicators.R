@@ -33,6 +33,7 @@ library(PerformanceAnalytics) #not loaded
 library(data.table)
 library(rlist)
 library(factoextra)
+library(ggcorrplot)
 
 # Set input and output locations ----
 
@@ -640,8 +641,56 @@ for (i in seq_along(scenario_matrices)) {
   }
 }
 
+# The ggcorr and ggpairs outputs don't appear to always match?
+n <- 1
 test <- list.clean(scenario_correlations)
-test[[6]]
+test[[n]]
+
+x <- scenario_matrices[[n]]
+x
+
+y <- ggpairs(x,lower = list(continuous = wrap("points", size=0.1)),
+        upper = list(continuous = wrap("cor", method = "spearman",size= 2)))
+y
+
+n <- 8
+
+scenario_correlations_v2 <- list()
+
+for (i in seq_along(scenario_matrices)) {
+  
+  subset_matrix <- scenario_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(scenario_matrices)[i], 
+                "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 10) {
+    
+    print(paste("insufficient data for", names(scenario_matrices)[i], sep = " "))
+    
+  } else {
+  
+p.mat <- cor_pmat(subset_matrix)
+
+scenario_correlations_v2[[i]] <- ggcorrplot(cor(subset_matrix, 
+                                                method = "spearman"),
+           title = name, #names(scenario_matrices)[i],
+           p.mat = p.mat, 
+           type = "lower", insig = "blank",
+           colors = c("#453781FF", "white", "#287D8EFF"),
+           lab = TRUE
+    )
+  }
+}
+
+scenario_correlations_v2[[7]]
+
+# Could use this instead, allows you to mark significant correlations
+
+# https://rpkgs.datanovia.com/ggcorrplot/reference/ggcorrplot.html
+
 
 # * Predominant threat included in HFP ----
 
@@ -697,7 +746,8 @@ for (i in seq_along(HFP_threat_matrices)) {
 }
 
 test <- list.clean(HFP_threat_correlations)
-test[[2]]
+test[[1]]
+
 
 # Map scenarios ----
 
@@ -720,7 +770,11 @@ scenario_map <-  ggplot(ecoregion_values_map_data) +
   labs(fill = "test") +
   theme(legend.position = "right")
 
-
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version,
+                       "data_threat_scenarios.png",
+                                          sep = "_")), 
+       scenario_map,  device = "png")
 
 # Correlation matrices ----
 

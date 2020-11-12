@@ -125,15 +125,42 @@ add_grouping_variable <- function(variable) {
 
 # Read in data ----
 
+# Indicator data
+
 raw_indicators_long <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master.rds"))
 raw_indicators_wide <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master_wide.rds"))
+
+# Ecoregion data
+
 raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
                          "global_ecoregions_2017_ecoregion_values_master.rds")) 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
                          "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
 
+# Threat scheme
+
+threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+
+headline_threats <- threat_scheme %>%
+  dplyr::select(headline_name) %>%
+  distinct(.) %>%
+  pull()
+
+headline_threats <- c(headline_threats, "All threats")
+
+# Ecoregion map
+
+ecoregion_map_all <- readRDS(paste(
+                     file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs", 
+                               "ecoregions_2017"),
+                               "Ecoregions2017valid.rds"))
+
+ecoregion_map <- ecoregion_map_all %>% 
+  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+
+ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
 
 ### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
 
@@ -159,17 +186,33 @@ raw_indicators_wide <- raw_indicators_long %>%
 
 ecoregions_wide <- raw_ecoregions_wide
 
-ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 5, 
-                            labels = c("very_low", "low", "medium","high", "very_high"))
+ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
+                            labels = c("Few_publications", 
+                                       "Moderate_publications",
+                                       "Many_publications"))
 
 ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 5, 
-                                  labels = c("very_small", "small", "medium","large", "very_large"))
+                                  labels = c("Very_small_ecoregions", 
+                                             "Small_ecoregions", 
+                                             "Medium_ecoregions",
+                                             "Large_ecoregions", 
+                                             "Very_large_ecoregions"))
 
 ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, breaks = 5, 
-                                   labels = c("very_low", "low", "medium","high", "very_high"))
+                                   labels = c("Very_few_LPI_records", 
+                                              "Few_LPI_records", 
+                                              "Moderate_LPI_records",
+                                              "Many_LPI_records",
+                                              "Very_many_LPI_records" ))
 
-ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = 5, 
-                                   labels = c("very_low", "low", "medium","high", "very_high"))
+ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = 3, 
+                                   labels = c("Few_RLI_records", 
+                                              "Moderate_RLI_records",
+                                              "Many_RLI_records"))
+
+ecoregions_wide <- ecoregions_wide %>%
+        mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = "-")),
+               scenario.numeric = as.factor(as.numeric(scenario))) 
 
 # Indicator data cleaning ----
 
@@ -185,7 +228,7 @@ cols_max <- as.numeric(sapply(raw_indicators_wide, max, na.rm = TRUE))
 
 keys <- as.data.frame(negatives_index) %>%
         mutate(keys = ifelse(negatives_index == FALSE, 1, -1)) %>%
-        select(keys) %>%
+        dplyr::select(keys) %>%
         pull(.)
 
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
@@ -233,8 +276,8 @@ boxplot(indicators_wide_centred$`HFP 2005-`)
 indicators_wide_centred_trunc <- indicators_wide_centred %>%
                            # filter(`LPI 2005` < quantile(`LPI 2005`, 
                            #                              0.99, na.rm = TRUE)) %>%
-                           filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-                                                        0.99, na.rm = TRUE)) %>%
+                           # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
+                           #                              0.99, na.rm = TRUE)) %>%
                            filter(`HFP 2005-` < quantile(`HFP 2005-`, 
                                                             0.99, na.rm = TRUE)) 
 
@@ -292,7 +335,9 @@ for (i in seq_along(realm_matrices)) {
     
   } else {
     
-    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
       ggtitle(name)
     
     ggsave(file.path(current_analysis_outputs, 
@@ -308,14 +353,6 @@ realm_correlations[[9]]
 
 # * Headline threat ----
 
-threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
-
-headline_threats <- threat_scheme %>%
-                    dplyr::select(headline_name) %>%
-                    distinct(.) %>%
-                    pull()
-
-headline_threats <- c(headline_threats, "All threats")
 
 headline_threat_indicators <- add_grouping_variable("headline.threat.type")
 
@@ -360,7 +397,9 @@ for (i in seq_along(headline_threat_matrices)) {
     
   } else {
     
-    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
       ggtitle(name)
     
     ggsave(file.path(current_analysis_outputs, 
@@ -413,7 +452,9 @@ for (i in seq_along(island_status_matrices)) {
     
   } else {
     
-    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
       ggtitle(name)
     
     ggsave(file.path(current_analysis_outputs, 
@@ -424,7 +465,7 @@ for (i in seq_along(island_status_matrices)) {
   }
 }
 
-island_status_correlations[[2]]
+island_status_correlations[[1]]
 
 # * Scientific capacity ----
 
@@ -472,7 +513,9 @@ for (i in seq_along(scientific_capacity_matrices)) {
     
   } else {
     
-    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
       ggtitle(name)
     
     ggsave(file.path(current_analysis_outputs, 
@@ -483,7 +526,7 @@ for (i in seq_along(scientific_capacity_matrices)) {
   }
 }
 
-scientific_capacity_correlations[[6]]
+scientific_capacity_correlations[[5]]
 
 # * Number of records ----
 
@@ -529,8 +572,10 @@ for (i in seq_along(lpi_records_matrices)) {
     
   } else {
     
-    correlation_matrix <- ggcorr(subset_matrix, label = FALSE, nbreaks = 9) + 
-      ggtitle(name)
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                          label = FALSE, nbreaks = 9) + 
+                            ggtitle(name)
     
     ggsave(file.path(current_analysis_outputs, 
                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
@@ -541,6 +586,141 @@ for (i in seq_along(lpi_records_matrices)) {
 }
 
 lpi_records_correlations[[6]]
+
+# * Test scenarios ----
+
+scenario_indicators <- add_grouping_variable("scenario")
+
+scenario_indicator_list <- split(scenario_indicators, scenario_indicators$scenario)
+
+scenario_indicator_list[["Global"]] <- indicators_wide_centred %>%
+  mutate(scenario = "Global")
+
+scenario_matrices <- list()
+
+for (i in seq_along(scenario_indicator_list)) {
+  
+  scenario_matrices[[i]] <- scenario_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -scenario) %>%
+    na.omit(.)
+  
+}
+
+names(scenario_matrices) <- names(scenario_indicator_list)
+
+# Get pictoral correlation matrices
+
+scenario_correlations <- list()
+
+for (i in seq_along(scenario_matrices)) {
+  
+  subset_matrix <- scenario_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(scenario_matrices)[i], 
+                "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 10) {
+    
+    print(paste("no data for", names(scenario_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    # ggsave(file.path(current_analysis_outputs, 
+    #                  paste(name, "indicator_correlation_matrix.png", sep = "_")),
+    #        correlation_matrix, device = "png")
+    
+    scenario_correlations[[i]] <- correlation_matrix
+  }
+}
+
+test <- list.clean(scenario_correlations)
+test[[6]]
+
+# * Predominant threat included in HFP ----
+
+HFP_threat_indicators <- add_grouping_variable("included.in.HFP")
+
+HFP_threat_indicator_list <- split(HFP_threat_indicators, HFP_threat_indicators$included.in.HFP)
+
+HFP_threat_indicator_list[["Global"]] <- indicators_wide_centred %>%
+  mutate(included.in.HFP = "Global")
+
+HFP_threat_matrices <- list()
+
+for (i in seq_along(HFP_threat_indicator_list)) {
+  
+  HFP_threat_matrices[[i]] <- HFP_threat_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -included.in.HFP) %>%
+    na.omit(.)
+  
+}
+
+names(HFP_threat_matrices) <- names(HFP_threat_indicator_list)
+
+# Get pictoral correlation matrices
+
+HFP_threat_correlations <- list()
+
+for (i in seq_along(HFP_threat_matrices)) {
+  
+  subset_matrix <- HFP_threat_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(HFP_threat_matrices)[i], 
+                "indicator correlation matrix,", "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 10) {
+    
+    print(paste("no data for", names(HFP_threat_matrices)[i], sep = " "))
+    
+  } else {
+    
+    correlation_matrix <- ggcorr(subset_matrix, 
+                                 method = c("pairwise.complete.obs","spearman"),
+                                 label = FALSE, nbreaks = 9) + 
+      ggtitle(name)
+    
+    # ggsave(file.path(current_analysis_outputs, 
+    #                  paste(name, "indicator_correlation_matrix.png", sep = "_")),
+    #        correlation_matrix, device = "png")
+    
+    HFP_threat_correlations[[i]] <- correlation_matrix
+  }
+}
+
+test <- list.clean(HFP_threat_correlations)
+test[[2]]
+
+# Map scenarios ----
+
+ecoregion_values_scenario <- ecoregions_wide %>%
+                             dplyr::select(ecoregion_id, scenario)
+
+ecoregion_values_map_data <- left_join(ecoregion_map_renamed, 
+                                       ecoregion_values_scenario,
+                                       by = "ecoregion_id")
+
+scenario_map <-  ggplot(ecoregion_values_map_data) +
+  geom_sf(aes(fill = scenario), colour = "black", 
+          size = 0.05, show.legend = 'fill') +
+  scale_fill_viridis_d(alpha = .8,
+                       na.value = "grey70") +
+  theme(axis.line = element_line(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
+  labs(fill = "test") +
+  theme(legend.position = "right")
+
+
 
 # Correlation matrices ----
 
@@ -601,6 +781,10 @@ plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)", main = "PC1 / 
 
 # * pca realms ----
 
+objectname <- paste(date,"_realm_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
+
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
@@ -614,7 +798,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 # * pca threats ----
+
+objectname <- paste(date,"_threat_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -629,9 +819,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
-
+dev.off()
 
 # * pca islands ----
+
+objectname <- paste(date,"_island_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -646,8 +840,14 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 
 # * pca biomes ----
+
+objectname <- paste(date,"_biome_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -662,7 +862,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 # * pca scientific capacity ----
+
+objectname <- paste(date,"_capacity_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -677,7 +883,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 # * pca area ----
+
+objectname <- paste(date,"_ecoregion_area_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -692,7 +904,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 # * pca RLI data ----
+
+objectname <- paste(date,"_RLI_data_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -707,7 +925,13 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+dev.off()
+
 # * pca LPI data ----
+
+objectname <- paste(date,"_LPI_data_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
 
 fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
@@ -721,6 +945,8 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
              legend.title = "LPI record numbers") +
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
+
+dev.off()
 
 
 

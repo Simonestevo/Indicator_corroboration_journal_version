@@ -163,6 +163,8 @@ ecoregion_map <- ecoregion_map_all %>%
 
 ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
 
+rm(ecoregion_map_all, ecoregion_map)
+
 ### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
 
 raw_indicators_long <- raw_indicators_long %>%
@@ -185,7 +187,9 @@ raw_indicators_wide <- raw_indicators_long %>%
 
 # Convert numeric to factors
 
-ecoregions_wide <- raw_ecoregions_wide
+ecoregions_wide <- raw_ecoregions_wide %>%
+                   mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
+                                               0, LPI_records)))
 
 ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
                             labels = c("Few_publications", 
@@ -199,20 +203,28 @@ ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks 
                                              "Large_ecoregions", 
                                              "Very_large_ecoregions"))
 
-ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, breaks = 5, 
-                                   labels = c("Very_few_LPI_records", 
-                                              "Few_LPI_records", 
-                                              "Moderate_LPI_records",
-                                              "Many_LPI_records",
-                                              "Very_many_LPI_records" ))
+lpi_breaks <- c(-1, 50, 150, 400)
+ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, 
+                                          breaks = lpi_breaks, 
+                                   labels = c("Few (< 50) LPI records", 
+                                              "Moderate (between 50 and 100) LPI records",
+                                              "Many (> 100) LPI records"))
 
 ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = 3, 
-                                   labels = c("Few_RLI_records", 
-                                              "Moderate_RLI_records",
-                                              "Many_RLI_records"))
+                                   labels = c("Few (< 590) RLI records", 
+                                              "Moderate (between 590 & 1200) RLI records",
+                                              "Many (> 1200) RLI records"))
+
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
+                                                   "Threat related to HFP",
+                                                   ifelse(included.in.HFP == 0,
+                                                          "Threat external to HFP",
+                                                          NA)))
 
 ecoregions_wide <- ecoregions_wide %>%
-        mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = "-")),
+        mutate(scenario = as.factor(paste(rlilpi.records.factor, included.in.HFP, sep = " & ")),
                scenario.numeric = as.factor(as.numeric(scenario))) 
 
 # Indicator data cleaning ----
@@ -350,6 +362,42 @@ for (i in seq_along(realm_matrices)) {
 }
 
 realm_correlations[[9]]
+
+realm_correlations_v2 <- list()
+
+for (i in seq_along(realm_matrices)) {
+  
+  subset_matrix <- realm_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(realm_matrices)[i], "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 10) {
+    
+    print(paste("insufficient data for", names(realm_matrices)[i], sep = " "))
+    
+  } else {
+    
+    p.mat <- cor_pmat(subset_matrix)
+    
+    correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
+                                   title = name, #names(realm_matrices)[i],
+                                   p.mat = p.mat, 
+                                   type = "lower", insig = "blank",
+                                   outline.color = "white",
+                                   colors = c("#453781FF", "white", "#287D8EFF"),
+                                   lab = TRUE)
+    
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(names(realm_matrices)[i],
+                           "indicator_correlation_matrix.png", sep = "_")),
+           correlation_plot, device = "png")
+    
+    realm_correlations_v2[[i]] <- correlation_plot
+    
+  }
+}
 
 
 # * Headline threat ----
@@ -642,7 +690,7 @@ for (i in seq_along(scenario_matrices)) {
 }
 
 # The ggcorr and ggpairs outputs don't appear to always match?
-n <- 1
+n <- 5
 test <- list.clean(scenario_correlations)
 test[[n]]
 
@@ -655,6 +703,8 @@ y
 
 n <- 8
 
+plotnames <- paste("Scenario", c(1:7), sep = "_")
+
 scenario_correlations_v2 <- list()
 
 for (i in seq_along(scenario_matrices)) {
@@ -663,8 +713,7 @@ for (i in seq_along(scenario_matrices)) {
   
   n <- nrow(subset_matrix)
   
-  name <- paste(names(scenario_matrices)[i], 
-                "indicator correlation matrix,", "n =", n, sep = " ")
+  name <- paste(names(scenario_matrices)[i], "n =", n, sep = " ")
   
   if (nrow(subset_matrix) < 10) {
     
@@ -674,18 +723,24 @@ for (i in seq_along(scenario_matrices)) {
   
 p.mat <- cor_pmat(subset_matrix)
 
-scenario_correlations_v2[[i]] <- ggcorrplot(cor(subset_matrix, 
-                                                method = "spearman"),
+correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
            title = name, #names(scenario_matrices)[i],
            p.mat = p.mat, 
            type = "lower", insig = "blank",
+           outline.color = "white",
            colors = c("#453781FF", "white", "#287D8EFF"),
-           lab = TRUE
-    )
+           lab = TRUE)
+
+ggsave(file.path(current_analysis_outputs, 
+       paste(plotnames[[i]], "indicator_correlation_matrix.png", sep = "_")),
+       correlation_plot, device = "png")
+
+scenario_correlations_v2[[i]] <- correlation_plot
+
   }
 }
 
-scenario_correlations_v2[[7]]
+scenario_correlations_v2[[5]]
 
 # Could use this instead, allows you to mark significant correlations
 
@@ -751,6 +806,8 @@ test[[1]]
 
 # Map scenarios ----
 
+# Global ----
+
 ecoregion_values_scenario <- ecoregions_wide %>%
                              dplyr::select(ecoregion_id, scenario)
 
@@ -758,7 +815,7 @@ ecoregion_values_map_data <- left_join(ecoregion_map_renamed,
                                        ecoregion_values_scenario,
                                        by = "ecoregion_id")
 
-scenario_map <-  ggplot(ecoregion_values_map_data) +
+global_scenario_map <-  ggplot(ecoregion_values_map_data) +
   geom_sf(aes(fill = scenario), colour = "black", 
           size = 0.05, show.legend = 'fill') +
   scale_fill_viridis_d(alpha = .8,
@@ -770,10 +827,44 @@ scenario_map <-  ggplot(ecoregion_values_map_data) +
   labs(fill = "test") +
   theme(legend.position = "right")
 
+global_scenario_map
+
 ggsave(file.path(current_analysis_outputs,
                  paste(location, eco_version,
                        "data_threat_scenarios.png",
                                           sep = "_")), 
+       scenario_map,  device = "png")
+
+# Realms ----
+
+ecoregion_values_scenario_oceania <- ecoregions_wide %>%
+  dplyr::select(ecoregion_id, scenario, realm) 
+
+ecoregion_values_map_data <- left_join(ecoregion_map_renamed, 
+                                       ecoregion_values_scenario_oceania,
+                                       by = "ecoregion_id") %>%
+  filter(realm == "Oceania")
+
+scenario_map <-  ggplot(ecoregion_values_map_data) +
+  geom_sf(aes(fill = scenario), colour = "black", 
+          size = 0.05, show.legend = 'fill') +
+  scale_fill_viridis_d(alpha = .8,
+                       na.value = "grey70") +
+  theme(axis.line = element_line(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
+  labs(fill = "test") +
+  theme(legend.position = "right") +
+  scale_x_continuous(limits = c(110, 300)) + 
+  scale_y_continuous(limits = c(-50, 70)) 
+
+scenario_map
+
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version,
+                       "data_threat_scenarios.png",
+                       sep = "_")), 
        scenario_map,  device = "png")
 
 # Correlation matrices ----

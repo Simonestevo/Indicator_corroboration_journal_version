@@ -34,6 +34,7 @@ library(data.table)
 library(rlist)
 library(factoextra)
 library(ggcorrplot)
+library(MASS)
 
 # Set input and output locations ----
 
@@ -114,10 +115,10 @@ scale_to_1 <- function(vector){
     (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
 }
 
-add_grouping_variable <- function(variable) {
+add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
   
-  out <- indicators_wide_centred %>%
-    merge(ecoregions_wide[c("ecoregion_id", variable)],
+  out <- indicator_data %>%
+    merge(ecoregion_data[c("ecoregion_id", variable)],
           by = "ecoregion_id") 
   
   return(out)
@@ -153,17 +154,23 @@ headline_threats <- c(headline_threats, "All threats")
 
 # Ecoregion map
 
-ecoregion_map_all <- readRDS(paste(
-                     file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs", 
-                               "ecoregions_2017"),
-                               "Ecoregions2017valid.rds"))
+# ecoregion_map_all <- readRDS(paste(
+#                      file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs", 
+#                                "ecoregions_2017"),
+#                                "Ecoregions2017valid.rds"))
+# 
+# ecoregion_map <- ecoregion_map_all %>% 
+#   dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+# 
+# ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
+# 
+# rm(ecoregion_map_all, ecoregion_map)
 
-ecoregion_map <- ecoregion_map_all %>% 
-  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+# Countries
 
-ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
-
-rm(ecoregion_map_all, ecoregion_map)
+ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3", 
+                        "2020-08-10_database_output_files",
+                        "ecoregion_country_data.rds"))
 
 ### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
 
@@ -224,8 +231,15 @@ ecoregions_wide <- ecoregions_wide %>%
                                                           NA)))
 
 ecoregions_wide <- ecoregions_wide %>%
-        mutate(scenario = as.factor(paste(rlilpi.records.factor, included.in.HFP, sep = " & ")),
+        mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
                scenario.numeric = as.factor(as.numeric(scenario))) 
+
+ecoregions_wide_countries <- ecoregions_wide %>%
+                             merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
+                                   by.x = "ecoregion_id", by.y = "ECO_ID") %>%
+                             rename(country = CNTRY_NAME)
+
+rm(raw_ecoregions_long, raw_ecoregions_wide)
 
 # Indicator data cleaning ----
 
@@ -250,14 +264,14 @@ indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
 
 # test
 
-ECO <- east_australia # This ecoregion has a low HFP value (bad outcome)
-HFP <- raw_indicators_wide %>% filter(ecoregion_id == ECO) %>% select(`HFP 2005`)
-HFP
-
-# Once inverted, it should have a high ecoregion value to represent the bad outcome
-HFP_inv <- indicators_wide %>% filter(ecoregion_id == ECO) %>% 
-  select(`HFP 2005-`)
-HFP_inv
+# ECO <- east_australia # This ecoregion has a low HFP value (bad outcome)
+# HFP <- raw_indicators_wide %>% filter(ecoregion_id == ECO) %>% select(`HFP 2005`)
+# HFP
+# 
+# # Once inverted, it should have a high ecoregion value to represent the bad outcome
+# HFP_inv <- indicators_wide %>% filter(ecoregion_id == ECO) %>% 
+#   select(`HFP 2005-`)
+# HFP_inv
 
 # * Centre ----
 
@@ -305,15 +319,211 @@ boxplots_2 <- ggplot(indicator_boxplot_data_2) +
 
 boxplots_2
 
+rm(raw_indicators_long, raw_indicators_wide)
+
 # * Transform ----
 
+# ??
+
 # Correlation plots ----
+
+# * Country ----
+
+names(raw_ecoregions_wide)
+
+country_indicators <- add_grouping_variable("country", indicators_wide_centred_trunc,
+                                          ecoregions_wide_countries )
+
+country_indicator_list <- split(country_indicators, country_indicators$country)
+
+country_indicator_list[["All countries"]] <- indicators_wide_centred_trunc %>%
+  mutate(country = "All countrie")
+
+country_matrices <- list()
+
+for (i in seq_along(country_indicator_list)) {
+  
+  country_matrices[[i]] <- country_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -country) %>%
+    na.omit(.)
+  
+}
+
+names(country_matrices) <- names(country_indicator_list)
+
+country_correlations <- list()
+
+for (i in seq_along(country_matrices)) {
+  
+  subset_matrix <- country_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(country_matrices)[i], "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 5) {
+    
+    print(paste("insufficient data for", names(country_matrices)[i], sep = " "))
+    
+  } else {
+    
+    p.mat <- cor_pmat(subset_matrix)
+    
+    correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
+                                   title = name, #names(country_matrices)[i],
+                                   p.mat = p.mat, 
+                                   type = "lower", insig = "blank",
+                                   outline.color = "white",
+                                   colors = c("#453781FF", "white", "#287D8EFF"),
+                                   lab = TRUE)
+    
+    # ggsave(file.path(current_analysis_outputs, 
+    #                  paste(names(country_matrices)[i],
+    #                        "indicator_correlation_matrix.png", sep = "_")),
+    #        correlation_plot, device = "png")
+    
+    country_correlations[[i]] <- correlation_plot
+    
+  }
+}
+
+names(country_correlations) <- names(country_matrices)
+
+country_correlations <- list.clean(country_correlations)
+
+country_correlations[[6]]
+
+# Get the coefficients
+
+country_coefficients <- list()
+
+for (i in seq_along(country_correlations)){
+  
+  country_matrix <- country_correlations[[i]][[1]]
+  
+  country <- names(country_correlations)[i]
+  
+  hfp_rli_coefficient <- country_matrix %>%
+                         filter(Var1 == "RLI 2005") %>%
+                         filter(Var2 == "HFP 2005-") %>%
+                         select(value)
+  
+  ecoregion_n <- ecoregion_countries %>%
+                 filter(CNTRY_NAME == country) 
+  
+  ecoregion_n <- length(unique(ecoregion_n$ECO_ID))
+  
+  country_coefficient <- cbind(country, hfp_rli_coefficient, ecoregion_n)
+               
+  
+  country_coefficients[[i]] <- country_coefficient 
+                              
+  
+}
+
+country_coefficients_hfp_rli <- do.call(rbind, country_coefficients)
+
+head(country_coefficients_hfp_rli)
+
+# * Biome ----
+
+biome_indicators <- add_grouping_variable("Biome", indicators_wide_centred_trunc,
+                                            ecoregions_wide_countries )
+
+biome_indicator_list <- split(biome_indicators, biome_indicators$Biome)
+
+# biome_indicator_list[["All countries"]] <- indicators_wide_centred_trunc %>%
+#   mutate(country = "All countrie")
+
+biome_matrices <- list()
+
+for (i in seq_along(biome_indicator_list)) {
+  
+  biome_matrices[[i]] <- biome_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -Biome) %>%
+    na.omit(.)
+  
+}
+
+names(biome_matrices) <- names(biome_indicator_list)
+
+biome_correlations <- list()
+
+for (i in seq_along(biome_matrices)) {
+  
+  subset_matrix <- biome_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(biome_matrices)[i], "n =", n, sep = " ")
+  
+  if (nrow(subset_matrix) < 5) {
+    
+    print(paste("insufficient data for", names(biome_matrices)[i], sep = " "))
+    
+  } else {
+    
+    p.mat <- cor_pmat(subset_matrix)
+    
+    correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
+                                   title = name, #names(biome_matrices)[i],
+                                   p.mat = p.mat, 
+                                   type = "lower", insig = "blank",
+                                   outline.color = "white",
+                                   colors = c("#453781FF", "white", "#287D8EFF"),
+                                   lab = TRUE)
+    
+    # ggsave(file.path(current_analysis_outputs, 
+    #                  paste(names(biome_matrices)[i],
+    #                        "indicator_correlation_matrix.png", sep = "_")),
+    #        correlation_plot, device = "png")
+    
+    biome_correlations[[i]] <- correlation_plot
+    
+  }
+}
+
+names(biome_correlations) <- names(biome_matrices)
+
+biome_correlations <- list.clean(biome_correlations)
+
+biome_correlations[[6]]
+
+# Get the coefficients
+
+biome_coefficients <- list()
+
+for (i in seq_along(biome_correlations)){
+  
+  biome_matrix <- biome_correlations[[i]][[1]]
+  
+  Biome <- names(biome_correlations)[i]
+  
+  hfp_rli_coefficient <- biome_matrix %>%
+    filter(Var1 == "RLI 2005") %>%
+    filter(Var2 == "HFP 2005-") %>%
+    select(value)
+  
+  n <- length(unique(biome_indicator_list[[i]]$ecoregion_id)) 
+  
+  biome_coefficient <- cbind(Biome, hfp_rli_coefficient, n)
+  
+  
+  biome_coefficients[[i]] <- biome_coefficient 
+  
+  
+}
+
+biome_coefficients_hfp_rli <- do.call(rbind, biome_coefficients)
+
+head(biome_coefficients_hfp_rli)
 
 # * Realm ----
 
 names(raw_ecoregions_wide)
 
-realm_indicators <- add_grouping_variable("realm")
+realm_indicators <- add_grouping_variable("realm", indicators_wide_centred_trunc,
+                                          ecoregions_wide)
 
 realm_indicator_list <- split(realm_indicators, realm_indicators$realm)
 
@@ -361,7 +571,7 @@ for (i in seq_along(realm_matrices)) {
   }
 }
 
-realm_correlations[[9]]
+realm_correlations[[8]]
 
 realm_correlations_v2 <- list()
 
@@ -399,6 +609,7 @@ for (i in seq_along(realm_matrices)) {
   }
 }
 
+realm_correlations_v2[[7]]
 
 # * Headline threat ----
 
@@ -888,25 +1099,34 @@ pca_data_2 <- pca_data_1 %>%
                                       "scientific.publications.factor",
                                       "area.factor",
                                       "lpi.records.factor",
-                                      "rli.records.factor")], 
+                                      "rli.records.factor",
+                                      "scenario",
+                                      "included.in.HFP")], 
                     by = "ecoregion_id") %>%
               dplyr::select(ecoregion_id, realm, headline.threat.type,
                             Biome, island.status, scientific.publications.factor,
                             area.factor,
                             lpi.records.factor,
                             rli.records.factor,
+                            scenario,
+                            included.in.HFP,
                             everything())
 
 pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
 
 pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,10:ncol(pca_data_3)]),]
 
-pca_data_5 <- pca_data_4[pca_data_4$headline.threat.type %in% headline_threats,]
+pca_data_5 <- pca_data_4 #[pca_data_4$headline.threat.type %in% headline_threats,]
 
 # Conduct the PCA
 
-pca=prcomp(pca_data_5[,10:ncol(pca_data_5)],center=TRUE,scale=TRUE)
+pca=prcomp(pca_data_5[,12:ncol(pca_data_5)],center=TRUE,scale=TRUE)
 summary(pca)
+print(pca)
+
+var <- get_pca_var(pca)
+var$contrib
+
 
 # look at the eigen values and cumulative variance plot
 
@@ -923,6 +1143,30 @@ plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)", main = "PC1 / 
 
 # plot in 2 dimentions (seems not good results...)
 # install.packages("factoextra")
+
+# * pca scenarios ----
+
+objectname <- paste(date,"_scenario_pca",".tiff",sep="")
+tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
+     units="in", width=10, height=5, res=100)
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$scenario),
+             legend.title = "realm") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+dev.off()
+
+
+
 
 # * pca realms ----
 
@@ -944,6 +1188,30 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
   theme(plot.title = element_text(hjust = 0.5))
 
 dev.off()
+
+library("FactoMineR")
+pca=PCA(data_wide[,4:12], graph = FALSE)  # put the data you want in pca
+print(pca)
+
+
+# use get_pca_var to get the coordinates, correlation and contributions etc from pca results
+
+library(factoextra)
+var <- get_pca_var(pca)
+var
+
+# var$contrib: contains the contributions (in percentage) of the variables to the 
+# principal components. The contribution of a variable (var) to a given principal component
+# is (in percentage) : (var.cos2 * 100) / (total cos2 of the component).
+var$contrib
+
+
+
+
+
+
+
+
 
 # * pca threats ----
 
@@ -1093,6 +1361,27 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
 
 dev.off()
 
+# Included in HFP ----
+
+fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE,
+             fill.ind = as.factor(pca_data_5$included.in.HFP),
+             legend.title = "LPI record numbers") +
+  ggtitle("2D PCA-plot from 30 feature dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Try a model ----
+
+model_input_data <- ecoregions_wide_countries %>%
+                    merge(country_coefficients_hfp_rli, by = "country") %>%
+                    rename(rli_hfp = value) %>%
+                    filter(RLI_records)
 
 
 #' # All indicators with 2005 data

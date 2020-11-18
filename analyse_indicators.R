@@ -49,6 +49,7 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoint <- 2005
 
+
 # Set up some ecoregions that we know how they should behave
 
 east_australia <- 168 # Decline over time
@@ -131,6 +132,11 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 raw_indicators_long <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master.rds"))
+
+raw_indicators_long$indicator_year <- str_replace(raw_indicators_long$indicator_year, " ", "_")
+
+indicators <- unique(raw_indicators_long$indicator_year)
+
 raw_indicators_wide <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master_wide.rds"))
 
@@ -155,22 +161,22 @@ headline_threats <- c(headline_threats, "All threats")
 # Ecoregion map
 
 # ecoregion_map_all <- readRDS(paste(
-#                      file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs", 
+#                      file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
 #                                "ecoregions_2017"),
 #                                "Ecoregions2017valid.rds"))
 # 
-# ecoregion_map <- ecoregion_map_all %>% 
+# ecoregion_map <- ecoregion_map_all %>%
 #   dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 # 
-# ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
+# ecoregion_map_renamed <- ecoregion_map %>% dplyr::rename(ecoregion_id = ECO_ID)
 # 
 # rm(ecoregion_map_all, ecoregion_map)
-
-# Countries
-
-ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3", 
-                        "2020-08-10_database_output_files",
-                        "ecoregion_country_data.rds"))
+# 
+# # Countries
+# 
+# ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3", 
+#                         "2020-08-10_database_output_files",
+#                         "ecoregion_country_data.rds"))
 
 ### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
 
@@ -188,6 +194,9 @@ raw_indicators_long <- raw_indicators_long %>%
 raw_indicators_wide <- raw_indicators_long %>%
                          spread(key = indicator_year, 
                                 value = raw_indicator_value) 
+
+indicators <- unique(raw_indicators_long$indicator_year)
+
 }
 
 # Ecoregion value cleaning ----
@@ -261,6 +270,10 @@ keys <- as.data.frame(negatives_index) %>%
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
                                  mini = cols_min, maxi = cols_max))
 
+# Remove the little negative thing at the end of reversed column names, otherwise
+# they become difficult to use with dplyr
+
+names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
 
 # test
 
@@ -305,7 +318,7 @@ indicators_wide_centred_trunc <- indicators_wide_centred %>%
                            #                              0.99, na.rm = TRUE)) %>%
                            # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
                            #                              0.99, na.rm = TRUE)) %>%
-                           filter(`HFP 2005-` < quantile(`HFP 2005-`, 
+                           filter(HFP_2005 < quantile(HFP_2005, 
                                                             0.99, na.rm = TRUE)) 
 
 summary(indicators_wide_centred_trunc)
@@ -324,6 +337,79 @@ rm(raw_indicators_long, raw_indicators_wide)
 # * Transform ----
 
 # ??
+
+# Finalise analysis data ----
+
+analysis_input_data <- indicators_wide_centred_trunc %>%
+  merge(ecoregions_wide, by = "ecoregion_id") 
+
+# Scatterplots ----
+
+# analysis_input_data <- analysis_input_data_all
+# analysis_input_data_all <- analysis_input_data
+
+indicator_combinations <- combn(indicators, 2)
+
+indicator_list <- as.list(as.data.frame(indicator_combinations))
+
+# Loop through each combination of indicators and make a scatterplot.  Note
+# these are really ugly with all the labels and stuff - they're just to identify
+# the weird ecoregions, we can tidy up anything that would actually go into the paper
+
+scatterplots <- list()
+
+for (i in seq_along(indicator_list)) {
+  
+scatterplot_data <- analysis_input_data[, c("ecoregion_id", 
+                                            "island.status",
+                                            indicator_list[[i]][1],
+                                            indicator_list[[i]][2])]
+labx <- names(scatterplot_data)[3]
+laby <- names(scatterplot_data)[4]
+names(scatterplot_data) <- c("ecoregion_id", "vargroup", "varx", "vary")
+
+scatterplot <- ggplot(scatterplot_data,aes(x = varx, 
+                                           y = vary, 
+                                           color = vargroup)) +
+               geom_point() +
+               geom_text(label = analysis_input_data$ecoregion_id) + 
+               geom_smooth(method=lm) +
+               labs(x= labx,
+                    y = laby)
+
+ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
+       scatterplot, device = "png")
+
+scatterplots[[i]] <- scatterplot
+
+}
+
+scatterplots[[1]]
+scatterplots[[2]]
+scatterplots[[3]]
+scatterplots[[4]]
+scatterplots[[5]]
+scatterplots[[6]]
+scatterplots[[7]]
+scatterplots[[8]]
+scatterplots[[9]]
+scatterplots[[10]]
+scatterplots[[11]]
+scatterplots[[12]]
+scatterplots[[13]]
+scatterplots[[14]]
+scatterplots[[15]]
+scatterplots[[16]]
+scatterplots[[17]]
+scatterplots[[18]]
+scatterplots[[19]]
+scatterplots[[20]]
+
+# Get the ecoregions with the strangest results (eg really high HFP, low RLI)
+
+weird_ecoregions <- analysis_input_data %>%
+                    filter(ecoregion_id %in% c(325, 400, 637, 20, 632, 548))
+
 
 # Correlation plots ----
 
@@ -1088,21 +1174,10 @@ spearman_correlations_all_years <- as.data.frame(cor(indicator_matrix,
 # Prepare data
 
 pca_data_1 <- gather(indicators_wide_centred_trunc, indicator, indicator_value, 
-                     `BHI plants 2005`:`threatened 2005-`, factor_key=TRUE)
+                     "BHI_plants 2005":"threatened_2005", factor_key=TRUE)
 
 pca_data_2 <- pca_data_1 %>%
-              merge(ecoregions_wide[c("ecoregion_id",
-                                      "realm",
-                                      "headline.threat.type",
-                                      "Biome",
-                                      "island.status",
-                                      "scientific.publications.factor",
-                                      "area.factor",
-                                      "lpi.records.factor",
-                                      "rli.records.factor",
-                                      "scenario",
-                                      "included.in.HFP")], 
-                    by = "ecoregion_id") %>%
+              merge(ecoregions_wide,by = "ecoregion_id") %>%
               dplyr::select(ecoregion_id, realm, headline.threat.type,
                             Biome, island.status, scientific.publications.factor,
                             area.factor,
@@ -1110,17 +1185,21 @@ pca_data_2 <- pca_data_1 %>%
                             rli.records.factor,
                             scenario,
                             included.in.HFP,
-                            everything())
+                            predominant.threat.type,
+                            scenario.numeric,
+                            predominant.threat.count,
+                            everything()) 
 
 pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
 
-pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,10:ncol(pca_data_3)]),]
+pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,19:ncol(pca_data_3)]),]
 
-pca_data_5 <- pca_data_4 #[pca_data_4$headline.threat.type %in% headline_threats,]
+pca_data_5 <- pca_data_4 %>%
+              dplyr::select(-BIIab_2005, -threatened_2005) #[pca_data_4$headline.threat.type %in% headline_threats,]
 
 # Conduct the PCA
 
-pca=prcomp(pca_data_5[,12:ncol(pca_data_5)],center=TRUE,scale=TRUE)
+pca=prcomp(pca_data_5[,19:ncol(pca_data_5)],center=TRUE,scale=TRUE)
 summary(pca)
 print(pca)
 
@@ -1150,7 +1229,7 @@ objectname <- paste(date,"_scenario_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1174,7 +1253,7 @@ objectname <- paste(date,"_realm_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1189,37 +1268,15 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
 
 dev.off()
 
-library("FactoMineR")
-pca=PCA(data_wide[,4:12], graph = FALSE)  # put the data you want in pca
-print(pca)
-
-
-# use get_pca_var to get the coordinates, correlation and contributions etc from pca results
-
-library(factoextra)
-var <- get_pca_var(pca)
-var
-
-# var$contrib: contains the contributions (in percentage) of the variables to the 
-# principal components. The contribution of a variable (var) to a given principal component
-# is (in percentage) : (var.cos2 * 100) / (total cos2 of the component).
-var$contrib
-
-
-
-
-
-
-
-
-
 # * pca threats ----
+
+pca_data_5$threat <- as.numeric(as.factor(pca_data_5$headline.threat.type))
 
 objectname <- paste(date,"_threat_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1227,7 +1284,7 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
              label = "var",
              col.var = "black",
              repel = TRUE,
-             fill.ind = as.factor(pca_data_5$headline.threat.type),
+             fill.ind = as.factor(pca_data_5$threat),
              legend.title = "threat type") +
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
@@ -1240,7 +1297,7 @@ objectname <- paste(date,"_island_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1262,7 +1319,7 @@ objectname <- paste(date,"_biome_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1283,7 +1340,7 @@ objectname <- paste(date,"_capacity_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1304,7 +1361,7 @@ objectname <- paste(date,"_ecoregion_area_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1325,7 +1382,7 @@ objectname <- paste(date,"_RLI_data_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1346,7 +1403,7 @@ objectname <- paste(date,"_LPI_data_pca",".tiff",sep="")
 tiff(file = (paste(current_analysis_outputs,objectname, sep = "/")), 
      units="in", width=10, height=5, res=100)
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1363,7 +1420,12 @@ dev.off()
 
 # Included in HFP ----
 
-fviz_pca_ind(pca, geom.ind = "point", pointshape = 21, 
+x <- `included_in_hfp`
+
+vargroup <- pca_data_5$included.in.HFP
+varname <- names(pca_data_5)
+
+x <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
              pointsize = 2, 
              col.ind = "black", 
              palette = "jco", 
@@ -1371,18 +1433,123 @@ fviz_pca_ind(pca, geom.ind = "point", pointshape = 21,
              label = "var",
              col.var = "black",
              repel = TRUE,
-             fill.ind = as.factor(pca_data_5$included.in.HFP),
-             legend.title = "LPI record numbers") +
+             fill.ind = as.factor(vargroup),
+             legend.title = names(pca_data_5)[11]) +
   ggtitle("2D PCA-plot from 30 feature dataset") +
   theme(plot.title = element_text(hjust = 0.5))
 
+ggsave(file.path(current_analysis_outputs, paste("test", ".png", sep = "")),
+       x, device = "png")
+
+
+# Make the PCA plots in a loop
+
+# Remove indicators
+
+grouping_variables <- names(pca_data_5)[!(names(pca_data_5) %in% indicators)]
+
+# Remove numerics
+grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_id",
+                                                                     "predominant.threat.type",
+                                                                     "headline.threat.type",
+                                                                     "ecoregion.area.km.sq",
+                                                                     "RLI_records",
+                                                                     "LPI_records",
+                                                                     "scenario",
+                                                                     "predominant.threat.count",
+                                                                     "mean.scientific.publications"))]
+
+pca_plots <- list()
+
+for (i in seq_along(grouping_variables)) {
+  
+  vargroup <- pca_data_5[,grouping_variables[i]]
+  varname <- grouping_variables[i]
+  
+  pca_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
+                       pointsize = 2, 
+                       col.ind = "black", 
+                       palette = "jco", 
+                       addEllipses = TRUE,
+                       label = "var",
+                       col.var = "black",
+                       repel = TRUE,
+                       fill.ind = as.factor(vargroup),
+                       legend.title = varname) +
+    ggtitle("2D PCA-plot from 30 feature dataset") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  ggsave(file.path(current_analysis_outputs, paste(varname, ".png", sep = "")),
+         pca_plot, device = "png")
+  
+  pca_plots[[i]] <- pca_plot
+  
+}
+
+pca_plots[[1]]
+pca_plots[[2]]
+pca_plots[[3]]
+pca_plots[[4]]
+pca_plots[[5]]
+pca_plots[[6]]
+pca_plots[[7]]
+pca_plots[[8]]
+pca_plots[[9]]
+pca_plots[[10]]
+
+
 # Try a model ----
 
-model_input_data <- ecoregions_wide_countries %>%
-                    merge(country_coefficients_hfp_rli, by = "country") %>%
-                    rename(rli_hfp = value) %>%
-                    filter(RLI_records)
+# TODO: use tidymodels ----
 
+library(Rmisc)
+library(car)
+library(lm.beta)
+
+
+
+hfp_rli <- scatterplot(`RLI 2005` ~ `HFP 2005-` , data = model_input_data_1)
+
+hfp_rli_lm <- lm(`RLI 2005` ~ `HFP 2005-`+ RLI_records + included.in.HFP, 
+                 data = model_input_data_1)
+
+plot(hfp_rli_lm)
+
+influence.measures(hfp_rli_lm)
+
+summary(hfp_rli_lm)
+avPlots(hfp_rli_lm, ask = F)
+
+
+predictions <- predict(hfp_rli_lm, data = analysis_input_data$included.in.HFP)
+
+relationship <- cut(predictions, breaks = 3, 
+                    labels = c("negative", "neutral", "positive"))
+
+predictions <- data.frame(ecoregion_id = analysis_input_data$ecoregion_id, 
+                          prediction = predictions,
+                          threat = analysis_input_data$included.in.HFP)
+
+prediction_map <- left_join(ecoregion_map_renamed, 
+                            predictions,
+                            by = "ecoregion_id") 
+
+
+relationship_map_LU <-  ggplot(prediction_map) +
+                     geom_sf(aes(fill = prediction), colour = "black", 
+                              size = 0.05, show.legend = 'fill') +
+                     scale_fill_viridis_c(alpha = .8,
+                                           na.value = "grey70") +
+                     theme(axis.line = element_line(),
+                            panel.grid.major = element_blank(),
+                            panel.grid.minor = element_blank(),
+                            panel.background = element_blank()) +
+                     labs(fill = "test") +
+                     theme(legend.position = "right")
+
+relationship_map_LU
+
+# Old analysis code ----
 
 #' # All indicators with 2005 data
 #' 

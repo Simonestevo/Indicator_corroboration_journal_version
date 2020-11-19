@@ -286,6 +286,21 @@ names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
 #   select(`HFP 2005-`)
 # HFP_inv
 
+# * Transform ----
+
+library(moments)
+skewness(indicators_wide$RLI_2005, na.rm = TRUE) # negatively skewed a lot (-2.48)
+skewness(indicators_wide$HFP_2005, na.rm = TRUE) # negatively skewed a bit (-0.89)
+
+x <- indicators_wide$RLI_2005
+indicators_wide$RLI_2005_log <- 1/(max(x+1) - x) 
+indicators_wide$HFP_2005_log <- log10(indicators_wide$HFP_2005)
+
+
+skewness(indicators_wide$RLI_2005_log, na.rm = TRUE) # negatively skewed a lot (-2.48)
+hist(indicators_wide$RLI_2005_log)
+skewness(indicators_wide$HFP_2005_log, na.rm = TRUE)
+
 # * Centre ----
 
 #TODO: Do we need to transform any variables? bc probably need to do so before scaling
@@ -332,11 +347,12 @@ boxplots_2 <- ggplot(indicator_boxplot_data_2) +
 
 boxplots_2
 
+ggsave(file.path(current_analysis_outputs, "indicator_boxplots_2.png"),
+       boxplots_2, device = "png")
+
 rm(raw_indicators_long, raw_indicators_wide)
 
-# * Transform ----
 
-# ??
 
 # Finalise analysis data ----
 
@@ -423,7 +439,7 @@ country_indicators <- add_grouping_variable("country", indicators_wide_centred_t
 country_indicator_list <- split(country_indicators, country_indicators$country)
 
 country_indicator_list[["All countries"]] <- indicators_wide_centred_trunc %>%
-  mutate(country = "All countrie")
+  mutate(country = "All countries")
 
 country_matrices <- list()
 
@@ -463,10 +479,10 @@ for (i in seq_along(country_matrices)) {
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
     
-    # ggsave(file.path(current_analysis_outputs, 
-    #                  paste(names(country_matrices)[i],
-    #                        "indicator_correlation_matrix.png", sep = "_")),
-    #        correlation_plot, device = "png")
+    ggsave(file.path(current_analysis_outputs,
+                     paste(names(country_matrices)[i],
+                           "indicator_correlation_matrix.png", sep = "_")),
+           correlation_plot, device = "png")
     
     country_correlations[[i]] <- correlation_plot
     
@@ -479,42 +495,10 @@ country_correlations <- list.clean(country_correlations)
 
 country_correlations[[6]]
 
-# Get the coefficients
-
-country_coefficients <- list()
-
-for (i in seq_along(country_correlations)){
-  
-  country_matrix <- country_correlations[[i]][[1]]
-  
-  country <- names(country_correlations)[i]
-  
-  hfp_rli_coefficient <- country_matrix %>%
-                         filter(Var1 == "RLI 2005") %>%
-                         filter(Var2 == "HFP 2005-") %>%
-                         select(value)
-  
-  ecoregion_n <- ecoregion_countries %>%
-                 filter(CNTRY_NAME == country) 
-  
-  ecoregion_n <- length(unique(ecoregion_n$ECO_ID))
-  
-  country_coefficient <- cbind(country, hfp_rli_coefficient, ecoregion_n)
-               
-  
-  country_coefficients[[i]] <- country_coefficient 
-                              
-  
-}
-
-country_coefficients_hfp_rli <- do.call(rbind, country_coefficients)
-
-head(country_coefficients_hfp_rli)
-
 # * Biome ----
 
 biome_indicators <- add_grouping_variable("Biome", indicators_wide_centred_trunc,
-                                            ecoregions_wide_countries )
+                                            ecoregions_wide)
 
 biome_indicator_list <- split(biome_indicators, biome_indicators$Biome)
 
@@ -542,6 +526,8 @@ for (i in seq_along(biome_matrices)) {
   n <- nrow(subset_matrix)
   
   name <- paste(names(biome_matrices)[i], "n =", n, sep = " ")
+  name <- str_replace(name, "&", "and")
+  name <- str_replace(name, "/", "_and_")
   
   if (nrow(subset_matrix) < 5) {
     
@@ -559,10 +545,9 @@ for (i in seq_along(biome_matrices)) {
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
     
-    # ggsave(file.path(current_analysis_outputs, 
-    #                  paste(names(biome_matrices)[i],
-    #                        "indicator_correlation_matrix.png", sep = "_")),
-    #        correlation_plot, device = "png")
+    ggsave(file.path(current_analysis_outputs, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_plot, device = "png")
     
     biome_correlations[[i]] <- correlation_plot
     
@@ -575,34 +560,6 @@ biome_correlations <- list.clean(biome_correlations)
 
 biome_correlations[[6]]
 
-# Get the coefficients
-
-biome_coefficients <- list()
-
-for (i in seq_along(biome_correlations)){
-  
-  biome_matrix <- biome_correlations[[i]][[1]]
-  
-  Biome <- names(biome_correlations)[i]
-  
-  hfp_rli_coefficient <- biome_matrix %>%
-    filter(Var1 == "RLI 2005") %>%
-    filter(Var2 == "HFP 2005-") %>%
-    select(value)
-  
-  n <- length(unique(biome_indicator_list[[i]]$ecoregion_id)) 
-  
-  biome_coefficient <- cbind(Biome, hfp_rli_coefficient, n)
-  
-  
-  biome_coefficients[[i]] <- biome_coefficient 
-  
-  
-}
-
-biome_coefficients_hfp_rli <- do.call(rbind, biome_coefficients)
-
-head(biome_coefficients_hfp_rli)
 
 # * Realm ----
 

@@ -359,6 +359,22 @@ rm(raw_indicators_long, raw_indicators_wide)
 analysis_input_data <- indicators_wide_centred_trunc %>%
   merge(ecoregions_wide, by = "ecoregion_id") 
 
+# Remove indicators
+
+grouping_variables <- names(analysis_input_data)[!(names(analysis_input_data) %in% indicators)]
+
+# Remove numerics
+grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_id",
+                                            "predominant.threat.type",
+                                            "headline.threat.type",
+                                            "ecoregion.area.km.sq",
+                                            "RLI_records",
+                                            "LPI_records",
+                                            "scenario.numeric",
+                                            "predominant.threat.count",
+                                            "mean.scientific.publications"))]
+
+
 # Scatterplots ----
 
 # analysis_input_data <- analysis_input_data_all
@@ -429,6 +445,82 @@ weird_ecoregions <- analysis_input_data %>%
 
 # Correlation plots ----
 
+all_grouping_variables <- paste("all", grouping_variables, sep = ".")
+
+for (i in seq_along(grouping_variables)) {
+  
+vargroup <- grouping_variables[i]
+varall <- all_grouping_variables[i]
+
+group_indicators <- add_grouping_variable(vargroup, indicators_wide_centred_trunc,
+                                          ecoregions_wide)
+
+group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
+
+group_indicator_list[[varall]] <- indicators_wide_centred_trunc %>%
+  mutate(vargroup = varall)
+
+group_matrices <- list()
+
+for (i in seq_along(group_indicator_list)) {
+  
+  group_matrices[[i]] <- group_indicator_list[[i]] %>%
+    dplyr::select(-ecoregion_id, -vargroup) %>%
+    na.omit(.)
+  
+}
+
+names(group_matrices) <- names(group_indicator_list)
+
+group_correlations <- list()
+
+for (i in seq_along(group_matrices)) {
+  
+  subset_matrix <- group_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  
+  n <- nrow(subset_matrix)
+  
+  name <- paste(names(group_matrices)[i], "n =", n, sep = " ")
+  name <- str_replace(name, "&", "and")
+  name <- str_replace(name, "/", "_and_")
+  name <- str_replace(name, "<", " less than ")
+  name <- str_replace(name, ">", " more than ")
+  
+  if (nrow(subset_matrix) < 5) {
+    
+    print(paste("insufficient data for", names(group_matrices)[i], sep = " "))
+    
+  } else {
+    
+    p.mat <- cor_pmat(subset_matrix)
+    
+    correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
+                                   title = name, #names(group_matrices)[i],
+                                   p.mat = p.mat, 
+                                   type = "lower", insig = "blank",
+                                   outline.color = "white",
+                                   colors = c("#453781FF", "white", "#287D8EFF"),
+                                   lab = TRUE)
+    
+    group_directory <- file.path(current_analysis_outputs, paste(vargroup,
+                                 "correlation matrices", sep = " "))
+    
+    if( !dir.exists( group_directory ) ) {
+      
+      dir.create( group_directory, recursive = TRUE )
+      
+    }
+    
+    ggsave(file.path(group_directory, 
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_plot, device = "png")
+    
+    group_correlations[[i]] <- correlation_plot
+    
+    }
+  }
+}
+
 # * Country ----
 
 names(raw_ecoregions_wide)
@@ -495,22 +587,27 @@ country_correlations <- list.clean(country_correlations)
 
 country_correlations[[6]]
 
+names(ecoregions_wide)
+
 # * Biome ----
 
-biome_indicators <- add_grouping_variable("Biome", indicators_wide_centred_trunc,
+vargroup <- "Biome"
+varall <- "All biomes"
+
+biome_indicators <- add_grouping_variable(vargroup, indicators_wide_centred_trunc,
                                             ecoregions_wide)
 
 biome_indicator_list <- split(biome_indicators, biome_indicators$Biome)
 
-# biome_indicator_list[["All countries"]] <- indicators_wide_centred_trunc %>%
-#   mutate(country = "All countrie")
+biome_indicator_list[[varall]] <- indicators_wide_centred_trunc %>%
+mutate(vargroup = varall)
 
 biome_matrices <- list()
 
 for (i in seq_along(biome_indicator_list)) {
   
   biome_matrices[[i]] <- biome_indicator_list[[i]] %>%
-    dplyr::select(-ecoregion_id, -Biome) %>%
+    dplyr::select(-ecoregion_id, -vargroup) %>%
     na.omit(.)
   
 }
@@ -545,7 +642,16 @@ for (i in seq_along(biome_matrices)) {
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
     
-    ggsave(file.path(current_analysis_outputs, 
+    scatterplot_directory <- file.path(current_analysis_outputs, paste(vargroup,
+                                             "correlation matrices", sep = " "))
+
+    if( !dir.exists( scatterplot_directory ) ) {
+
+    dir.create( scatterplot_directory, recursive = TRUE )
+
+    }
+    
+    ggsave(file.path(scatterplot_directory, 
                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
            correlation_plot, device = "png")
     

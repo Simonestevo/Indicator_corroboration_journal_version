@@ -199,7 +199,7 @@ indicators <- unique(raw_indicators_long$indicator_year)
 
 }
 
-# Ecoregion value cleaning ----
+# Ecoregion data cleaning ----
 
 # Convert numeric to factors
 
@@ -311,6 +311,8 @@ indicators_wide_centred <- indicators_wide %>%
 
 summary(indicators_wide_centred)
 
+indicators_wide_centred <- indicators_wide
+
 # ** Centred boxplots ----
 
 #' TODO: IMPORTANT - DECIDE WHETHER TO REMOVE LPI ALTOGETHER
@@ -352,7 +354,15 @@ ggsave(file.path(current_analysis_outputs, "indicator_boxplots_2.png"),
 
 rm(raw_indicators_long, raw_indicators_wide)
 
+#PCA input data ----
 
+pca_input_data <- indicators_wide %>%
+  # filter(`LPI 2005` < quantile(`LPI 2005`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  filter(HFP_2005 < quantile(HFP_2005, 
+                             0.99, na.rm = TRUE))
 
 # Finalise analysis data ----
 
@@ -594,7 +604,7 @@ spearman_correlations_all_years <- as.data.frame(cor(indicator_matrix,
 
 # Prepare data
 
-pca_data_1 <- gather(indicators_wide_centred_trunc, indicator, indicator_value, 
+pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
                      "BHI_plants 2005":"threatened_2005", factor_key=TRUE)
 
 pca_data_2 <- pca_data_1 %>%
@@ -618,7 +628,7 @@ pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,19:ncol(pca_data_3)]),]
 pca_data_5 <- pca_data_4 %>%
               dplyr::select(-BIIab_2005, -threatened_2005) #[pca_data_4$headline.threat.type %in% headline_threats,]
 
-# Conduct the PCA
+# * Conduct the PCA ----
 
 pca=prcomp(pca_data_5[,19:ncol(pca_data_5)],center=TRUE,scale=TRUE)
 summary(pca)
@@ -701,6 +711,77 @@ pca_plots[[8]]
 pca_plots[[9]]
 pca_plots[[10]]
 
+# Try k means cluster ----
+
+test <- analysis_input_data[,2:8]
+
+test2 <- apply(test, 2, scale)
+
+test3 <- as.data.frame(test2)
+
+test3 <- test3[complete.cases(test3),]
+
+wss <- 0
+
+set.seed(1)
+
+# Look over 1 to 15 possible clusters
+for (i in 1:15) {
+  # Fit the model: km.out
+  km.out <- kmeans(test3, centers = i, nstart = 20, iter.max = 50)
+  # Save the within cluster sum of squares
+  wss[i] <- km.out$tot.withinss
+}
+
+# Produce a scree plot
+plot(1:15, wss, type = "b", 
+     xlab = "Number of Clusters", 
+     ylab = "Within groups sum of squares")
+
+# Select number of clusters
+k <- 3
+
+# Build model with k clusters: km.out
+km.out <- kmeans(test3, centers = k, nstart = 20, iter.max = 2000)
+
+# View the resulting model
+km.out$tot.withinss
+
+# Plot of Defense vs. Speed by cluster membership
+plot(test3[, c("BIIri_2005", "RLI_2005")],
+     col = km.out$cluster,
+     main = paste("k-means clustering of indicator data with", k, "clusters"),
+     xlab = "bhi", ylab = "rli")
+
+par(mfrow = c(2, 3))
+
+# Set seed
+set.seed(1)
+
+test4 <- test3[,1:2]
+
+for(i in 1:6) {
+  # Run kmeans() on x with three clusters and one start
+  km.out <- kmeans(test4, centers = 3, nstart = 1)
+  
+  # Plot clusters
+  plot(test4, col = km.out$cluster, 
+       main = km.out$tot.withinss, 
+       xlab = "", ylab = "")
+}
+
+# Try hierarchical cluster ----
+
+colMeans(test3)
+apply(test3, 2, sd)
+
+# Go back and check the section about method and unbalanced trees
+hclust.indicators <- hclust(dist(test3), method = "average")
+plot(hclust.indicators)
+
+cutree(x, k = 3)
+
+plot(x)
 
 # Try a model ----
 
@@ -709,49 +790,63 @@ pca_plots[[10]]
 library(Rmisc)
 library(car)
 library(lm.beta)
+library(MASS)
 
 
 
-hfp_rli <- scatterplot(`RLI 2005` ~ `HFP 2005-` , data = model_input_data_1)
+hfp_rli <- scatterplot(RLI_2005 ~ HFP_2005 , data = analysis_input_data)
 
-hfp_rli_lm <- lm(`RLI 2005` ~ `HFP 2005-`+ RLI_records + included.in.HFP, 
-                 data = model_input_data_1)
+good_data <- analysis_input_data %>%
+             filter(RLI_records > 600)
 
-plot(hfp_rli_lm)
-
-influence.measures(hfp_rli_lm)
-
-summary(hfp_rli_lm)
-avPlots(hfp_rli_lm, ask = F)
+hfp_rli_glm <- glm(RLI_2005 ~ 1, family = binomial, 
+                 data = good_data)
 
 
-predictions <- predict(hfp_rli_lm, data = analysis_input_data$included.in.HFP)
+step_glm <- stepAIC(hfp_rli_glm, scope = list(upper = ~ HFP_2005 + RLI_records + 
+                                                scenario +
+                                                included.in.HFP + realm +
+                                                LPI_records + headline.threat.type +
+                                                Biome + mean.scientific.publications +
+                                                island.status
+                                        ,lower = ~ 1))
 
-relationship <- cut(predictions, breaks = 3, 
-                    labels = c("negative", "neutral", "positive"))
-
-predictions <- data.frame(ecoregion_id = analysis_input_data$ecoregion_id, 
-                          prediction = predictions,
-                          threat = analysis_input_data$included.in.HFP)
-
-prediction_map <- left_join(ecoregion_map_renamed, 
-                            predictions,
-                            by = "ecoregion_id") 
+summary(step_glm)
 
 
-relationship_map_LU <-  ggplot(prediction_map) +
-                     geom_sf(aes(fill = prediction), colour = "black", 
-                              size = 0.05, show.legend = 'fill') +
-                     scale_fill_viridis_c(alpha = .8,
-                                           na.value = "grey70") +
-                     theme(axis.line = element_line(),
-                            panel.grid.major = element_blank(),
-                            panel.grid.minor = element_blank(),
-                            panel.background = element_blank()) +
-                     labs(fill = "test") +
-                     theme(legend.position = "right")
+bad_data <- analysis_input_data %>%
+            filter(RLI_records < 600)
 
-relationship_map_LU
+bad_glm <- glm(RLI_2005 ~ 1, family = binomial, 
+                   data = bad_data)
+
+
+step_bad_glm <- stepAIC(bad_glm, scope = list(upper = ~ HFP_2005 + RLI_records + 
+                                              scenario +
+                                              included.in.HFP + realm +
+                                              LPI_records + headline.threat.type +
+                                              Biome + mean.scientific.publications +
+                                              island.status,lower = ~ 1))
+
+summary(step_bad_glm)
+
+plot(hfp_rli_glm)
+
+
+ind_glm <- glm(RLI_2005 ~ 1, family = binomial, 
+               data = analysis_input_data)
+
+
+step_ind_glm <- stepAIC(ind_glm, scope = list(upper = ~ HFP_2005 + 
+                                                `BHI_plants 2005` + 
+                                                BIIab_2005 +
+                                                extinct_2005,lower = ~ 1))
+
+summary(step_ind_glm)
+
+
+
+
 
 # Old analysis code ----
 

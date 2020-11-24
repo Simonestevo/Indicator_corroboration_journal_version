@@ -48,6 +48,7 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoint <- 2005
+load_map <- FALSE
 
 
 # Set up some ecoregions that we know how they should behave
@@ -130,15 +131,45 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 # Indicator data
 
-raw_indicators_long <- readRDS(file.path(analysis_inputs,
+raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master.rds"))
 
-raw_indicators_long$indicator_year <- str_replace(raw_indicators_long$indicator_year, " ", "_")
+raw_indicators_long_all$indicator_year <- str_replace(raw_indicators_long_all$indicator_year, " ", "_")
 
-indicators <- unique(raw_indicators_long$indicator_year)
+# TEMPORARY: Remove LPI ----
 
-raw_indicators_wide <- readRDS(file.path(analysis_inputs,
-                          "global_ecoregions_2017_indicator_values_master_wide.rds"))
+raw_indicators_long_all <- raw_indicators_long_all %>%
+                           filter(indicator != "LPI")
+
+raw_indicators_long <- raw_indicators_long_all %>%
+                       dplyr::select(ecoregion_id, indicator_year,
+                                     raw_indicator_value) %>%
+                       distinct(.)
+
+raw_indicators_wide <- raw_indicators_long %>%
+                       spread(key = indicator_year, 
+                             value = raw_indicator_value) 
+
+# indicators <- unique(raw_indicators_long$indicator_year)
+
+# raw_indicators_wide <- readRDS(file.path(analysis_inputs,
+#                           "global_ecoregions_2017_indicator_values_master_wide.rds"))
+
+if (!is.na(timepoint)) {
+  
+  raw_indicators_long <- raw_indicators_long_all %>%
+    filter(year == timepoint) %>%
+    dplyr::select(ecoregion_id, indicator_year,
+                  raw_indicator_value) %>%
+    distinct(.)
+  
+  raw_indicators_wide <- raw_indicators_long %>%
+    spread(key = indicator_year, 
+           value = raw_indicator_value) 
+  
+  indicators <- unique(raw_indicators_long$indicator_year)
+  
+}
 
 # Ecoregion data
 
@@ -160,44 +191,29 @@ headline_threats <- c(headline_threats, "All threats")
 
 # Ecoregion map
 
-# ecoregion_map_all <- readRDS(paste(
-#                      file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
-#                                "ecoregions_2017"),
-#                                "Ecoregions2017valid.rds"))
-# 
-# ecoregion_map <- ecoregion_map_all %>%
-#   dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
-# 
-# ecoregion_map_renamed <- ecoregion_map %>% dplyr::rename(ecoregion_id = ECO_ID)
-# 
-# rm(ecoregion_map_all, ecoregion_map)
-# 
-# # Countries
-# 
-# ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3", 
-#                         "2020-08-10_database_output_files",
-#                         "ecoregion_country_data.rds"))
+if(load_map == TRUE) {
 
-### TEMPORARY CODE - REMOVE LPI BC IT LOOKS WEIRD AND LOSES ALOT OF DATA ###
+ecoregion_map_all <- readRDS(paste(
+                     file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
+                               "ecoregions_2017"),
+                               "Ecoregions2017valid.rds"))
 
-raw_indicators_long <- raw_indicators_long %>%
-                       filter(indicator != "LPI")
+ecoregion_map <- ecoregion_map_all %>%
+  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
 
-if (!is.na(timepoint)) {
+ecoregion_map_renamed <- ecoregion_map %>% dplyr::rename(ecoregion_id = ECO_ID)
 
-raw_indicators_long <- raw_indicators_long %>%
-                         filter(year == timepoint) %>%
-                         dplyr::select(ecoregion_id, indicator_year,
-                                      raw_indicator_value) %>%
-                         distinct(.)
-
-raw_indicators_wide <- raw_indicators_long %>%
-                         spread(key = indicator_year, 
-                                value = raw_indicator_value) 
-
-indicators <- unique(raw_indicators_long$indicator_year)
-
+rm(ecoregion_map_all, ecoregion_map)
+  
 }
+
+# Countries
+
+ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3",
+                        "2020-08-10_database_output_files",
+                        "ecoregion_country_data.rds"))
+
+
 
 # Ecoregion data cleaning ----
 
@@ -241,7 +257,22 @@ ecoregions_wide <- ecoregions_wide %>%
 
 ecoregions_wide <- ecoregions_wide %>%
         mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
-               scenario.numeric = as.factor(as.numeric(scenario))) 
+               scenario.numeric = as.factor(as.numeric(scenario))) %>%
+        mutate(scenario = ifelse(scenario == "Few (< 590) RLI records & Threat external to HFP",
+                                 "Few RLI HFP exclusive",
+                                 ifelse(scenario == "Few (< 590) RLI records & Threat related to HFP",
+                                 "Few RLI HFP inclusive",
+                                 ifelse(scenario == "Moderate (between 590 & 1200) RLI records & Threat external to HFP",
+                                 "Moderate RLI HFP exclusive",
+                                 ifelse(scenario == "Moderate (between 590 & 1200) RLI records & Threat related to HFP",
+                                 "Moderate RLI HFP inclusive",
+                                 ifelse(scenario == "Many (> 1200) RLI records & Threat external to HFP",
+                                 "Many RLI HFP exclusive",
+                                 ifelse(scenario == "Many (> 1200) RLI records & Threat related to HFP",
+                                 "Many RLI HFP inclusive",
+                                 ifelse(scenario == "Few (< 590) RLI records & NA",
+                                 "Few RLI HFP NA",
+                                 NA))))))))
 
 ecoregions_wide_countries <- ecoregions_wide %>%
                              merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
@@ -267,6 +298,8 @@ keys <- as.data.frame(negatives_index) %>%
         dplyr::select(keys) %>%
         pull(.)
 
+#PCA input data ----
+
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
                                  mini = cols_min, maxi = cols_max))
 
@@ -274,6 +307,26 @@ indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
 # they become difficult to use with dplyr
 
 names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
+
+# Change full stops to underscores
+
+names(indicators_wide) <- str_replace(names(indicators_wide), " ", "_")
+
+indicators <- names(indicators_wide)
+
+indicators <- indicators[!indicators %in% "ecoregion_id"]
+
+# Manage outliers ----
+
+pca_input_data <- indicators_wide %>%
+  # filter(`LPI 2005` < quantile(`LPI 2005`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  filter(HFP_2005 < quantile(HFP_2005, 
+                             0.99, na.rm = TRUE))
+
+
 
 # test
 
@@ -288,18 +341,18 @@ names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
 
 # * Transform ----
 
-library(moments)
-skewness(indicators_wide$RLI_2005, na.rm = TRUE) # negatively skewed a lot (-2.48)
-skewness(indicators_wide$HFP_2005, na.rm = TRUE) # negatively skewed a bit (-0.89)
-
-x <- indicators_wide$RLI_2005
-indicators_wide$RLI_2005_log <- 1/(max(x+1) - x) 
-indicators_wide$HFP_2005_log <- log10(indicators_wide$HFP_2005)
-
-
-skewness(indicators_wide$RLI_2005_log, na.rm = TRUE) # negatively skewed a lot (-2.48)
-hist(indicators_wide$RLI_2005_log)
-skewness(indicators_wide$HFP_2005_log, na.rm = TRUE)
+# library(moments)
+# skewness(indicators_wide$RLI_2005, na.rm = TRUE) # negatively skewed a lot (-2.48)
+# skewness(indicators_wide$HFP_2005, na.rm = TRUE) # negatively skewed a bit (-0.89)
+# 
+# x <- indicators_wide$RLI_2005
+# indicators_wide$RLI_2005_log <- 1/(max(x+1) - x) 
+# indicators_wide$HFP_2005_log <- log10(indicators_wide$HFP_2005)
+# 
+# 
+# skewness(indicators_wide$RLI_2005_log, na.rm = TRUE) # negatively skewed a lot (-2.48)
+# hist(indicators_wide$RLI_2005_log)
+# skewness(indicators_wide$HFP_2005_log, na.rm = TRUE)
 
 # * Centre ----
 
@@ -307,15 +360,14 @@ skewness(indicators_wide$HFP_2005_log, na.rm = TRUE)
 # https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 
 indicators_wide_centred <- indicators_wide %>%
-  mutate_at(c(2:ncol(indicators_wide)), funs(c(scale(.)))) 
+                           mutate_at(c(2:ncol(pca_input_data)), 
+                                     funs(c(scale(.)))) 
 
 summary(indicators_wide_centred)
 
-indicators_wide_centred <- indicators_wide
-
 # ** Centred boxplots ----
 
-#' TODO: IMPORTANT - DECIDE WHETHER TO REMOVE LPI ALTOGETHER
+#' IMPORTANT - this boxplot shows with outliers already removed
 
 indicator_boxplot_data <- reshape2::melt(indicators_wide_centred, 
                           id.vars = 'ecoregion_id')
@@ -326,19 +378,17 @@ boxplots <- ggplot(indicator_boxplot_data) +
 
 boxplots
 
-boxplot(indicators_wide_centred$`HFP 2005-`)
+boxplot(indicators_wide_centred$HFP_2005)
 
-# * Manage outliers ----
+# 
 
 indicators_wide_centred_trunc <- indicators_wide_centred %>%
-                           # filter(`LPI 2005` < quantile(`LPI 2005`, 
-                           #                              0.99, na.rm = TRUE)) %>%
-                           # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-                           #                              0.99, na.rm = TRUE)) %>%
-                           filter(HFP_2005 < quantile(HFP_2005, 
-                                                            0.99, na.rm = TRUE)) 
-
-summary(indicators_wide_centred_trunc)
+  # filter(`LPI 2005` < quantile(`LPI 2005`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
+  #                              0.99, na.rm = TRUE)) %>%
+  filter(HFP_2005 < quantile(HFP_2005, 
+                             0.99, na.rm = TRUE))
 
 indicator_boxplot_data_2 <- reshape2::melt(indicators_wide_centred_trunc, 
                                            id.vars = 'ecoregion_id')
@@ -354,24 +404,14 @@ ggsave(file.path(current_analysis_outputs, "indicator_boxplots_2.png"),
 
 rm(raw_indicators_long, raw_indicators_wide)
 
-#PCA input data ----
-
-pca_input_data <- indicators_wide %>%
-  # filter(`LPI 2005` < quantile(`LPI 2005`, 
-  #                              0.99, na.rm = TRUE)) %>%
-  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-  #                              0.99, na.rm = TRUE)) %>%
-  filter(HFP_2005 < quantile(HFP_2005, 
-                             0.99, na.rm = TRUE))
-
 # Finalise analysis data ----
 
-analysis_input_data <- indicators_wide_centred_trunc %>%
+correlation_input_data <- indicators_wide_centred_trunc %>%
   merge(ecoregions_wide, by = "ecoregion_id") 
 
 # Remove indicators
 
-grouping_variables <- names(analysis_input_data)[!(names(analysis_input_data) %in% indicators)]
+grouping_variables <- names(correlation_input_data)[!(names(correlation_input_data) %in% indicators)]
 
 # Remove numerics
 grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_id",
@@ -387,8 +427,8 @@ grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_
 
 # Scatterplots ----
 
-# analysis_input_data <- analysis_input_data_all
-# analysis_input_data_all <- analysis_input_data
+# correlation_input_data <- correlation_input_data_all
+# correlation_input_data_all <- correlation_input_data
 
 indicator_combinations <- combn(indicators, 2)
 
@@ -402,7 +442,7 @@ scatterplots <- list()
 
 for (i in seq_along(indicator_list)) {
   
-scatterplot_data <- analysis_input_data[, c("ecoregion_id", 
+scatterplot_data <- correlation_input_data[, c("ecoregion_id", 
                                             "island.status",
                                             indicator_list[[i]][1],
                                             indicator_list[[i]][2])]
@@ -414,7 +454,7 @@ scatterplot <- ggplot(scatterplot_data,aes(x = varx,
                                            y = vary, 
                                            color = vargroup)) +
                geom_point() +
-               geom_text(label = analysis_input_data$ecoregion_id) + 
+               geom_text(label = correlation_input_data$ecoregion_id) + 
                geom_smooth(method=lm) +
                labs(x= labx,
                     y = laby)
@@ -449,7 +489,7 @@ scatterplots[[20]]
 
 # Get the ecoregions with the strangest results (eg really high HFP, low RLI)
 
-weird_ecoregions <- analysis_input_data %>%
+weird_ecoregions <- correlation_input_data %>%
                     filter(ecoregion_id %in% c(325, 400, 637, 20, 632, 548))
 
 
@@ -462,13 +502,21 @@ for (i in seq_along(grouping_variables)) {
 vargroup <- grouping_variables[i]
 varall <- all_grouping_variables[i]
 
-group_indicators <- add_grouping_variable(vargroup, indicators_wide_centred_trunc,
-                                          ecoregions_wide)
+# group_indicators <- add_grouping_variable(vargroup, indicators_wide_centred_trunc,
+#                                           ecoregions_wide)
 
+x <- c("ecoregion_id", indicators, vargroup)
+
+group_indicators <- correlation_input_data %>%
+                    dplyr::select(all_of(x))
+
+all <- group_indicators
+    
 group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
 
-group_indicator_list[[varall]] <- indicators_wide_centred_trunc %>%
-  mutate(vargroup = varall)
+all[, ncol(all)] <- varall
+
+group_indicator_list[[varall]] <- all
 
 group_matrices <- list()
 
@@ -495,6 +543,7 @@ for (i in seq_along(group_matrices)) {
   name <- str_replace(name, "/", "_and_")
   name <- str_replace(name, "<", " less than ")
   name <- str_replace(name, ">", " more than ")
+  name <- gsub("[()]", "", name)
   
   if (nrow(subset_matrix) < 5) {
     
@@ -713,7 +762,7 @@ pca_plots[[10]]
 
 # Try k means cluster ----
 
-test <- analysis_input_data[,2:8]
+test <- correlation_input_data[,2:8]
 
 test2 <- apply(test, 2, scale)
 
@@ -794,9 +843,9 @@ library(MASS)
 
 
 
-hfp_rli <- scatterplot(RLI_2005 ~ HFP_2005 , data = analysis_input_data)
+hfp_rli <- scatterplot(RLI_2005 ~ HFP_2005 , data = correlation_input_data)
 
-good_data <- analysis_input_data %>%
+good_data <- correlation_input_data %>%
              filter(RLI_records > 600)
 
 hfp_rli_glm <- glm(RLI_2005 ~ 1, family = binomial, 
@@ -814,7 +863,7 @@ step_glm <- stepAIC(hfp_rli_glm, scope = list(upper = ~ HFP_2005 + RLI_records +
 summary(step_glm)
 
 
-bad_data <- analysis_input_data %>%
+bad_data <- correlation_input_data %>%
             filter(RLI_records < 600)
 
 bad_glm <- glm(RLI_2005 ~ 1, family = binomial, 
@@ -834,7 +883,7 @@ plot(hfp_rli_glm)
 
 
 ind_glm <- glm(RLI_2005 ~ 1, family = binomial, 
-               data = analysis_input_data)
+               data = correlation_input_data)
 
 
 step_ind_glm <- stepAIC(ind_glm, scope = list(upper = ~ HFP_2005 + 

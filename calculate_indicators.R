@@ -1547,6 +1547,49 @@ saveRDS(rli_record_values, file.path(indicator_outputs,
 
 rm(species_data, species_by_ecoregion)
 
+# Ecoregion human population ----
+
+if (paste(location, eco_version, "human_population_density.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+ecoregion_populations <- readRDS(file.path(indicator_outputs, 
+                                           paste(location, eco_version,
+                                                 "human_population_density.rds", 
+                                                 sep = "_")))
+} else {
+  
+  ## WARNING - SLOW CODE - takes around 80878.37s or 23 hours
+  
+population_data_2005 <- raster(file.path(inputs,
+                               "human_population\\gpw_v4_population_density_rev11_2005_30_sec.tif"))
+      
+system.time(population_ecoregion_map_2005 <- ecoregion_map %>%
+                  mutate(raw_indicator_value = 
+                           raster::extract(population_data_2005,
+                                           ecoregion_map,
+                                           fun = mean, 
+                                           na.rm = TRUE)))
+    
+saveRDS(population_ecoregion_map_2005, file.path(indicator_outputs, paste(location, 
+                                      "population_2005_ecoregion_map.rds",
+                                                                       sep = "_")))
+
+ecoregion_population_density <- population_ecoregion_map_2005 %>% 
+                          select(ECO_ID, raw_indicator_value) %>%
+                          mutate(year = "2005",
+                                 indicator = "mean human population density") %>%
+                          rename(ecoregion_id = ECO_ID) %>%
+                          st_set_geometry(NULL) %>%
+                          dplyr::select(indicator, year, ecoregion_id, 
+                                        raw_indicator_value)
+
+saveRDS(ecoregion_population_density, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "human_population_density.rds",
+                                           sep = "_")))
+  }
+
+
 # Ecoregion area ----
 
 ecoregion_area_km2 <- read.csv(paste(file.path(inputs, "ecoregions_2017",
@@ -2126,7 +2169,8 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_headline_threats,
                     ecoregion_hfp_threats,
                     ecoregion_scientific_capacity,
-                    ecoregion_realms) %>%
+                    ecoregion_realms, 
+                    ecoregion_population_density) %>%
                     dplyr::select(ecoregion_id, indicator, year, 
                                   raw_indicator_value)
 
@@ -2188,7 +2232,7 @@ write.csv(ecoregion_values_wide, file.path(indicator_outputs,
                                                    "ecoregion_values_wide.csv",
                                                    sep = "_")))
 
-# Map the ecoregion values to see if they make sense ----
+???# Map the ecoregion values to see if they make sense ----
 #' TODO: Update this to ggplot?
 
 ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)

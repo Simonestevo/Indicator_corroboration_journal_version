@@ -47,7 +47,7 @@ eco_version <- "ecoregions_2017"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
-timepoint <- 2005
+timepoint <- "2005"
 load_map <- FALSE
 
 
@@ -155,21 +155,21 @@ raw_indicators_wide <- raw_indicators_long %>%
 # raw_indicators_wide <- readRDS(file.path(analysis_inputs,
 #                           "global_ecoregions_2017_indicator_values_master_wide.rds"))
 
-if (!is.na(timepoint)) {
-  
-  raw_indicators_long <- raw_indicators_long_all %>%
-    filter(year == timepoint) %>%
-    dplyr::select(ecoregion_id, indicator_year,
-                  raw_indicator_value) %>%
-    distinct(.)
-  
-  raw_indicators_wide <- raw_indicators_long %>%
-    spread(key = indicator_year, 
-           value = raw_indicator_value) 
-  
-  indicators <- unique(raw_indicators_long$indicator_year)
-  
-}
+# if (!is.na(timepoint)) {
+#   
+#   raw_indicators_long <- raw_indicators_long_all %>%
+#     filter(year == timepoint) %>%
+#     dplyr::select(ecoregion_id, indicator_year,
+#                   raw_indicator_value) %>%
+#     distinct(.)
+#   
+#   raw_indicators_wide <- raw_indicators_long %>%
+#     spread(key = indicator_year, 
+#            value = raw_indicator_value) 
+#   
+#   indicators <- unique(raw_indicators_long$indicator_year)
+#   
+# }
 
 # Ecoregion data
 
@@ -274,10 +274,19 @@ ecoregions_wide <- ecoregions_wide %>%
                                  "Few RLI HFP NA",
                                  NA))))))))
 
+
+ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
+                                       breaks = c(-1,0,100), 
+                                   labels = c("no endemics", 
+                                              "endemics"))
+
 ecoregions_wide_countries <- ecoregions_wide %>%
                              merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
                                    by.x = "ecoregion_id", by.y = "ECO_ID") %>%
                              rename(country = CNTRY_NAME)
+
+
+
 
 rm(raw_ecoregions_long, raw_ecoregions_wide)
 
@@ -314,19 +323,17 @@ names(indicators_wide) <- str_replace(names(indicators_wide), " ", "_")
 
 indicators <- names(indicators_wide)
 
-indicators <- indicators[!indicators %in% "ecoregion_id"]
+indicators_all <- indicators[!indicators %in% "ecoregion_id"]
 
 # Manage outliers ----
 
 pca_input_data <- indicators_wide %>%
-  # filter(`LPI 2005` < quantile(`LPI 2005`, 
+  # filter(LPI_2005 < quantile(LPI_2005,
   #                              0.99, na.rm = TRUE)) %>%
   # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
   #                              0.99, na.rm = TRUE)) %>%
   filter(HFP_2005 < quantile(HFP_2005, 
                              0.99, na.rm = TRUE))
-
-
 
 # test
 
@@ -360,7 +367,7 @@ pca_input_data <- indicators_wide %>%
 # https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 
 indicators_wide_centred <- indicators_wide %>%
-                           mutate_at(c(2:ncol(pca_input_data)), 
+                           mutate_at(c(2:ncol(indicators_wide)), 
                                      funs(c(scale(.)))) 
 
 summary(indicators_wide_centred)
@@ -380,14 +387,18 @@ boxplots
 
 boxplot(indicators_wide_centred$HFP_2005)
 
-# 
+# Manage outliers for the boxplots/correlation data
 
 indicators_wide_centred_trunc <- indicators_wide_centred %>%
-  # filter(`LPI 2005` < quantile(`LPI 2005`, 
+  # filter(LPI_2005 < quantile(LPI_2005,
   #                              0.99, na.rm = TRUE)) %>%
+  # filter(LPI_2015 < quantile(LPI_2015,
+  #                            0.99, na.rm = TRUE)) %>%
   # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
   #                              0.99, na.rm = TRUE)) %>%
   filter(HFP_2005 < quantile(HFP_2005, 
+                             0.99, na.rm = TRUE)) %>%
+  filter(HFP_2013 < quantile(HFP_2013, 
                              0.99, na.rm = TRUE))
 
 indicator_boxplot_data_2 <- reshape2::melt(indicators_wide_centred_trunc, 
@@ -404,17 +415,84 @@ ggsave(file.path(current_analysis_outputs, "indicator_boxplots_2.png"),
 
 rm(raw_indicators_long, raw_indicators_wide)
 
-# Finalise analysis data ----
+# Finalise correlation data ----
 
 correlation_input_data <- indicators_wide_centred_trunc %>%
   merge(ecoregions_wide, by = "ecoregion_id") 
 
-# Remove indicators
+# Time by time scatterplots ----
 
-grouping_variables <- names(correlation_input_data)[!(names(correlation_input_data) %in% indicators)]
+# Select the correct time point columns
+
+BHI_data <- correlation_input_data %>%
+            dplyr::select(all_of(c("ecoregion_id", "realm", 
+                                   "BHI_plants_2005", 
+                                   "BHI_plants_2015")))
+
+# BIIri_data <- correlation_input_data %>%
+#               dplyr::select(all_of(c("BIIri_2005", "BIIri_2015")))
+#                 
+# BIIab_all <- correlation_input_data %>%
+#   dplyr::select(all_of(c("BIIab_2005", "BIIab_2015")))
+# 
+# RLI_all <- correlation_input_data %>%
+#   dplyr::select(all_of(c("RLI_2005", "RLI_2015")))
+
+extinct_data <- correlation_input_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "extinct_2005", "extinct_2015")))
+
+threatened_data <- correlation_input_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "threatened_2005", "threatened_2015")))
+
+LPI_data <- correlation_input_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "LPI_2005", "LPI_2015")))
+
+time_correlation_input_list <- list(BHI_data, extinct_data, threatened_data,
+                                    LPI_data)
+
+
+time_scatterplots <- list()
+
+for (i in seq_along(time_correlation_input_list)) {
+  
+  scatterplot_data <- time_correlation_input_list[[i]]
+  
+  labx <- names(scatterplot_data)[3]
+  laby <- names(scatterplot_data)[4]
+  names(scatterplot_data) <- c("ecoregion_id", "realm","varx", "vary")
+  vargroup <- "realm"
+  
+  scatterplot <- ggplot(scatterplot_data,aes(x = varx, 
+                                             y = vary, 
+                                             color = realm)) +
+    geom_point() +
+    #geom_text(label = scatterplot_data$ecoregion_id) + 
+    #geom_smooth(method=lm) +
+    labs(x= labx,
+         y = laby)
+  
+  ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby,"_NL", ".png", sep = "")),
+         scatterplot, device = "png")
+  
+  time_scatterplots[[i]] <- scatterplot
+  
+}
+
+time_scatterplots[[4]]
+
+
+# Grouping variables ----
+
+# Get the names of grouping variables
+
+grouping_variables_all <- names(correlation_input_data)[!(names(correlation_input_data) %in% 
+                                                            indicators_all)]
 
 # Remove numerics
-grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_id",
+grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ecoregion_id",
                                             "predominant.threat.type",
                                             "headline.threat.type",
                                             "ecoregion.area.km.sq",
@@ -422,13 +500,32 @@ grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_
                                             "LPI_records",
                                             "scenario.numeric",
                                             "predominant.threat.count",
-                                            "mean.scientific.publications"))]
+                                            "mean.scientific.publications",
+                                            "number.of.endemics",
+                                            "mean.human.population.density"))]
 
 
 # Scatterplots ----
 
+# Subset to a single timepoint
+
+if (!is.na(timepoint)) {
+  
+  indicators <- names(correlation_input_data)[str_detect(names(correlation_input_data),
+                                                                   timepoint)]
+  
+  indicators_timepoint_names <- c(grouping_variables_all,
+                                  indicators)
+  
+  correlation_input_data <- correlation_input_data %>%
+    dplyr::select(all_of(indicators_timepoint_names))
+  
+}
+
 # correlation_input_data <- correlation_input_data_all
 # correlation_input_data_all <- correlation_input_data
+
+vargroup <- "realm"
 
 indicator_combinations <- combn(indicators, 2)
 
@@ -443,7 +540,7 @@ scatterplots <- list()
 for (i in seq_along(indicator_list)) {
   
 scatterplot_data <- correlation_input_data[, c("ecoregion_id", 
-                                            "island.status",
+                                            vargroup,
                                             indicator_list[[i]][1],
                                             indicator_list[[i]][2])]
 labx <- names(scatterplot_data)[3]
@@ -454,8 +551,8 @@ scatterplot <- ggplot(scatterplot_data,aes(x = varx,
                                            y = vary, 
                                            color = vargroup)) +
                geom_point() +
-               geom_text(label = correlation_input_data$ecoregion_id) + 
-               geom_smooth(method=lm) +
+               # geom_text(label = correlation_input_data$ecoregion_id) + 
+               # geom_smooth(method=lm) +
                labs(x= labx,
                     y = laby)
 
@@ -485,7 +582,7 @@ scatterplots[[16]]
 scatterplots[[17]]
 scatterplots[[18]]
 scatterplots[[19]]
-scatterplots[[20]]
+scatterplots[[28]]
 
 # Get the ecoregions with the strangest results (eg really high HFP, low RLI)
 
@@ -496,14 +593,19 @@ weird_ecoregions <- correlation_input_data %>%
 # Correlation plots ----
 
 all_grouping_variables <- paste("all", grouping_variables, sep = ".")
+nice_grouping_variables <- str_to_title(gsub(".", " ", grouping_variables, fixed=TRUE))
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Hfp", "HFP")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
+nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
+
+all_groups <- list()
+all_heatmaps <- list()
 
 for (i in seq_along(grouping_variables)) {
   
 vargroup <- grouping_variables[i]
 varall <- all_grouping_variables[i]
-
-# group_indicators <- add_grouping_variable(vargroup, indicators_wide_centred_trunc,
-#                                           ecoregions_wide)
 
 x <- c("ecoregion_id", indicators, vargroup)
 
@@ -518,48 +620,58 @@ all[, ncol(all)] <- varall
 
 group_indicator_list[[varall]] <- all
 
+group_correlations <- list()
+group_correlations_dataframes <- list()
 group_matrices <- list()
 
-for (i in seq_along(group_indicator_list)) {
+for (j in seq_along(group_indicator_list)) {
   
-  group_matrices[[i]] <- group_indicator_list[[i]] %>%
-    dplyr::select(-ecoregion_id, -vargroup) %>%
-    na.omit(.)
+   group_matrix <- group_indicator_list[[j]] %>%
+                   dplyr::select(-ecoregion_id, -vargroup) %>%
+                   na.omit(.)
+   
+   names(group_matrix) <- str_remove(names(group_matrix), "_2005")
+
+   group_matrices[[j]] <- group_matrix
   
 }
 
 names(group_matrices) <- names(group_indicator_list)
 
-group_correlations <- list()
-
-for (i in seq_along(group_matrices)) {
+for (j in seq_along(group_matrices)) {
   
-  subset_matrix <- group_matrices[[i]]#[, c(1,2,6,10,20,24,27)]
+  subset_matrix <- group_matrices[[j]]
   
   n <- nrow(subset_matrix)
   
-  name <- paste(names(group_matrices)[i], "n =", n, sep = " ")
+  name <- paste(names(group_matrices)[j], "n =", n, sep = " ")
   name <- str_replace(name, "&", "and")
   name <- str_replace(name, "/", "_and_")
   name <- str_replace(name, "<", " less than ")
   name <- str_replace(name, ">", " more than ")
   name <- gsub("[()]", "", name)
   
-  if (nrow(subset_matrix) < 5) {
+  if (nrow(subset_matrix) < 3) {
     
-    print(paste("insufficient data for", names(group_matrices)[i], sep = " "))
+    print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
     
   } else {
     
     p.mat <- cor_pmat(subset_matrix)
     
     correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
-                                   title = name, #names(group_matrices)[i],
+                                   title = name, 
                                    p.mat = p.mat, 
                                    type = "lower", insig = "blank",
                                    outline.color = "white",
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
+    
+    correlation_df <- correlation_plot$data[,1:3] %>%
+                      mutate(subgroup = names(group_matrices)[j],
+                             combination = paste(Var1, "x", Var2, sep = " ")) %>%
+                      rename(coefficient = value) %>%
+                      dplyr::select(-Var1, -Var2)
     
     group_directory <- file.path(current_analysis_outputs, paste(vargroup,
                                  "correlation matrices", sep = " "))
@@ -569,22 +681,52 @@ for (i in seq_along(group_matrices)) {
       dir.create( group_directory, recursive = TRUE )
       
     }
-    
-    ggsave(file.path(group_directory, 
+
+    ggsave(file.path(group_directory,
                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
            correlation_plot, device = "png")
+
     
-    group_correlations[[i]] <- correlation_plot
-    
-    }
   }
+  
+  group_correlations[[j]] <- correlation_plot
+  
+  group_correlations_dataframes[[j]] <- correlation_df
+
+  }
+
+all_groups[[i]] <- group_correlations
+
+correlation_dataframe <- do.call(rbind, group_correlations_dataframes)
+
+heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
+                                             y = combination,
+                                             fill = coefficient)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
+       y = "Pairwise indicator comparisons") +
+  guides(fill = guide_legend(title = "Correlation\ncoefficient (r)"))
+
+ggsave(file.path(group_directory,
+                 paste(grouping_variables[i], "correlation_heatmap.png", sep = "_")),
+       heatmap, device = "png")
+
+all_heatmaps[[i]] <- heatmap
+
 }
 
+names(all_groups) <- grouping_variables
+names(all_heatmaps) <- grouping_variables
+all_heatmaps[[10]]
 
 # Map scenarios ----
 
 # Global ----
 
+if(load_map == TRUE) {
+  
 ecoregion_values_scenario <- ecoregions_wide %>%
                              dplyr::select(ecoregion_id, scenario)
 
@@ -644,17 +786,26 @@ ggsave(file.path(current_analysis_outputs,
                        sep = "_")), 
        scenario_map,  device = "png")
 
-# Correlation matrices ----
-
-spearman_correlations_all_years <- as.data.frame(cor(indicator_matrix, 
-                                                     method = "spearman"))
+}
 
 # PCA ----
+
+# Subset to a single timepoint
+
+if (!is.na(timepoint)) {
+  
+  indicators <- names(pca_input_data)[str_detect(names(pca_input_data),
+                                                         timepoint)]
+  
+  pca_input_data <- pca_input_data %>%
+    dplyr::select(all_of(c("ecoregion_id", indicators)))
+  
+}
 
 # Prepare data
 
 pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
-                     "BHI_plants 2005":"threatened_2005", factor_key=TRUE)
+                     "BHI_plants_2005":"threatened_2005", factor_key=TRUE)
 
 pca_data_2 <- pca_data_1 %>%
               merge(ecoregions_wide,by = "ecoregion_id") %>%
@@ -674,12 +825,11 @@ pca_data_3 <- spread(pca_data_2,indicator,indicator_value)
 
 pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,19:ncol(pca_data_3)]),]
 
-pca_data_5 <- pca_data_4 %>%
-              dplyr::select(-BIIab_2005, -threatened_2005) #[pca_data_4$headline.threat.type %in% headline_threats,]
+pca_data_5 <- pca_data_4 
 
 # * Conduct the PCA ----
 
-pca=prcomp(pca_data_5[,19:ncol(pca_data_5)],center=TRUE,scale=TRUE)
+pca <- prcomp(pca_data_5[,15:ncol(pca_data_5)], center = TRUE, scale = TRUE)
 summary(pca)
 print(pca)
 
@@ -705,6 +855,8 @@ plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)", main = "PC1 / 
 
 # * Plot PCA ----
 
+# https://rstudio-pubs-static.s3.amazonaws.com/323416_ab58ad22d9e64ba2831569cf3d14a609.html
+
 # Make the PCA plots in a loop
 
 # Remove indicators
@@ -715,12 +867,12 @@ grouping_variables <- names(pca_data_5)[!(names(pca_data_5) %in% indicators)]
 grouping_variables <- grouping_variables[!(grouping_variables %in% c("ecoregion_id",
                                                                      "predominant.threat.type",
                                                                      "headline.threat.type",
-                                                                     "ecoregion.area.km.sq",
-                                                                     "RLI_records",
-                                                                     "LPI_records",
+                                                                     # "ecoregion.area.km.sq",
+                                                                     # "RLI_records",
+                                                                     # "LPI_records",
+                                                                     #"mean.scientific.publications",
                                                                      "scenario",
-                                                                     "predominant.threat.count",
-                                                                     "mean.scientific.publications"))]
+                                                                     "predominant.threat.count"))]
 
 pca_plots <- list()
 
@@ -732,19 +884,19 @@ for (i in seq_along(grouping_variables)) {
   pca_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
                        pointsize = 2, 
                        col.ind = "black", 
-                       palette = "jco", 
+                       palette = "viridis", 
                        addEllipses = TRUE,
                        label = "var",
                        col.var = "black",
                        repel = TRUE,
                        fill.ind = as.factor(vargroup),
                        legend.title = varname) +
-    ggtitle("2D PCA-plot from 30 feature dataset") +
-    theme(plot.title = element_text(hjust = 0.5))
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom")
   
   ggsave(file.path(current_analysis_outputs, paste(varname, ".png", sep = "")),
          pca_plot, device = "png")
-  
+
   pca_plots[[i]] <- pca_plot
   
 }
@@ -759,6 +911,102 @@ pca_plots[[7]]
 pca_plots[[8]]
 pca_plots[[9]]
 pca_plots[[10]]
+
+# Try cluster analysis on PCA ----
+
+summary(pca)
+
+# Get the response variable  (or what you think it is)
+
+#vargroup <- as.numeric(pca_data_5$island.status == "island")
+
+vargroup <- as.numeric(as.factor(pca_data_5$realm))
+
+#vargroup <- pca_data_5$scenario.numeric
+
+vargroup <- as.numeric(as.factor(vargroup))
+
+number_clusters <- length(unique(vargroup))
+
+# Plot the different dimensions to see how clearly the response variable is delineated 
+
+plot(pca$x[, c(1, 2)], col = (unique(vargroup) + 1), 
+     xlab = "PC1", ylab = "PC2")
+
+plot(pca$x[, c(1, 3)], col = (unique(vargroup) + 1), 
+     xlab = "PC1", ylab = "PC2")
+
+# Plot explained variability
+
+par(mfrow = c(1, 2))
+
+# Calculate variability of each component
+pr.var <- pca$sdev ^2
+
+# Variance explained by each principal component: pve
+pve <- pr.var/sum(pr.var)
+
+# Plot variance explained for each principal component
+plot(pve, xlab = "Principal Component", 
+     ylab = "Proportion of Variance Explained", 
+     ylim = c(0, 1), type = "b")
+
+# Plot cumulative proportion of variance explained
+plot(cumsum(pve), xlab = "Principal Component", 
+     ylab = "Cumulative Proportion of Variance Explained", 
+     ylim = c(0, 1), type = "b")
+
+# Try hierarchical cluster ----
+
+# Remove ID column
+
+rownames(pca_input_data) <- pca_input_data$ecoregion_id
+
+hclust_input_data <- pca_input_data %>% 
+  dplyr::select(- ecoregion_id)
+
+# Remove incomplete cases
+
+hclust_input_data <- hclust_input_data[complete.cases(hclust_input_data),]
+
+# Scale 
+
+hclust_input_data <- scale(hclust_input_data)
+
+# Make cluster model
+
+hclust.indicators <- hclust(dist(hclust_input_data), method = "complete")
+plot(hclust.indicators)
+abline(h = 9, col = "red")
+
+cut_indicators <- cutree(hclust.indicators, k = number_clusters)
+
+cut_indicators_df <- cbind(rownames(hclust_input_data), cut_indicators)
+
+x <- table(cut_indicators,vargroup)
+
+true <- colSums(x)
+
+model <- rowSums(x)
+
+check_model <- cbind(true,model)
+
+check_model
+
+# Try k means
+
+wisc.km <- kmeans(scale(kmeans_input_data), centers = number_clusters, nstart = 100)
+
+# Compare k-means to actual diagnoses
+x <- table(wisc.km$cluster, vargroup)
+true <- colSums(x)
+
+model <- rowSums(x)
+
+check_model <- cbind(true,model)
+
+check_model
+
 
 # Try k means cluster ----
 
@@ -819,18 +1067,33 @@ for(i in 1:6) {
        xlab = "", ylab = "")
 }
 
-# Try hierarchical cluster ----
 
-colMeans(test3)
-apply(test3, 2, sd)
 
-# Go back and check the section about method and unbalanced trees
-hclust.indicators <- hclust(dist(test3), method = "average")
-plot(hclust.indicators)
+# K means cluster
 
-cutree(x, k = 3)
+kmeans_input_data <- hclust_input_data
 
-plot(x)
+# Select number of clusters
+k <- 3
+
+# Build model with k clusters: km.out
+km.out <- kmeans(kmeans_input_data, centers = k, nstart = 20, iter.max = 200)
+
+# View the resulting model
+km.out$tot.withinss
+
+# Plot of Defense vs. Speed by cluster membership
+plot(kmeans_input_data[, c("BIIri_2005", "RLI_2005")],
+     col = km.out$cluster,
+     main = paste("k-means clustering of indicator data with", k, "clusters"),
+     xlab = "bhi", ylab = "rli")
+
+par(mfrow = c(2, 3))
+
+km_indicators <- km.out$cluster
+km_indicators_df <- cbind(rownames(hclust_input_data), km_indicators)
+
+table(km_indicators, cut_indicators)
 
 # Try a model ----
 

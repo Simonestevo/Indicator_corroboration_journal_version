@@ -228,12 +228,10 @@ ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scien
                                        "Moderate_publications",
                                        "Many_publications"))
 
-ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 5, 
-                                  labels = c("Very_small_ecoregions", 
-                                             "Small_ecoregions", 
+ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
+                                  labels = c("Small_ecoregions", 
                                              "Medium_ecoregions",
-                                             "Large_ecoregions", 
-                                             "Very_large_ecoregions"))
+                                             "Large_ecoregions"))
 
 lpi_breaks <- c(-1, 50, 150, 400)
 ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, 
@@ -817,19 +815,22 @@ pca_data_2 <- pca_data_1 %>%
                             scenario,
                             included.in.HFP,
                             predominant.threat.type,
+                            endemics.factor,
                             scenario.numeric,
                             predominant.threat.count,
+                            mean.human.population.density,
+                            number.of.endemics,
                             everything()) 
 
 pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
 
-pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,19:ncol(pca_data_3)]),]
+pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,16:ncol(pca_data_3)]),]
 
 pca_data_5 <- pca_data_4 
 
 # * Conduct the PCA ----
 
-pca <- prcomp(pca_data_5[,15:ncol(pca_data_5)], center = TRUE, scale = TRUE)
+pca <- prcomp(pca_data_5[,16:ncol(pca_data_5)], center = TRUE, scale = TRUE)
 summary(pca)
 print(pca)
 
@@ -930,10 +931,10 @@ number_clusters <- length(unique(vargroup))
 
 # Plot the different dimensions to see how clearly the response variable is delineated 
 
-plot(pca$x[, c(1, 2)], col = (unique(vargroup) + 1), 
+plot(pca$x[, c(1, 2)], col = as.numeric(as.factor(pca_data_5$realm)), 
      xlab = "PC1", ylab = "PC2")
 
-plot(pca$x[, c(1, 3)], col = (unique(vargroup) + 1), 
+plot(pca$x[, c(1, 3)], col = as.numeric(as.factor(pca_data_5$realm)), 
      xlab = "PC1", ylab = "PC2")
 
 # Plot explained variability
@@ -956,67 +957,22 @@ plot(cumsum(pve), xlab = "Principal Component",
      ylab = "Cumulative Proportion of Variance Explained", 
      ylim = c(0, 1), type = "b")
 
-# Try hierarchical cluster ----
-
-# Remove ID column
+# K-means cluster analysis ----
 
 rownames(pca_input_data) <- pca_input_data$ecoregion_id
 
-hclust_input_data <- pca_input_data %>% 
+kmeans_input_data <- pca_input_data %>% 
   dplyr::select(- ecoregion_id)
 
 # Remove incomplete cases
 
-hclust_input_data <- hclust_input_data[complete.cases(hclust_input_data),]
+kmeans_input_data <- kmeans_input_data[complete.cases(kmeans_input_data),]
 
 # Scale 
 
-hclust_input_data <- scale(hclust_input_data)
+kmeans_input_data <- scale(kmeans_input_data)
 
-# Make cluster model
-
-hclust.indicators <- hclust(dist(hclust_input_data), method = "complete")
-plot(hclust.indicators)
-abline(h = 9, col = "red")
-
-cut_indicators <- cutree(hclust.indicators, k = number_clusters)
-
-cut_indicators_df <- cbind(rownames(hclust_input_data), cut_indicators)
-
-x <- table(cut_indicators,vargroup)
-
-true <- colSums(x)
-
-model <- rowSums(x)
-
-check_model <- cbind(true,model)
-
-check_model
-
-# Try k means
-
-wisc.km <- kmeans(scale(kmeans_input_data), centers = number_clusters, nstart = 100)
-
-# Compare k-means to actual diagnoses
-x <- table(wisc.km$cluster, vargroup)
-true <- colSums(x)
-
-model <- rowSums(x)
-
-check_model <- cbind(true,model)
-
-check_model
-
-
-# Try k means cluster ----
-
-test <- correlation_input_data[,2:8]
-
-test2 <- apply(test, 2, scale)
-
-test3 <- as.data.frame(test2)
-
-test3 <- test3[complete.cases(test3),]
+# Find best/truest number of clusters
 
 wss <- 0
 
@@ -1025,7 +981,7 @@ set.seed(1)
 # Look over 1 to 15 possible clusters
 for (i in 1:15) {
   # Fit the model: km.out
-  km.out <- kmeans(test3, centers = i, nstart = 20, iter.max = 50)
+  km.out <- kmeans(kmeans_input_data, centers = i, nstart = 20, iter.max = 200)
   # Save the within cluster sum of squares
   wss[i] <- km.out$tot.withinss
 }
@@ -1035,65 +991,40 @@ plot(1:15, wss, type = "b",
      xlab = "Number of Clusters", 
      ylab = "Within groups sum of squares")
 
-# Select number of clusters
-k <- 3
+# Looks like 3 clusters is best
 
-# Build model with k clusters: km.out
-km.out <- kmeans(test3, centers = k, nstart = 20, iter.max = 2000)
+number_clusters <- 3
+
+wisc.km <- kmeans(scale(kmeans_input_data), centers = number_clusters, nstart = 100)
+
+# Compare k-means to actual groupings
+
+
+x <- table(wisc.km$cluster, pca_data_5$lpi.records.factor)
+
+true <- colSums(x)
+
+model <- rowSums(x)
+
+check_model <- cbind(true,model)
+
+check_model
 
 # View the resulting model
-km.out$tot.withinss
+wisc.km$tot.withinss
 
 # Plot of Defense vs. Speed by cluster membership
-plot(test3[, c("BIIri_2005", "RLI_2005")],
-     col = km.out$cluster,
-     main = paste("k-means clustering of indicator data with", k, "clusters"),
-     xlab = "bhi", ylab = "rli")
+plot(kmeans_input_data[, c("BIIri_2005", "threatened_2005")],
+     col = wisc.km$cluster,
+     pch = as.character(pca_data_5$Biome),
+     main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
+     xlab = "bii", ylab = "rli")
 
 par(mfrow = c(2, 3))
 
-# Set seed
-set.seed(1)
-
-test4 <- test3[,1:2]
-
-for(i in 1:6) {
-  # Run kmeans() on x with three clusters and one start
-  km.out <- kmeans(test4, centers = 3, nstart = 1)
-  
-  # Plot clusters
-  plot(test4, col = km.out$cluster, 
-       main = km.out$tot.withinss, 
-       xlab = "", ylab = "")
-}
 
 
 
-# K means cluster
-
-kmeans_input_data <- hclust_input_data
-
-# Select number of clusters
-k <- 3
-
-# Build model with k clusters: km.out
-km.out <- kmeans(kmeans_input_data, centers = k, nstart = 20, iter.max = 200)
-
-# View the resulting model
-km.out$tot.withinss
-
-# Plot of Defense vs. Speed by cluster membership
-plot(kmeans_input_data[, c("BIIri_2005", "RLI_2005")],
-     col = km.out$cluster,
-     main = paste("k-means clustering of indicator data with", k, "clusters"),
-     xlab = "bhi", ylab = "rli")
-
-par(mfrow = c(2, 3))
-
-km_indicators <- km.out$cluster
-km_indicators_df <- cbind(rownames(hclust_input_data), km_indicators)
-
-table(km_indicators, cut_indicators)
 
 # Try a model ----
 
@@ -1159,6 +1090,32 @@ summary(step_ind_glm)
 
 
 
+
+# Try hierarchical cluster ----
+
+# Remove ID column
+
+hclust_input_data <- kmeans_input_data
+
+# Make cluster model
+
+hclust.indicators <- hclust(dist(hclust_input_data), method = "complete")
+plot(hclust.indicators)
+abline(h = 9, col = "red")
+
+cut_indicators <- cutree(hclust.indicators, k = number_clusters)
+
+cut_indicators_df <- cbind(rownames(hclust_input_data), cut_indicators)
+
+x <- table(cut_indicators,vargroup)
+
+true <- colSums(x)
+
+model <- rowSums(x)
+
+check_model <- cbind(true,model)
+
+check_model
 
 # Old analysis code ----
 

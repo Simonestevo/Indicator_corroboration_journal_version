@@ -48,7 +48,7 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoint <- "2005"
-load_map <- FALSE
+load_map <- TRUE
 
 
 # Set up some ecoregions that we know how they should behave
@@ -133,6 +133,8 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 indicator_properties <- read.csv(file.path(analysis_inputs,
                                           "indicator_properties.csv"))
+indicator_relationships <- read.csv(file.path(analysis_inputs,
+                                           "indicator_input_relationships.csv"))
 
 raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
                           "global_ecoregions_2017_indicator_values_master.rds"))
@@ -336,6 +338,267 @@ pca_input_data <- indicators_wide %>%
   filter(HFP_2005 < quantile(HFP_2005, 
                              0.99, na.rm = TRUE))
 
+# PCA ----
+
+# Subset to a single timepoint
+
+if (!is.na(timepoint)) {
+  
+  indicators <- names(pca_input_data)[str_detect(names(pca_input_data),
+                                                 timepoint)]
+  
+  pca_input_data <- pca_input_data %>%
+    dplyr::select(all_of(c("ecoregion_id", indicators)))
+  
+}
+
+# Prepare data
+
+pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
+                     "BHI_plants_2005":"threatened_2005", factor_key=TRUE)
+
+pca_data_2 <- pca_data_1 %>%
+  merge(ecoregions_wide,by = "ecoregion_id") %>%
+  dplyr::select(ecoregion_id, realm, headline.threat.type,
+                Biome, island.status, scientific.publications.factor,
+                area.factor,
+                lpi.records.factor,
+                rli.records.factor,
+                scenario,
+                included.in.HFP,
+                predominant.threat.type,
+                endemics.factor,
+                scenario.numeric,
+                predominant.threat.count,
+                mean.human.population.density,
+                number.of.endemics,
+                everything()) 
+
+pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
+
+pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,16:ncol(pca_data_3)]),]
+
+pca_data_5 <- pca_data_4 
+
+# * Conduct the PCA ----
+
+pca <- prcomp(pca_data_5[,c(22:28)], center = TRUE, scale = TRUE)
+summary(pca)
+print(pca)
+
+pca_loadings <- as.data.frame(print(pca$rotation))
+
+write.csv(pca_loadings, file.path(current_analysis_outputs, "pca_loadings.csv"))
+
+var <- get_pca_var(pca)
+variable_contributions <- var$contrib
+
+write.csv(variable_contributions, file.path(current_analysis_outputs, "pca_variable_contributions.csv"))
+
+# look at the eigen values and cumulative variance plot
+
+tiff(file = file.path(current_analysis_outputs, "pca_screeplot.tiff"), 
+     units = "in", width=10, height=5, res = 200)
+
+screeplot(pca, type = "l", npcs = 5)
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+
+dev.off()
+
+tiff(file = file.path(current_analysis_outputs, "pca_cumulative_variance.tiff"), 
+     units = "in", width=10, height=5, res = 200)
+
+cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+plot(cumpro[0:5], xlab = "PC #", ylab = "Amount of explained variance")
+
+dev.off()
+
+# first two principle components plot (the results seems clustered..)
+
+tiff(file = file.path(current_analysis_outputs, "pca_dim_1_2.tiff"), 
+     units = "in", width=10, height=5, res = 200)
+
+plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)")
+
+dev.off()
+
+# PCA cluster analysis ----
+
+summary(pca)
+
+# Figure out best number of clusters
+
+wss <- 0
+set.seed(1)
+
+# Look over 1 to 15 possible clusters
+for (i in 1:15) {
+  # Fit the model: km.out
+  km.out <- kmeans(pca$x[,1:4], centers = i, nstart = 20, iter.max = 200)
+  # Save the within cluster sum of squares
+  wss[i] <- km.out$tot.withinss
+}
+
+tiff(file = file.path(current_analysis_outputs, "pca_cluster_model_selection.tiff"), 
+     units = "in", width=10, height=5, res = 200)
+
+# Produce a scree plot
+plot(1:15, wss, type = "b",
+     xlab = "Number of Clusters",
+     ylab = "Within groups sum of squares")
+
+dev.off()
+
+# Looks like there is a clear elbow between 3 and 4 clusters
+
+number_clusters <- 3
+
+pca_clusters <- kmeans(pca$x[,1:4], centers = number_clusters, nstart = 100)
+
+# plot(pca_data_5[, c("BIIri_2005", "threatened_2005")],
+#      col = pca_clusters$cluster,
+#      main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
+#      xlab = "bii", ylab = "rli")
+# 
+
+
+# Map the ecoregions in their clusters
+
+cluster_map_data <- as.data.frame(cbind(pca_data_5$ecoregion_id, pca_clusters$cluster))
+
+names(cluster_map_data) <- c("ecoregion_id","cluster")
+
+scatterplot_cluster_data <- cluster_map_data %>%
+  merge(pca_data_5[,c("ecoregion_id", "BIIri_2005",
+                      "threatened_2005")], by = "ecoregion_id")
+
+cluster_map_data <- ecoregion_map_renamed %>%
+  merge(cluster_map_data, by = "ecoregion_id")
+
+# cluster_map <- plot(cluster_map_data["cluster"])
+
+cluster_scatterplot <- ggplot(scatterplot_cluster_data,
+                              aes(x = BIIri_2005, y = RLI_2005, 
+                                  color = cluster)) +
+  geom_point() +
+  scale_color_viridis_c(alpha = .8,
+                        na.value = "grey70") +
+  labs(x = "BII (richness)",
+       y = "Proportion threatened")
+
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version,
+                       "cluster_scatterplot.png",
+                       sep = "_")), 
+       cluster_scatterplot,  device = "png")
+
+cluster_map <-  ggplot(cluster_map_data) +
+  geom_sf(aes(fill = cluster), colour = "black", 
+          size = 0.05, show.legend = 'fill') +
+  scale_fill_viridis_c(alpha = .8,
+                       na.value = "grey70") +
+  theme(axis.line = element_line(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
+  labs(fill = "Cluster") +
+  theme(legend.position = "right")
+
+cluster_map
+
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version,
+                       "cluster_map.png",
+                       sep = "_")), 
+       cluster_map,  device = "png")
+
+
+# Look at the ecoregions in each cluster
+
+cluster_one <- scatterplot_cluster_data %>% 
+  filter(cluster == 1) %>% 
+  dplyr::select(ecoregion_id)
+
+cluster_one_ecoregions <- pca_data_5[pca_data_5$ecoregion_id %in% 
+                                                   cluster_one$ecoregion_id ,]
+
+
+cluster_two <- scatterplot_cluster_data %>% 
+  filter(cluster == 2) %>% 
+  dplyr::select(ecoregion_id)
+
+cluster_two_ecoregions <- pca_data_5[pca_data_5$ecoregion_id %in% 
+                                                   cluster_two$ecoregion_id ,] 
+
+cluster_three <- scatterplot_cluster_data %>% 
+  filter(cluster == 3) %>% 
+  dplyr::select(ecoregion_id)
+
+cluster_three_ecoregions <- pca_data_5[pca_data_5$ecoregion_id %in% 
+                                                     cluster_three$ecoregion_id ,] 
+
+table(cluster_one_ecoregions$island.status)
+table(cluster_two_ecoregions$island.status)
+table(cluster_three_ecoregions$island.status)
+
+table(cluster_one_ecoregions$included.in.HFP)
+table(cluster_two_ecoregions$included.in.HFP)
+table(cluster_three_ecoregions$included.in.HFP)
+
+table(cluster_one_ecoregions$scenario)
+table(cluster_two_ecoregions$scenario)
+table(cluster_three_ecoregions$scenario)
+
+table(cluster_one_ecoregions$endemics.factor)
+table(cluster_two_ecoregions$endemics.factor)
+table(cluster_three_ecoregions$endemics.factor)
+
+table(cluster_one_ecoregions$rli.records.factor)
+table(cluster_two_ecoregions$rli.records.factor)
+table(cluster_three_ecoregions$rli.records.factor)
+
+table(mean(cluster_one_ecoregions$mean.human.population.density),
+      mean(cluster_two_ecoregions$mean.human.population.density),
+      mean(cluster_three_ecoregions$mean.human.population.density))
+
+plot(x = log10(pca_data_5$mean.human.population.density), y = pca_data_5$BHI_plants_2005)
+
+write.csv(cluster_one_ecoregions, file.path(current_analysis_outputs, "cluster_one_ecoregions.csv"))
+write.csv(cluster_two_ecoregions, file.path(current_analysis_outputs, "cluster_two_ecoregions.csv"))
+write.csv(cluster_three_ecoregions, file.path(current_analysis_outputs, "cluster_three_ecoregions.csv"))
+
+# Cluster biplot data
+
+pca_data_6 <-  pca_data_5 %>%
+  merge(cluster_map_data, by = "ecoregion_id")
+
+
+pca_cluster_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
+                                    pointsize = 2, 
+                                    col.ind = "black", 
+                                    palette = c("#453781FF","#287D8EFF", "#DCE319FF"),
+                                    alpha = 0.4,
+                                    addEllipses = TRUE,
+                                    label = "var",
+                                    col.var = "black",
+                                    repel = TRUE,
+                                    fill.ind = as.factor(pca_data_6$cluster),
+                                    legend.title = "Cluster") +
+                                    theme(plot.title = element_blank(),
+                                          legend.position = "right") +
+                                    theme(legend.text=element_text(size = 7)) +
+                                    guides(fill=guide_legend(nrow=6,byrow=TRUE))
+
+pca_cluster_plot
+
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version,
+                       "cluster_biplot.png",
+                       sep = "_")), 
+       pca_cluster_plot,  device = "png") 
+
 # test
 
 # ECO <- east_australia # This ecoregion has a low HFP value (bad outcome)
@@ -346,6 +609,8 @@ pca_input_data <- indicators_wide %>%
 # HFP_inv <- indicators_wide %>% filter(ecoregion_id == ECO) %>% 
 #   select(`HFP 2005-`)
 # HFP_inv
+
+# Prepare correlation data ----
 
 # * Transform ----
 
@@ -447,12 +712,11 @@ threatened_data <- correlation_input_data %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
                          "threatened_2005", "threatened_2015")))
 
-LPI_data <- correlation_input_data %>%
-  dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "LPI_2005", "LPI_2015")))
+# LPI_data <- correlation_input_data %>%
+#   dplyr::select(all_of(c("ecoregion_id", "realm",
+#                          "LPI_2005", "LPI_2015")))
 
-time_correlation_input_list <- list(BHI_data, extinct_data, threatened_data,
-                                    LPI_data)
+time_correlation_input_list <- list(BHI_data, extinct_data, threatened_data)
 
 
 time_scatterplots <- list()
@@ -606,7 +870,6 @@ nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
 nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
 nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 
-
 all_groups <- list()
 all_heatmaps <- list()
 
@@ -688,7 +951,8 @@ for (j in seq_along(group_matrices)) {
                       mutate(inputs = ifelse(inputs == "land use data x iucn red list",
                                              "iucn red list x land use data", inputs)) %>%
                       rename(coefficient = value) %>%
-                      dplyr::select(-Var1, -Var2)
+                      dplyr::select(-Var1, -Var2) %>%
+                      merge(indicator_relationships, by = "combination")
     
     group_directory <- file.path(current_analysis_outputs, paste(vargroup,
                                  "correlation matrices", sep = " "))
@@ -709,6 +973,7 @@ for (j in seq_along(group_matrices)) {
   group_correlations_dataframes[[j]] <- correlation_df
 
   }
+
 
 all_groups[[i]] <- group_correlations
 
@@ -731,7 +996,7 @@ heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
         axis.title.y = element_text(size=8),
         axis.text.x = element_text(size= 7),
         axis.text.y = element_text(size= 7)) +
-  facet_wrap(~inputs) + 
+  facet_wrap(~input_relationship) + 
   theme(strip.text.x = element_text(size = 7, hjust = 0))
 
 heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
@@ -749,72 +1014,10 @@ names(all_heatmaps) <- grouping_variables
 all_heatmaps[[11]]
 
 
-# PCA ----
 
-# Subset to a single timepoint
 
-if (!is.na(timepoint)) {
-  
-  indicators <- names(pca_input_data)[str_detect(names(pca_input_data),
-                                                         timepoint)]
-  
-  pca_input_data <- pca_input_data %>%
-    dplyr::select(all_of(c("ecoregion_id", indicators)))
-  
-}
 
-# Prepare data
 
-pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
-                     "BHI_plants_2005":"threatened_2005", factor_key=TRUE)
-
-pca_data_2 <- pca_data_1 %>%
-              merge(ecoregions_wide,by = "ecoregion_id") %>%
-              dplyr::select(ecoregion_id, realm, headline.threat.type,
-                            Biome, island.status, scientific.publications.factor,
-                            area.factor,
-                            lpi.records.factor,
-                            rli.records.factor,
-                            scenario,
-                            included.in.HFP,
-                            predominant.threat.type,
-                            endemics.factor,
-                            scenario.numeric,
-                            predominant.threat.count,
-                            mean.human.population.density,
-                            number.of.endemics,
-                            everything()) 
-
-pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
-
-pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,16:ncol(pca_data_3)]),]
-
-pca_data_5 <- pca_data_4 
-
-# * Conduct the PCA ----
-
-pca <- prcomp(pca_data_5[,c(16:17,19:28)], center = TRUE, scale = TRUE)
-summary(pca)
-print(pca)
-
-var <- get_pca_var(pca)
-var$contrib
-
-# look at the eigen values and cumulative variance plot
-
-screeplot(pca, type = "l", npcs = 5, main = "Screeplot of the first 10 PCs")
-abline(h = 1, col="red", lty=5)
-legend("topright", legend=c("Eigenvalue = 1"),
-       col=c("red"), lty=5, cex=0.6)
-cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
-plot(cumpro[0:5], xlab = "PC #", ylab = "Amount of explained variance", 
-     main = "Cumulative variance plot")
-
-# first two principle components plot (the results seems clustered..)
-plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)", main = "PC1 / PC2 - plot")
-
-# plot in 2 dimentions (seems not good results...)
-# install.packages("factoextra")
 
 # * Plot PCA ----
 
@@ -877,83 +1080,7 @@ pca_plots[[8]]
 pca_plots[[9]]
 pca_plots[[10]]
 
-# Try combining cluster analysis on PCA ----
 
-summary(pca)
-
-
-pca_clusters <- kmeans(pca$x[,1:4], centers = 3, nstart = 100)
-
-plot(kmeans_input_data[, c("BIIri_2005", "threatened_2005")],
-     col = pca_clusters$cluster,
-     pch = as.character(pca_data_5$island.status),
-     main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
-     xlab = "bii", ylab = "rli")
-
-
-# Map the ecoregions in their clusters
-
-cluster_map_data <- as.data.frame(cbind(pca_data_5$ecoregion_id, pca_clusters$cluster))
-
-names(cluster_map_data) <- c("ecoregion_id","cluster")
-
-cluster_map_data <- ecoregion_map_renamed %>%
-                    merge(cluster_map_data, by = "ecoregion_id")
-
-cluster_map <- plot(cluster_map_data["cluster"])
-
-
-cluster_one <- cluster_map_data %>% 
-  filter(cluster == 1) %>% 
-  dplyr::select(ecoregion_id)
-
-cluster_one_ecoregions <- correlation_input_data[correlation_input_data$ecoregion_id %in% 
-                                                     cluster_one$ecoregion_id ,] 
-
-
-cluster_two <- cluster_map_data %>% 
-  filter(cluster == 2) %>% 
-  dplyr::select(ecoregion_id)
-
-cluster_two_ecoregions <- correlation_input_data[correlation_input_data$ecoregion_id %in% 
-                                                   cluster_two$ecoregion_id ,] 
-
-
-cluster_three <- cluster_map_data %>% 
-  filter(cluster == 3) %>% 
-  dplyr::select(ecoregion_id)
-
-cluster_three_ecoregions <- correlation_input_data[correlation_input_data$ecoregion_id %in% 
-                                                     cluster_three$ecoregion_id ,] 
-
-cluster_three <- cluster_map_data %>% 
-                 filter(cluster == 3) %>% 
-                 dplyr::select(ecoregion_id)
-
-cluster_three_ecoregions <- correlation_input_data[correlation_input_data$ecoregion_id %in% 
-                                          cluster_three$ecoregion_id ,]
-
-
-# Cluster biplot data
-
-pca_data_6 <-  pca_data_5 %>%
-               merge(cluster_map_data, by = "ecoregion_id")
-
-
-pca_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
-                            pointsize = 2, 
-                            col.ind = "black", 
-                            palette = "viridis", 
-                            addEllipses = TRUE,
-                            label = "var",
-                            col.var = "black",
-                            repel = TRUE,
-                            fill.ind = as.factor(pca_data_6$cluster),
-                            legend.title = varname) +
-  theme(plot.title = element_blank(),
-        legend.position = "bottom") +
-  theme(legend.text=element_text(size = 7)) +
-  guides(fill=guide_legend(nrow=6,byrow=TRUE))
 
 # Get the response variable  (or what you think it is)
 

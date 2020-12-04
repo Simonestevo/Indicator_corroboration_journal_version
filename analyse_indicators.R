@@ -35,6 +35,7 @@ library(rlist)
 library(factoextra)
 library(ggcorrplot)
 library(MASS)
+library(sf)
 
 # Set input and output locations ----
 
@@ -472,7 +473,7 @@ names(cluster_map_data) <- c("ecoregion_id","cluster")
 
 scatterplot_cluster_data <- cluster_map_data %>%
   merge(pca_data_5[,c("ecoregion_id", "BIIri_2005",
-                      "threatened_2005")], by = "ecoregion_id")
+                      "RLI_2005")], by = "ecoregion_id")
 
 cluster_map_data <- ecoregion_map_renamed %>%
   merge(cluster_map_data, by = "ecoregion_id")
@@ -486,11 +487,11 @@ cluster_scatterplot <- ggplot(scatterplot_cluster_data,
   scale_color_viridis_c(alpha = .8,
                         na.value = "grey70") +
   labs(x = "BII (richness)",
-       y = "Proportion threatened")
+       y = "RLI")
 
 ggsave(file.path(current_analysis_outputs,
                  paste(location, eco_version,
-                       "cluster_scatterplot.png",
+                       "cluster_scatterplot_biiR_rli.png",
                        sep = "_")), 
        cluster_scatterplot,  device = "png")
 
@@ -598,6 +599,8 @@ ggsave(file.path(current_analysis_outputs,
                        "cluster_biplot.png",
                        sep = "_")), 
        pca_cluster_plot,  device = "png") 
+
+rm(cluster_map, cluster_map_data)
 
 # test
 
@@ -746,7 +749,7 @@ for (i in seq_along(time_correlation_input_list)) {
   
 }
 
-time_scatterplots[[4]]
+time_scatterplots[[2]]
 
 
 # Grouping variables ----
@@ -757,6 +760,11 @@ correlation_input_data_all <- correlation_input_data
 
 correlation_input_data <- correlation_input_data_all %>%
                           merge(pca_data_6[c("ecoregion_id", "cluster")])
+
+correlation_input_data <- correlation_input_data[cluster_one$ecoregion_id  %in% 
+                                                   correlation_input_data$ecoregion_id  ,]
+dim(correlation_input_data)
+
 
 grouping_variables_all <- names(correlation_input_data)[!(names(correlation_input_data) %in% 
                                                             indicators_all)]
@@ -1194,6 +1202,73 @@ step_glm <- stepAIC(test_glm, scope = list(upper = ~ HFP_2005 + RLI_records +
                                            lower = ~ 1))
 
 summary(step_glm)
+
+# Map indicators ----
+
+indicator_map_data_all <- left_join(ecoregion_map_renamed, 
+                                correlation_input_data[c("ecoregion_id", "realm",
+                                                         indicators)],
+                                by = "ecoregion_id")
+
+# indicator_map_data <- left_join(ecoregion_map_renamed,
+#                                  data)
+# 
+# indicator_map_data <- indicator_map_data_all %>% filter(realm == "Australasia")
+
+#indicator_map_data_all_all <- indicator_map_data_all
+
+for (i in seq_along(indicators)) {
+
+legend_title <- indicators[i]
+
+indicator_map_data <- indicator_map_data_all[,c("ecoregion_id",indicators[i])]
+
+
+if(legend_title == "extinct_2005") {
+  
+
+indicator_map_data <- indicator_map_data %>%
+                      mutate(extinct_2005 = ifelse(extinct_2005 < -1,
+                                                 -1, extinct_2005))
+
+print(paste(legend_title, "truncated fill values for visualisation", sep = " "))
+
+}
+
+names(indicator_map_data) <- c("ecoregion_id", "indicator","geometry")
+
+if(legend_title == "threatened_2005" | legend_title == "RLI_2005") {
+  
+  
+  indicator_map_data <- indicator_map_data %>%
+    mutate(indicator = ifelse(indicator < -1,
+                                 -1, indicator))
+  
+  print(paste(legend_title, "truncated fill values for visualisation", sep = " "))
+        
+}
+
+
+
+map <-  ggplot(indicator_map_data) +
+        geom_sf(aes(fill = indicator), colour = "black", 
+                size = 0.05, show.legend = 'fill') +
+        scale_fill_viridis_c(alpha = .8,
+                             na.value = "grey70") +
+        theme(axis.line = element_line(),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank()) +
+        labs(fill = legend_title) +
+        theme(legend.position = "right")
+
+ggsave(file.path(current_analysis_outputs,
+                 paste(location, eco_version, legend_title,
+                       "map.png",
+                       sep = "_")), 
+       map,  device = "png")
+}
+
 
 # Map scenarios ----
 

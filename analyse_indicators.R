@@ -49,7 +49,7 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoint <- "2005"
-load_map <- TRUE
+load_map <- FALSE
 
 
 # Set up some ecoregions that we know how they should behave
@@ -957,7 +957,7 @@ for (j in seq_along(group_matrices)) {
                              combination = paste(Var1, "x", Var2, sep = " "),
                              inputs = paste(input1, "x", input2, sep = " ")) %>%
                       mutate(inputs = ifelse(inputs == "land use data x iucn red list",
-                                             "iucn red list x land use data", inputs)) %>%
+                                            "iucn red list x land use data", inputs)) %>%
                       rename(coefficient = value) %>%
                       dplyr::select(-Var1, -Var2) %>%
                       merge(indicator_relationships, by = "combination")
@@ -1019,12 +1019,7 @@ all_heatmaps[[i]] <- heatmap
 
 names(all_groups) <- grouping_variables
 names(all_heatmaps) <- grouping_variables
-all_heatmaps[[11]]
-
-
-
-
-
+all_heatmaps[[1]]
 
 
 # * Plot PCA ----

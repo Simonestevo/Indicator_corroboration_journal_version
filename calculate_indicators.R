@@ -1545,7 +1545,56 @@ saveRDS(rli_record_values, file.path(indicator_outputs,
                                            sep = "_")))
 }
 
-rm(species_data, species_by_ecoregion)
+# Number of endemics ----
+
+if (paste(location, eco_version, "number_of_endemics.rds", sep = "_") %in% 
+    list.files(indicator_outputs)) {
+  
+ecoregion_endemics <- readRDS(file.path(indicator_outputs, 
+                                         paste(location, eco_version,
+                                               "number_of_endemics.rds", 
+                                               sep = "_")))
+} else {
+
+species_summary <- species_data %>%
+  ungroup(.) %>%
+  select(ecoregion_id, tsn, binomial) %>%
+  unique(.) %>%
+  group_by(tsn) %>%
+  mutate(number_of_ecoregions = n_distinct(ecoregion_id)) %>%
+  ungroup(.) %>%
+  select(tsn, number_of_ecoregions) %>%
+  unique(.)
+
+head(species_summary)
+
+endemic_species <- species_summary %>%
+  filter(number_of_ecoregions == 1) %>%
+  dplyr::select(tsn)
+
+endemic_species_data <- species_data[species_data$tsn %in% endemic_species$tsn,]
+
+ecoregion_endemics <- endemic_species_data %>%
+  ungroup(.) %>%
+  dplyr::select(ecoregion_id, tsn, binomial) %>%
+  distinct(.) %>%
+  group_by(ecoregion_id) %>%
+  mutate(number_of_endemics = n_distinct(tsn)) %>%
+  ungroup(.) %>%
+  select(ecoregion_id, number_of_endemics) %>%
+  distinct(.) %>%
+  merge(ecoregions["ECO_ID"], by.x = "ecoregion_id",
+        by.y = "ECO_ID", all = TRUE) %>%
+  mutate(indicator = "number of endemics",
+         year = NA) %>%
+  rename(raw_indicator_value = number_of_endemics) %>%
+  mutate(raw_indicator_value = ifelse(is.na(raw_indicator_value), 0, 
+                                      raw_indicator_value))
+
+saveRDS(ecoregion_endemics, file.path(indicator_outputs, 
+                                      paste(location, eco_version, 
+                                            "number_of_endemics.rds",
+                                            sep = "_")))
 
 # Ecoregion human population ----
 
@@ -2126,6 +2175,7 @@ rm(extinction_values,
    bii_richness_values,
    bii_abundance_values,
    species_data_all,
+   species_data,
    species_by_ecoregion,
    indicator_values)
 
@@ -2170,7 +2220,8 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_hfp_threats,
                     ecoregion_scientific_capacity,
                     ecoregion_realms, 
-                    ecoregion_population_density) %>%
+                    ecoregion_population_density, 
+                    ecoregion_endemics) %>%
                     dplyr::select(ecoregion_id, indicator, year, 
                                   raw_indicator_value)
 
@@ -2218,7 +2269,9 @@ ecoregion_values_wide <- ecoregion_values_wide %>%
                          LPI_records = as.numeric(LPI_records),
                          mean.scientific.publications = as.numeric(mean.scientific.publications ),
                          predominant.threat.count = as.numeric(predominant.threat.count),
-                         RLI_records = as.numeric(RLI_records))
+                         RLI_records = as.numeric(RLI_records),
+                         mean.human.population.density = as.numeric(mean.human.population.density),
+                         number.of.endemics = as.numeric(number.of.endemics))
 
 summary(ecoregion_values_wide)
 
@@ -2232,7 +2285,7 @@ write.csv(ecoregion_values_wide, file.path(indicator_outputs,
                                                    "ecoregion_values_wide.csv",
                                                    sep = "_")))
 
-???# Map the ecoregion values to see if they make sense ----
+# Map the ecoregion values to see if they make sense ----
 #' TODO: Update this to ggplot?
 
 ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
@@ -2245,7 +2298,8 @@ ecoregion_values_map_data <- left_join(ecoregion_map_renamed,
                                        ecoregion_values_master,
                                        by = "ecoregion_id")
 
-plot(ecoregion_values_map["headline.threat.type"])
+plot(ecoregion_values_map["number.of.endemics"])
+plot(ecoregion_values_map["mean.human.population.density"])
 ecoregion_area <- plot(ecoregion_values_map["ecoregion.area.km.2"])
 island_status <- plot(ecoregion_values_map["island.status"])
 lpi_records_map <- plot(ecoregion_values_map["LPI_records"])

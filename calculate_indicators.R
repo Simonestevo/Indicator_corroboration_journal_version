@@ -613,7 +613,9 @@ species_by_ecoregion_complete <- species_data_complete %>%
   mutate(number_of_species_year = n_distinct(tsn),
          number_extinct = n_distinct(tsn[redlist_status == "EX"|
                                            redlist_status == "EW"]),
-         number_atrisk = n_distinct(tsn[redlist_status == "EN"|
+         number_atrisk = n_distinct(tsn[redlist_status == "EX"|
+                                          redlist_status == "EW"|
+                                          redlist_status == "EN"|
                                           redlist_status == "CR"|
                                           redlist_status == "CR(PE)"|
                                           redlist_status == "VU"]),
@@ -639,7 +641,9 @@ species_by_ecoregion <- species_data %>%
                         mutate(number_of_species_year = n_distinct(tsn),
                                number_extinct = n_distinct(tsn[redlist_status == "EX"|
                                                                redlist_status == "EW"]),
-                               number_atrisk = n_distinct(tsn[redlist_status == "EN"|
+                               number_atrisk = n_distinct(tsn[redlist_status == "EX"|
+                                                              redlist_status == "EW"|
+                                                      redlist_status == "EN"|
                                                       redlist_status == "CR"|
                                                       redlist_status == "CR(PE)"|
                                                       redlist_status == "VU"]),
@@ -1595,6 +1599,7 @@ saveRDS(ecoregion_endemics, file.path(indicator_outputs,
                                       paste(location, eco_version, 
                                             "number_of_endemics.rds",
                                             sep = "_")))
+}
 
 # Ecoregion human population ----
 

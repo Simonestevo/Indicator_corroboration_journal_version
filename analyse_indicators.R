@@ -652,7 +652,7 @@ plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex 
 
 
 ##################################################################
-# Back to my code
+# Back to my code ----
 # look at the eigen values and cumulative variance plot
 
 tiff(file = file.path(current_analysis_outputs, "pca_screeplot.tiff"), 

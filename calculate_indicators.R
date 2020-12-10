@@ -854,6 +854,8 @@ species_threat_data <- all_threat_data %>%
                                                       ifelse(included_in_hfp == "0, 1",
                                                              "1", included_in_hfp)))
 
+# TODO: IMPORTANT - CHECK TSNS? ----
+
 species_affected_by_landuse <- species_threat_data %>%
                                filter(included_in_hfp == "1") %>%
                                dplyr::select(binomial, tsn) %>%
@@ -864,7 +866,74 @@ species_not_affected_by_landuse <- species_threat_data %>%
                                    dplyr::select(binomial, tsn) %>%
                                    distinct(.)
 
+# Subset species data to only land use affected species
 
+landuse_species_data <- species_data[species_data$tsn %in% 
+                                       species_affected_by_landuse$tsn,] 
+
+if ((paste(location, eco_version, "RLI-LU_all_classes.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+threat_rli_all_2005_values <- readRDS(file.path(indicator_outputs, 
+                                           paste(location, eco_version, 
+                                                 "RLI-LU_all_classes.rds",
+                                                 sep = "_"))) 
+
+} else {
+
+threat_species_data_for_rli_2005 <- landuse_species_data %>%
+                                      select(-source) %>%
+                                      distinct(.) %>%
+                                      filter(class == "Amphibia"| class == "Aves"|
+                                               class == "Mammalia") %>%
+                                      filter(tsn != 1444976) %>%
+                                      filter(decade == 2005) %>%
+                                      mutate(class = "all")
+
+
+threat_species_data_ecoregions_2005 <- split(threat_species_data_for_rli_2005, 
+                                      threat_species_data_for_rli_2005$ecoregion_id)
+
+# Remove the empty lists with no data in them
+
+threat_species_data_ecoregions_2005 <- list.clean(threat_species_data_ecoregions_2005, 
+                                           fun = is.null, recursive = FALSE)
+
+# Calculate the RLI per ecoregion
+
+threat_rli_ecoregions_2005 <- list()
+
+for (i in seq_along(threat_species_data_ecoregions_2005)) {
+  
+  eco <- threat_species_data_ecoregions_2005[[i]][[1]][1] # Pull out species list for one ecoregion
+  
+  threat_rli_ecoregions_2005[[i]] <- calculate_red_list_index(threat_species_data_ecoregions_2005[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
+  
+  print(paste("Processed threat redlist values in year 2005 for ecoregion",
+              eco, sep = " "))
+  
+} 
+
+threat_rli_all_classes_2005 <- do.call(rbind, threat_rli_ecoregions_2005)
+
+# Format
+
+threat_rli_all_2005_values <- threat_rli_all_classes_2005 %>%
+  ungroup(.) %>%
+  select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+  mutate(indicator = "RLI-LU",
+         year = 2005,
+         ecoregion_id = Ecoregion_id) %>%
+  rename(raw_indicator_value = RLI) %>%
+  select(indicator, year, ecoregion_id, raw_indicator_value)
+
+saveRDS(threat_rli_all_2005_values, file.path(indicator_outputs, 
+                                       paste(location, eco_version, 
+                                             "RLI-LU_all_classes.rds",
+                                             sep = "_")))
+}
 
 # ** 2015 RLI Threats ----
 

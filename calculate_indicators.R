@@ -757,7 +757,7 @@ ggplot(atrisk_test) +
 
 # * 2005 only ----
 
-if ((paste(location, eco_version, "proportion_at_risk.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "RLI_all_classes.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
   #' TODO: Work out why this is producing so many NaNs
@@ -820,6 +820,53 @@ saveRDS(rli_all_2005_values, file.path(indicator_outputs,
                                         sep = "_")))
 
 }
+
+# * 2015 ----
+
+# ** 2005 RLI Threats ----
+
+# Split the species by their major threat
+
+threat_files <-  list.files(interim_outputs, recursive = FALSE)[grepl("threat_data.rds",
+                                                                      list.files(interim_outputs))]
+threat_list <- lapply(file.path(interim_outputs, threat_files), readRDS)
+all_threat_data <- do.call(rbind, threat_list)
+
+threat_scheme <- read.csv(file.path(inputs, "iucn_threats\\iucn_threat_classification_scheme.csv"))
+threat_scheme$code <- as.character(threat_scheme$code)
+
+species_threat_data <- all_threat_data %>%
+                       merge(threat_scheme[c("code", "headline", 
+                                            "headline_name", 
+                                            "included_in_hfp")], # Merge with the threat scheme
+                            by = "code") %>%
+                       filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>% # only use data when we know it impacts most of the spp range, otherwise you can't assume it is present in all ecoregions the spp is in
+                       distinct(.) %>%
+                       merge(species_data[c("binomial", "tsn", 
+                                            "ecoregion_id")], 
+                             by = "binomial") %>%
+                       dplyr::select(-code, - invasive) %>%
+                       dplyr::select(ecoregion_id, binomial, tsn, headline,
+                                    headline_name, title, included_in_hfp) %>%
+                       distinct(.) %>%
+                       mutate(included_in_hfp = ifelse(included_in_hfp == "1, 0",
+                                                      "1",
+                                                      ifelse(included_in_hfp == "0, 1",
+                                                             "1", included_in_hfp)))
+
+species_affected_by_landuse <- species_threat_data %>%
+                               filter(included_in_hfp == "1") %>%
+                               dplyr::select(binomial, tsn) %>%
+                               distinct(.)
+
+species_not_affected_by_landuse <- species_threat_data %>%
+                                   filter(included_in_hfp == "0") %>%
+                                   dplyr::select(binomial, tsn) %>%
+                                   distinct(.)
+
+
+
+# ** 2015 RLI Threats ----
 
 
 # * Multiple time points ----
@@ -1961,9 +2008,9 @@ formatted_threat_data <- all_threat_data %>%
                          filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>%
                          filter(timing != "Future") %>%
                          filter(score == "Medium Impact: 6" |
-                                 score == "Medium Impact: 7"|
-                                 score == "High Impact: 8"|
-                                 score == "High Impact: 9") %>%
+                                score == "Medium Impact: 7"|
+                                score == "High Impact: 8"|
+                                score == "High Impact: 9") %>%
                          distinct(.) %>%
                          merge(species_data[c("binomial", "tsn", 
                                               "ecoregion_id")], 
@@ -2107,6 +2154,7 @@ ecoregion_realms <- ecoregions %>%
                            year = NA) %>%
                     distinct(.) %>%
                     dplyr::select(all_of(indicator_columns))
+
 
 # Combine indicator values into a single dataframe ----
 

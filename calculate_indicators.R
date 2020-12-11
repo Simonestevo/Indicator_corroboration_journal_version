@@ -775,6 +775,41 @@ ggplot(atrisk_test) +
 
 # Bird Red List Index 2008 - 2016 ----
 
+# Tidy data so it includes only species with an assessment for both time-points
+
+bird_species_data <- species_data %>%
+                     filter(class == "Aves",
+                            redlist_assessment_year == "2008"|
+                            redlist_assessment_year == "2016") %>%
+                     ungroup(.) %>%
+                     dplyr::select(ecoregion_id, tsn, binomial, 
+                                   redlist_assessment_year, 
+                                   redlist_status) %>%
+                     distinct(.)
+
+head(bird_species_data)
+
+# Convert to wide
+
+bird_species_data_wide <- spread(bird_species_data, key = redlist_assessment_year, 
+       value = redlist_status)
+
+
+# Remove any species that don't have assessments for both years
+
+birds_complete <- bird_species_data_wide[complete.cases(bird_species_data_wide[,4:5]),]
+
+# Get the names of species with complete data
+
+birds_with_complete_data <- unique(birds$tsn)
+
+# Subset the original species data to only those with complete redlist across all main years
+## Hint - only birds have complete data
+
+bird_species_data_complete <- species_data[species_data$tsn %in% 
+                                                    birds_with_complete_data,]
+
+
 if ((paste(location, eco_version, "RLI-birds.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
@@ -788,7 +823,7 @@ bird_rli_values <- readRDS(file.path(indicator_outputs,
 
 # * Bird RLI 2008 ----
   
-bird_data_for_rli_2008 <- species_data %>%
+bird_data_for_rli_2008 <- bird_species_data_complete %>%
                           select(-source) %>%
                           distinct(.) %>%
                           filter(class == "Aves") %>%
@@ -822,18 +857,18 @@ bird_data_ecoregions_2008 <- list.clean(bird_data_ecoregions_2008,
   
 # Format
   
-  rli_birds_2008_values <- rli_birds_2008 %>%
-                           ungroup(.) %>%
-                           select(redlist_assessment_year, Ecoregion_id, RLI) %>%
-                           mutate(indicator = "RLI-birds",
+rli_birds_2008_values <- rli_birds_2008 %>%
+                         ungroup(.) %>%
+                         select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+                         mutate(indicator = "RLI-birds",
                                    year = 2008,
                                    ecoregion_id = Ecoregion_id) %>%
-                           rename(raw_indicator_value = RLI) %>%
-                           select(indicator, year, ecoregion_id, raw_indicator_value)
+                         rename(raw_indicator_value = RLI) %>%
+                         select(indicator, year, ecoregion_id, raw_indicator_value)
   
 # * Bird RLI 2016 ----
   
-bird_data_for_rli_2016<- species_data %>%
+bird_data_for_rli_2016<- bird_species_data_complete %>%
                          select(-source) %>%
                          distinct(.) %>%
                          filter(class == "Aves") %>%
@@ -877,12 +912,12 @@ rli_birds_2016_values <- rli_birds_2016%>%
                            select(indicator, year, ecoregion_id, raw_indicator_value)
   
   
+bird_rli_values <- rbind(rli_birds_2008_values, rli_birds_2016_values)
   
   
-  
-  saveRDS(rli_all_2005_values, file.path(indicator_outputs, 
+saveRDS(bird_rli_values, file.path(indicator_outputs, 
                                          paste(location, eco_version, 
-                                               "RLI_all_classes.rds",
+                                               "RLI-Birds.rds",
                                                sep = "_")))
   
 }
@@ -2373,6 +2408,7 @@ ecoregion_realms <- ecoregions %>%
 
 indicator_values <- rbind(extinction_values, 
                           at_risk_values, 
+                          bird_rli_values,
                           rli_all_2005_values,
                           rli_lu_2005_values,
                           hfp_values,

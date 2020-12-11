@@ -38,8 +38,7 @@ library(psych)
 library(e1071)
 library(tm)
 library(PerformanceAnalytics)
-
-
+library(ncdf4)
 
 # Set input and output locations ----
 
@@ -2531,6 +2530,11 @@ ecoregion_realms <- ecoregions %>%
                     distinct(.) %>%
                     dplyr::select(all_of(indicator_columns))
 
+# GDP ----
+
+# x <- nc_open("N:/Quantitative-Ecology/Simone/extinction_test/inputs/gdp/GDP_PPP_30arcsec_v3.nc") 
+# 
+# y <- x$var
 
 # Combine indicator values into a single dataframe ----
 

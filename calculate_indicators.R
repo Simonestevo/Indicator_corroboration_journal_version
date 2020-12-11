@@ -924,8 +924,6 @@ saveRDS(bird_rli_values, file.path(indicator_outputs,
 
 # All taxa Red List Index 2005 (2008) ----
 
-# * 2005 only ----
-
 if ((paste(location, eco_version, "RLI_all_classes.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
@@ -990,9 +988,7 @@ saveRDS(rli_all_2005_values, file.path(indicator_outputs,
 
 }
 
-# * 2015 ----
-
-# ** 2005 RLI Threats ----
+# All taxa Land-Use Red List Index 2005 (2008) ----
 
 # Split the species by their major threat
 
@@ -1114,146 +1110,6 @@ rli_test <- rli_all_2005_values %>%
             rename(RLI_LU = raw_indicator_value) %>%
             mutate(diff = RLI - RLI_LU)
 
-# ** 2015 RLI Threats ----
-
-
-# * Multiple time points ----
-# Split the species data into different time points (output should be dataframes of 
-# species red list status in a nested list with levels: Time point, Ecoregion)
-
-# only 8400 spp left by now
-# species_data_for_rli_all_classes <- species_data_complete_all_classes %>%
-#                                     filter(class != "reptile") %>%
-#                                     filter(tsn != 1444976)
-# # Split the data by timepoint
-# 
-# rli_timestep <- split(species_data_complete_all_classes, 
-#                       species_data_complete_all_classes$redlist_assessment_year) 
-# 
-# 
-# time_ecoregion_list <- list()
-# 
-# for (i in seq_along(rli_timestep)) {
-#     
-#     # Split by each ecoregion as well (so have a list of species for each timepoint,
-#     # ecoregion)
-#     
-#     time_ecoregions <- split(rli_timestep[[i]], 
-#                                       rli_timestep[[i]]$ecoregion_id)
-#     
-#     # Remove the empty lists with no data in them
-#     
-#     time_ecoregions <- list.clean(time_ecoregions, 
-#                                   fun = is.null, recursive = FALSE)
-#     
-#     time_ecoregion_list[[i]] <- time_ecoregions
-#   
-# }
-#   
-# 
-# # Calculate the RLI per ecoregion, per timepoint (output should be
-# # dataframes of RLI values by ecoregion, by timepoint)
-# 
-# rli_ecoregions_single_year <- list()
-# rli_ecoregions_all_years <- list()
-# 
-# for (i in seq_along(time_ecoregion_list)) {
-#   
-#   timestep <- time_ecoregion_list[[i]] # Get list of species for each ecoregion in one timestep
-#   
-#   year <- timestep[[1]][[5]][1]
-#   
-#   print(paste("Processing year", year, sep = " "))
-#   
-#   #class_all_timepoints <- list()
-#   
-#   for (j in seq_along(timestep)) {
-#     
-#       eco <- timestep[[j]][[1]][1] # Pull out species list for one ecoregion
-#       
-#       rli_ecoregions_single_year[[j]] <- calculate_red_list_index(timestep[[j]]) # Calculate RLI for each ecoregion for one timestep, one class
-#       
-#       print(paste("Processed redlist values in year", year,
-#                   "for ecoregion", eco, sep = " "))
-#       
-#       } 
-#     
-#     rli_ecoregions_single_year_df <- do.call(rbind, rli_ecoregions_single_year) # One dataframe for one time point
-#     
-#     rli_ecoregions_all_years[[i]] <- rli_ecoregions_single_year_df # Put the time point into a list of timepoints
-#     
-#   }
-# 
-# # Convert back into one dataframe
-# 
-# rli_ecoregions_all_years_df <- do.call(rbind, rli_ecoregions_all_years)
-# 
-# saveRDS(rli_ecoregions_all_years_df, 
-#         file.path(indicator_outputs, paste(location, eco_version,
-#                   "rli_all_classes_not_formatted.rds", sep = "_")))
-# 
-# # Check if any amphibian values have the wrong year and fix (2008 should be 1980)
-# 
-# rli_values <- rli_values %>%
-#   mutate(redlist_assessment_year = ifelse(class == "Amphibia" & 
-#                                             redlist_assessment_year == 2008, 1980,
-#                                           redlist_assessment_year))
-# # Format
-# 
-# rli_values <- rli_values %>%
-#   filter(RLI != 0) %>%
-#   mutate(indicator = paste("RLI", class, sep = " ")) %>%
-#   rename(raw_indicator_value = RLI) %>%
-#   rename(ecoregion_id = Ecoregion_id) %>%
-#   ungroup()%>%
-#   filter(ecoregion_id != 0) %>%
-#   distinct(.) %>%
-#   filter(redlist_assessment_year < 2016) %>%
-#   filter(!(class == "Aves" & redlist_assessment_year == 2004)) %>%
-#   mutate(year = ifelse(redlist_assessment_year < 1990, 1980,
-#                        ifelse(redlist_assessment_year > 1989 &
-#                                 redlist_assessment_year < 2000, 1990,
-#                               ifelse(redlist_assessment_year > 1999 &
-#                                        redlist_assessment_year < 2005, 2000,
-#                                      ifelse(redlist_assessment_year > 2004 &
-#                                               redlist_assessment_year < 2010, 2005,
-#                                             ifelse(redlist_assessment_year > 2009 &
-#                                                      redlist_assessment_year < 2015, 2010,
-#                                                    ifelse(redlist_assessment_year > 2014 &
-#                                                             redlist_assessment_year < 2021, 2015,
-#                                                           NA))))))) %>%
-#   dplyr::select(indicator, year, 
-#                 ecoregion_id, raw_indicator_value) 
-# # mutate(RLI_inverted = 1 - RLI) %>%
-# # mutate(RLI_scaled_inverted =
-# #          scale_to_1(RLI_inverted)) %>%
-# # mutate(RLI_adjusted_old = ifelse(RLI == 0, NA,
-# #                           ifelse(RLI > 0 & RLI < 0.9538,
-# #                                         0.9538, RLI))) %>%
-# # mutate(RLI_adjusted = ifelse(RLI == 0, NA,
-# #                              pmin(pmax(RLI,
-# #                       quantile(RLI, .05, na.rm = TRUE))))) %>%
-# # mutate(RLI_adjusted_inverted = 1 - RLI_adjusted)
-# 
-# saveRDS(rli_values, file.path(indicator_outputs, 
-#                               paste(location, eco_version, 
-#                                     "red_list_index.rds",
-#                                     sep = "_"))) 
-# }
-# 
-# # Remove reptiles for the moment b/c data hasn't been checked and it's behaving weirdly
-# 
-# rli_values <- rli_values %>%
-#   filter(indicator != "red list index Reptilia")
-# 
-# # Check rli values behave as anticipated
-# 
-# ECO <- cardamom
-# rli_test <- rli_values %>% filter(ecoregion_id == ECO) %>% 
-#   filter(indicator == 'RLI Amphibia')
-# 
-# ggplot(rli_test) +
-#   geom_line(aes(x = year, y = raw_indicator_value))
 
 
 # Human Footprint Index  ----

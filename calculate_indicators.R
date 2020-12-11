@@ -682,6 +682,8 @@ species_by_ecoregion <- species_data %>%
 
 test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
+# INDICATORS ----
+
 # Proportion of species extinct ----
 
 if ((paste(location, eco_version, "proportion_extinct.rds", sep = "_") %in% 
@@ -1098,6 +1100,75 @@ saveRDS(rli_lu_2005_values, file.path(indicator_outputs,
                                        paste(location, eco_version, 
                                              "RLI-LU_all_classes.rds",
                                              sep = "_")))
+}
+
+# All taxa other threat Red List Index 2005 (2008) ----
+
+other_species_data <- species_data[species_data$tsn %in% 
+                                       species_not_affected_by_landuse$tsn,] 
+
+if ((paste(location, eco_version, "RLI-other_all_classes.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+  #' TODO: Work out why this is producing so many NaNs
+  
+rli_other_2005_values <- readRDS(file.path(indicator_outputs, 
+                                          paste(location, eco_version, 
+                                                "RLI-other_all_classes.rds",
+                                                sep = "_"))) 
+  
+} else {
+  
+other_species_data_for_rli_2005 <- other_species_data %>%
+                                   select(-source) %>%
+                                   distinct(.) %>%
+                                   filter(class == "Amphibia"| class == "Aves"|
+                                             class == "Mammalia") %>%
+                                   filter(tsn != 1444976) %>%
+                                   filter(decade == 2005) %>%
+                                   mutate(class = "all")
+  
+  
+other_species_data_ecoregions_2005 <- split(other_species_data_for_rli_2005, 
+                                               other_species_data_for_rli_2005$ecoregion_id)
+  
+  # Remove the empty lists with no data in them
+  
+other_species_data_ecoregions_2005 <- list.clean(other_species_data_ecoregions_2005, 
+                                                    fun = is.null, recursive = FALSE)
+  
+  # Calculate the RLI per ecoregion
+  
+  other_rli_ecoregions_2005 <- list()
+  
+  for (i in seq_along(other_species_data_ecoregions_2005)) {
+    
+    eco <- other_species_data_ecoregions_2005[[i]][[1]][1] # Pull out species list for one ecoregion
+    
+    other_rli_ecoregions_2005[[i]] <- calculate_red_list_index(other_species_data_ecoregions_2005[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
+    
+    print(paste("Processed other threat redlist values in year 2005 for ecoregion",
+                eco, sep = " "))
+    
+  } 
+  
+other_rli_all_classes_2005 <- do.call(rbind, other_rli_ecoregions_2005)
+  
+  # Format
+  
+rli_other_2005_values <- other_rli_all_classes_2005 %>%
+    ungroup(.) %>%
+    select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+    mutate(indicator = "RLI-other",
+           year = 2005,
+           ecoregion_id = Ecoregion_id) %>%
+    rename(raw_indicator_value = RLI) %>%
+    select(indicator, year, ecoregion_id, raw_indicator_value)
+  
+saveRDS(rli_other_2005_values, file.path(indicator_outputs, 
+                                        paste(location, eco_version, 
+                                              "RLI-other_all_classes.rds",
+                                              sep = "_")))
 }
 
 ## Check - compare all spp with land use spp RLIs
@@ -2267,6 +2338,7 @@ indicator_values <- rbind(extinction_values,
                           bird_rli_values,
                           rli_all_2005_values,
                           rli_lu_2005_values,
+                          rli_other_2005_values,
                           hfp_values,
                           bhi_plants_values,
                           lpi_values,

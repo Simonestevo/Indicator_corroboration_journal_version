@@ -44,6 +44,7 @@ library(ggcorrplot)
 
 # Maps
 library(sf)
+library(leaflet)
 
 # PCA and Clustering
 library(factoextra)
@@ -157,6 +158,8 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 indicator_properties <- read.csv(file.path(analysis_inputs,
                                           "indicator_properties.csv"))
+
+#TODO: get this out of indicator_properties
 indicator_relationships <- read.csv(file.path(analysis_inputs,
                                            "indicator_input_relationships.csv"))
 
@@ -269,10 +272,10 @@ ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records,
                                               "Moderate (between 50 and 100) LPI records",
                                               "Many (> 100) LPI records"))
 
-ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = 3, 
-                                   labels = c("Few (< 590) RLI records", 
-                                              "Moderate (between 590 & 1200) RLI records",
-                                              "Many (> 1200) RLI records"))
+rli_breaks <- c(-Inf, 399, Inf)
+ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = rli_breaks, 
+                                   labels = c("Fewer than 400 RLI records", 
+                                              "More than 400 RLI records"))
 
 
 ecoregions_wide <- ecoregions_wide %>% 
@@ -422,7 +425,7 @@ write.csv(variable_contributions, file.path(current_analysis_outputs,
 
 ##Using Beth's code ----
 
-pl.data <- pca_data_5[,c(22:28)]
+pl.data <- pca_data_5[,indicators]
 rownames(pl.data) <- pca_data_5[,1]
 
 dimC <- dim(pl.data)
@@ -961,8 +964,11 @@ BHI_data <- correlation_input_data %>%
 # BIIab_all <- correlation_input_data %>%
 #   dplyr::select(all_of(c("BIIab_2005", "BIIab_2015")))
 # 
-# RLI_all <- correlation_input_data %>%
-#   dplyr::select(all_of(c("RLI_2005", "RLI_2015")))
+RLI_birds_data <- correlation_input_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm", 
+                         "RLIbirds_2008", 
+                         "RLIbirds_2016")))
+
 
 extinct_data <- correlation_input_data %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
@@ -976,7 +982,7 @@ threatened_data <- correlation_input_data %>%
 #   dplyr::select(all_of(c("ecoregion_id", "realm",
 #                          "LPI_2005", "LPI_2015")))
 
-time_correlation_input_list <- list(BHI_data, extinct_data, threatened_data)
+time_correlation_input_list <- list(BHI_data, RLI_birds_data, extinct_data, threatened_data)
 
 
 time_scatterplots <- list()
@@ -1018,15 +1024,12 @@ correlation_input_data_all <- correlation_input_data
 correlation_input_data <- correlation_input_data_all %>%
                           merge(pca_data_6[c("ecoregion_id", "cluster")])
 
-correlation_input_data <- correlation_input_data[cluster_one$ecoregion_id  %in% 
-                                                   correlation_input_data$ecoregion_id  ,]
-dim(correlation_input_data)
-
 
 grouping_variables_all <- names(correlation_input_data)[!(names(correlation_input_data) %in% 
                                                             indicators_all)]
 
-# Remove numerics
+# Get categorical grouping variables only 
+
 grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ecoregion_id",
                                             "predominant.threat.type",
                                             "headline.threat.type",
@@ -1087,7 +1090,7 @@ scatterplot <- ggplot(scatterplot_data,aes(x = varx,
                                            y = vary, 
                                            color = vargroup)) +
                geom_point() +
-               # geom_text(label = correlation_input_data$ecoregion_id) + 
+               geom_text(label = correlation_input_data$ecoregion_id) + 
                # geom_smooth(method=lm) +
                labs(x= labx,
                     y = laby)
@@ -1100,27 +1103,10 @@ scatterplots[[i]] <- scatterplot
 }
 
 scatterplots[[1]]
-scatterplots[[2]]
-scatterplots[[3]]
-scatterplots[[4]]
-scatterplots[[5]]
-scatterplots[[6]]
-scatterplots[[7]]
-scatterplots[[8]]
-scatterplots[[9]]
-scatterplots[[10]]
-scatterplots[[11]]
-scatterplots[[12]]
-scatterplots[[13]]
-scatterplots[[14]]
-scatterplots[[15]]
-scatterplots[[16]]
-scatterplots[[17]]
-scatterplots[[18]]
-scatterplots[[19]]
-scatterplots[[28]]
 
 # Get the ecoregions with the strangest results (eg really high HFP, low RLI)
+
+# TODO: do this programmatically by taking the difference
 
 weird_ecoregions <- correlation_input_data %>%
                     filter(ecoregion_id %in% c(325, 400, 637, 20, 632, 548))
@@ -1276,7 +1262,7 @@ all_heatmaps[[i]] <- heatmap
 
 names(all_groups) <- grouping_variables
 names(all_heatmaps) <- grouping_variables
-all_heatmaps[[1]]
+all_heatmaps[[2]]
 
 
 # * Plot PCA ----

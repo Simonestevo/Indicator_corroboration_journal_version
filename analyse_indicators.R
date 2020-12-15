@@ -74,6 +74,7 @@ parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoint <- "2005"
 load_map <- FALSE
+indicators_to_remove <- c("RLIother", "RLILU")
 
 
 # Set up some ecoregions that we know how they should behave
@@ -288,21 +289,17 @@ ecoregions_wide <- ecoregions_wide %>%
 ecoregions_wide <- ecoregions_wide %>%
         mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
                scenario.numeric = as.factor(as.numeric(scenario))) %>%
-        mutate(scenario = ifelse(scenario == "Few (< 590) RLI records & Threat external to HFP",
+        mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
                                  "Few RLI HFP exclusive",
-                                 ifelse(scenario == "Few (< 590) RLI records & Threat related to HFP",
+                                 ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
                                  "Few RLI HFP inclusive",
-                                 ifelse(scenario == "Moderate (between 590 & 1200) RLI records & Threat external to HFP",
+                                 ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
                                  "Moderate RLI HFP exclusive",
-                                 ifelse(scenario == "Moderate (between 590 & 1200) RLI records & Threat related to HFP",
+                                 ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
                                  "Moderate RLI HFP inclusive",
-                                 ifelse(scenario == "Many (> 1200) RLI records & Threat external to HFP",
-                                 "Many RLI HFP exclusive",
-                                 ifelse(scenario == "Many (> 1200) RLI records & Threat related to HFP",
-                                 "Many RLI HFP inclusive",
                                  ifelse(scenario == "Few (< 590) RLI records & NA",
                                  "Few RLI HFP NA",
-                                 NA))))))))
+                                 NA))))))
 
 
 ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
@@ -337,10 +334,12 @@ keys <- as.data.frame(negatives_index) %>%
         dplyr::select(keys) %>%
         pull(.)
 
-#PCA input data ----
+# PCA ----
+
+# Prepare PCA input data ----
 
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
-                                 mini = cols_min, maxi = cols_max))
+                                              mini = cols_min, maxi = cols_max))
 
 # Remove the little negative thing at the end of reversed column names, otherwise
 # they become difficult to use with dplyr
@@ -364,8 +363,6 @@ pca_input_data <- indicators_wide %>%
   #                              0.99, na.rm = TRUE)) %>%
   filter(HFP_2005 < quantile(HFP_2005, 
                              0.99, na.rm = TRUE))
-
-# PCA ----
 
 # Subset to a single timepoint
 
@@ -409,19 +406,12 @@ pca_data_5 <- pca_data_4
 
 # * Conduct the PCA ----
 
-pca <- prcomp(pca_data_5[,c(22:28)], center = TRUE, scale = TRUE)
-summary(pca)
-print(pca)
+# * Indicators only ----
 
-pca_loadings <- as.data.frame(print(pca$rotation))
+indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
+indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[2])]
 
-write.csv(pca_loadings, file.path(current_analysis_outputs, "pca_loadings.csv"))
-
-var <- get_pca_var(pca)
-variable_contributions <- var$contrib
-
-write.csv(variable_contributions, file.path(current_analysis_outputs, 
-                                            "pca_variable_contributions.csv"))
+indicator_only_pca_data <- pca_data_5[,c("ecoregion_id", indicators_for_pca)]
 
 ##Using Beth's code ----
 
@@ -1668,6 +1658,22 @@ if(load_map == TRUE) {
 # check_model
 
 # Old analysis code ----
+
+#PCA code
+
+# pca <- prcomp(pca_data_5[,c(22:28)], center = TRUE, scale = TRUE)
+# summary(pca)
+# print(pca)
+# 
+# pca_loadings <- as.data.frame(print(pca$rotation))
+# 
+# write.csv(pca_loadings, file.path(current_analysis_outputs, "pca_loadings.csv"))
+# 
+# var <- get_pca_var(pca)
+# variable_contributions <- var$contrib
+# 
+# write.csv(variable_contributions, file.path(current_analysis_outputs, 
+#                                             "pca_variable_contributions.csv"))
 
 #' # All indicators with 2005 data
 #' 

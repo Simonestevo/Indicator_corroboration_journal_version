@@ -256,6 +256,11 @@ ecoregions_wide <- raw_ecoregions_wide %>%
                    mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
                                                0, LPI_records)))
 
+# Get names of numeric variables 
+
+numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
+numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
+
 ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
                             labels = c("Few_publications", 
                                        "Moderate_publications",
@@ -336,7 +341,7 @@ keys <- as.data.frame(negatives_index) %>%
 
 # PCA ----
 
-# Prepare PCA input data ----
+# * Prepare PCA input data ----
 
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
                                               mini = cols_min, maxi = cols_max))
@@ -354,7 +359,7 @@ indicators <- names(indicators_wide)
 
 indicators_all <- indicators[!indicators %in% "ecoregion_id"]
 
-# Manage outliers ----
+# Manage outliers 
 
 pca_input_data <- indicators_wide %>%
   # filter(LPI_2005 < quantile(LPI_2005,
@@ -404,29 +409,31 @@ pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,16:ncol(pca_data_3)]),]
 
 pca_data_5 <- pca_data_4 
 
-# * Conduct the PCA ----
+# * Indicators only PCA ----
 
-# * Indicators only ----
+# Only conducts the PCA on the main 7 indicators (excludes RLI land use and RLI non-land use)
 
 indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
-indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[2])]
+indicators_for_pca <- indicators_for_pca [!str_detect(indicators_for_pca , indicators_to_remove[2])]
 
 indicator_only_pca_data <- pca_data_5[,c("ecoregion_id", indicators_for_pca)]
 
-##Using Beth's code ----
+# ** PCA ----
 
-pl.data <- pca_data_5[,indicators]
-rownames(pl.data) <- pca_data_5[,1]
+pl.data <- indicator_only_pca_data[,indicators_for_pca]
+rownames(pl.data) <- indicator_only_pca_data[,1]
+
+write.csv(pl.data, file.path(current_analysis_outputs, "indicator_only_pca_data.csv"))
 
 dimC <- dim(pl.data)
 
-pl.data <- scale(pl.data[, 2:dimC[2]])
+pl.data <- scale(pl.data)
 
 names(pl.data) <- colnames(pl.data)
 
 pl.data <- as.data.frame(pl.data)
 
-pc.f <- formula(paste("~", paste(names(pl.data)[1:dimC[2] - 1], collapse = "+")))
+pc.f <- formula(paste("~", paste(names(pl.data), collapse = "+")))
 pl.pca <- princomp(pc.f, cor=TRUE, data=pl.data)
 
 
@@ -451,7 +458,7 @@ biplot(pl.pca, cex=0.8, col=c(1,8))
 
 # Linked biplot
 View(pl.pca$scores)
-library(ggplot2)
+
 df <- data.frame(comp1=pl.pca$scores[,1],
                  comp2=pl.pca$scores[,2])
 ggplot(data = df, aes(x=comp1, y=comp2, group=1)) +
@@ -614,7 +621,7 @@ fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
                       ))
 fig
 
-################################# DENDROGRAMS on RAW DATA ###############################
+# ** Dendrograms ----
 # Dendrogram flowing down the page
 dd <- dist(scale(pl.data), method = "euclidean")
 hc <- hclust(dd, method = "ward.D2")
@@ -641,11 +648,244 @@ clus = cutree(hc, 12)
 plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 0.7)
 plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 1.0)
 
+# * Indicators and additional variables ----
+
+all_variables_pca_data <- pca_data_5[,c("ecoregion_id", numeric_variables, indicators_for_pca)]
 
 
+# ** PCA ----
 
-##################################################################
+pl.data.all <- all_variables_pca_data[,-1]
+rownames(pl.data.all) <- indicator_only_pca_data[,1]
+
+write.csv(pl.data.all, file.path(current_analysis_outputs, "all_variables_pca_data.csv"))
+
+dimC <- dim(pl.data.all)
+
+pl.data.all <- scale(pl.data.all)
+
+names(pl.data.all) <- colnames(pl.data.all)
+
+pl.data.all <- as.data.frame(pl.data.all)
+
+pc.f.all <- formula(paste("~", paste(names(pl.data.all), collapse = "+")))
+pl.pca.all <- princomp(pc.f.all, cor=TRUE, data=pl.data.all)
+
+
+# Print out PCA loadings
+pl.pca.all$loadings
+
+# Print out eigenvalues
+pl.pca.all$sd^2
+
+# Print PCA summary
+summary(pl.pca.all)
+
+# Plot results - look to see number of PCA axes to retain
+plot(pl.pca.all, type="lines")
+
+### Shows 3 axes likely sufficient
+# Plot points
+text(pl.pca.all$scores, labels=as.character(row.names(pl.data.all)), pos=1, cex=0.7)
+
+# Biplot of PCA
+biplot(pl.pca.all, cex=0.8, col=c(1,8))
+
+# Linked biplot
+View(pl.pca.all$scores)
+
+df.all <- data.frame(comp1=pl.pca.all$scores[,1],
+                 comp2=pl.pca.all$scores[,2])
+ggplot(data = df.all, aes(x=comp1, y=comp2, group=1)) +
+  geom_point(size=5, aes(colour=rownames(pl.pca.all$scores))) +
+  geom_path(size = 0.2) +
+  geom_text(label=rownames(pl.pca.all$scores)) + 
+  theme(legend.position="none")
+
+# Alt approach
+
+PoV <- pl.pca.all$sdev^2/sum(pl.pca.all$sdev^2)
+fviz_eig(pl.pca.all)
+
+# Put on row named
+#Rename Col 1
+View(pl.data.all)
+
+pcx <- pl.pca.all$scores[,1]
+pcy <- pl.pca.all$scores[,2]
+pcz <- pl.pca.all$scores[,3]
+
+pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
+pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
+pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
+
+View(pl.pca.all$scores)
+
+# 3D as points
+scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
+          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
+          ylab =pcylab, zlab = pczlab)
+text3D(pcx, pcy, pcz,  labels = rownames(pl.pca.all$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+
+# 3D as connected line
+scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2, 
+          col = gg.col(100), theta = 150, phi = 0, lwd = 4, main = "PCA Scores", xlab = pcxlab,
+          ylab =pcylab, zlab = pczlab)
+text3D(pcx, pcy, pcz,  labels = rownames(pl.pca.all$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+
+# Plot3D with plotly
+#manual_palette <- c("#551A8B", "#8968CD", "#AB82FF", "#FF8C00", "#CD6600", "#8B4500")
+
+df3D <- data.frame(comp1=pl.pca.all$scores[,1],
+                   comp2=pl.pca.all$scores[,2],
+                   comp3=pl.pca.all$scores[,3])
+fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
+               # Hover text:
+               text = ~rownames(pl.pca.all$scores))
+fig <- fig %>% add_markers()
+fig <- fig %>% add_text(textposition = "top right")
+fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
+                                   yaxis = list(title = pcylab),
+                                   zaxis = list(title = pczlab)),
+                      annotations = list(
+                        x = 1.13,
+                        y = 1.05,
+                        text = 'PC3 Score',
+                        showarrow = FALSE
+                      ))
+fig
+
+###Use prcomp() instead - this uses singular value decomposition 
+#pl.data.all <- read.table('Yr_as_col_new_78_spp_India_data.csv',sep=",",header=T,row.names=1)
+
+res.pca <- prcomp(pl.data.all, scale = TRUE)
+res.pca$x
+
+# Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+fviz_eig(res.pca)
+
+#Graph of individuals. Individuals with a similar profile are grouped together.
+fviz_pca_ind(res.pca,
+             col.ind = "contrib", # Color by congtribution
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,     # Avoid text overlapping
+             #label=SP_as_col$Year
+) +
+  labs(title ="PCA", x = "PC1", y = "PC2")
+
+# Graph of variables
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+# Compute hierarchical clustering on principal components
+res.pca4 <- PCA(pl.data.all, ncp = 3, graph = FALSE)
+res.hcpc <- HCPC(res.pca4, graph = FALSE)
+
+fviz_dend(res.hcpc, 
+          cex = 0.7,                     # Label size
+          palette = "jco",               # Color palette see ?ggpubr::ggpar
+          rect = TRUE, rect_fill = TRUE, # Add rectangle around groups
+          rect_border = "jco",           # Rectangle color
+          labels_track_height = 0.8      # Augment the room for labels
+)
+
+fviz_cluster(res.hcpc,
+             repel = TRUE,            # Avoid label overlapping
+             show.clust.cent = TRUE, # Show cluster centers
+             palette = "jco",         # Color palette see ?ggpubr::ggpar
+             ggtheme = theme_bw(),
+             main = "Factor map"
+)
+
+
+PoV <- res.pca$sdev^2/sum(res.pca$sdev^2)
+fviz_eig(res.pca)
+
+
+pcx <- res.pca$x[,1]
+pcy <- res.pca$x[,2]
+pcz <- res.pca$x[,3]
+
+pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
+pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
+pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
+
+# 3D as points
+scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
+          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
+          ylab =pcylab, zlab = pczlab)
+text3D(pcx, pcy, pcz,  labels = rownames(res.pca$x), add = TRUE, colkey = FALSE, cex = 0.7)
+
+# 3D as connected line
+scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2, 
+          col = gg.col(100), theta = 120, phi = 0, lwd = 2, main = "PCA Scores", xlab = pcxlab,
+          ylab =pcylab, zlab = pczlab)
+text3D(pcx, pcy, pcz,  labels = rownames(res.pca$x), add = TRUE, colkey = FALSE, cex = 0.7)
+
+# Rainbow version
+df.all <- data.frame(comp1=pcx, comp2=pcy)
+ggplot(data = df.all, aes(x=comp1, y=comp2, group=1)) +
+  geom_point(size=5, aes(colour=rownames(res.pca$x))) +
+  geom_path(size = 0.2) +
+  geom_text(label=rownames(res.pca$x)) + 
+  theme(legend.position="none")
+
+ggplot(data = df.all, aes(x=comp1, y=comp2, group=1)) +
+  geom_point(size=5, aes(colour=rownames(res.pca$x))) +
+  geom_text(label=rownames(res.pca$x)) + 
+  theme(legend.position="none")
+
+#Plotly version
+df3D <- data.frame(comp1=pcx, comp2=pcy, comp3=pcz)
+fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
+               # Hover text:
+               text = ~rownames(res.pca$x))
+fig <- fig %>% add_markers()
+fig <- fig %>% add_text(textposition = "top right")
+fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
+                                   yaxis = list(title = pcylab),
+                                   zaxis = list(title = pczlab)),
+                      annotations = list(
+                        x = 1.13,
+                        y = 1.05,
+                        text = 'PC3 Score',
+                        showarrow = FALSE
+                      ))
+fig
+
+# ** Dendrograms ----
+
+# Dendrogram flowing down the page
+dd <- dist(scale(pl.data.all), method = "euclidean")
+hc <- hclust(dd, method = "ward.D2")
+plot(hc, hang = -1, cex = 0.6)   # Put the labels at the same height: hang = -1
+plot(hc, hang = -1, cex = 1.5)   # Put the labels at the same height: hang = -1
+
+# Dendrogram flowing across the page
+# Define nodePar
+hcd <- as.dendrogram(hc)
+nodePar <- list(lab.cex = 0.6, pch = c(NA, 19),  cex = 0.7, col = "blue")
+par(cex=0.5)   # Customized plot; remove labels
+par(cex=1.0)   # Customized plot; remove labels
+plot(hcd,  xlab = "Height", nodePar = nodePar, horiz = TRUE)
+
+# Unrooted - dendrogram on an arc
+plot(as.phylo(hc), type = "unrooted", cex = 0.6, no.margin = TRUE)
+
+# Fan
+par(cex=0.8)
+par(cex=1.0)
+plot(as.phylo(hc), type = "fan")
+colors = c("red", "blue", "green", "black", "yellow", "purple", "grey", "brown", "magenta", "cyan", "violetred", "tomato")
+clus = cutree(hc, 12)
+plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 0.7)
+plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 1.0)
+
 # Back to my code ----
+
 # look at the eigen values and cumulative variance plot
 
 tiff(file = file.path(current_analysis_outputs, "pca_screeplot.tiff"), 
@@ -1567,68 +1807,68 @@ if(load_map == TRUE) {
 
 # K-means cluster analysis ----
 
-# rownames(pca_input_data) <- pca_input_data$ecoregion_id
-# 
-# kmeans_input_data <- pca_input_data %>% 
-#   dplyr::select(- ecoregion_id)
-# 
-# # Remove incomplete cases
-# 
-# kmeans_input_data <- kmeans_input_data[complete.cases(kmeans_input_data),]
-# 
-# # Scale 
-# 
-# kmeans_input_data <- scale(kmeans_input_data)
-# 
-# # Find best/truest number of clusters
-# 
-# wss <- 0
-# 
-# set.seed(1)
-# 
-# # Look over 1 to 15 possible clusters
-# for (i in 1:15) {
-#   # Fit the model: km.out
-#   km.out <- kmeans(kmeans_input_data, centers = i, nstart = 20, iter.max = 200)
-#   # Save the within cluster sum of squares
-#   wss[i] <- km.out$tot.withinss
-# }
-# 
-# # Produce a scree plot
-# plot(1:15, wss, type = "b", 
-#      xlab = "Number of Clusters", 
-#      ylab = "Within groups sum of squares")
-# 
-# # Looks like 3 clusters is best
-# 
-# number_clusters <- 3
-# 
-# wisc.km <- kmeans(scale(kmeans_input_data), centers = number_clusters, nstart = 100)
-# 
-# # Compare k-means to actual groupings
-# 
-# x <- table(wisc.km$cluster, pca_data_5$lpi.records.factor)
-# 
-# true <- colSums(x)
-# 
-# model <- rowSums(x)
-# 
-# check_model <- cbind(true,model)
-# 
-# check_model
-# 
-# # View the resulting model
-# wisc.km$tot.withinss
-# 
-# # Plot of BII and RLI by cluster membership
-# 
-# plot(kmeans_input_data[, c("BIIri_2005", "threatened_2005")],
-#      col = wisc.km$cluster,
-#      #pch = as.character(pca_data_5$Biome),
-#      main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
-#      xlab = "bii", ylab = "rli")
-# 
-# par(mfrow = c(2, 3))
+rownames(pca_input_data) <- pca_input_data$ecoregion_id
+
+kmeans_input_data <- pca_input_data %>%
+  dplyr::select(- ecoregion_id)
+
+# Remove incomplete cases
+
+kmeans_input_data <- kmeans_input_data[complete.cases(kmeans_input_data),]
+
+# Scale
+
+kmeans_input_data <- scale(kmeans_input_data)
+
+# Find best/truest number of clusters
+
+wss <- 0
+
+set.seed(1)
+
+# Look over 1 to 15 possible clusters
+for (i in 1:15) {
+  # Fit the model: km.out
+  km.out <- kmeans(kmeans_input_data, centers = i, nstart = 20, iter.max = 200)
+  # Save the within cluster sum of squares
+  wss[i] <- km.out$tot.withinss
+}
+
+# Produce a scree plot
+plot(1:15, wss, type = "b",
+     xlab = "Number of Clusters",
+     ylab = "Within groups sum of squares")
+
+# Looks like 3 clusters is best
+
+number_clusters <- 3
+
+wisc.km <- kmeans(scale(kmeans_input_data), centers = number_clusters, nstart = 100)
+
+# Compare k-means to actual groupings
+
+x <- table(wisc.km$cluster, pca_data_5$lpi.records.factor)
+
+true <- colSums(x)
+
+model <- rowSums(x)
+
+check_model <- cbind(true,model)
+
+check_model
+
+# View the resulting model
+wisc.km$tot.withinss
+
+# Plot of BII and RLI by cluster membership
+
+plot(kmeans_input_data[, c("BIIri_2005", "threatened_2005")],
+     col = wisc.km$cluster,
+     #pch = as.character(pca_data_5$Biome),
+     main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
+     xlab = "bii", ylab = "rli")
+
+par(mfrow = c(2, 3))
 
 
 # # Try hierarchical cluster ----
@@ -1661,19 +1901,19 @@ if(load_map == TRUE) {
 
 #PCA code
 
-# pca <- prcomp(pca_data_5[,c(22:28)], center = TRUE, scale = TRUE)
-# summary(pca)
-# print(pca)
-# 
-# pca_loadings <- as.data.frame(print(pca$rotation))
-# 
-# write.csv(pca_loadings, file.path(current_analysis_outputs, "pca_loadings.csv"))
-# 
-# var <- get_pca_var(pca)
-# variable_contributions <- var$contrib
-# 
-# write.csv(variable_contributions, file.path(current_analysis_outputs, 
-#                                             "pca_variable_contributions.csv"))
+pca <- prcomp(pca_data_5[,c(22:28)], center = TRUE, scale = TRUE)
+summary(pca)
+print(pca)
+
+pca_loadings <- as.data.frame(print(pca$rotation))
+
+write.csv(pca_loadings, file.path(current_analysis_outputs, "pca_loadings.csv"))
+
+var <- get_pca_var(pca)
+variable_contributions <- var$contrib
+
+write.csv(variable_contributions, file.path(current_analysis_outputs,
+                                            "pca_variable_contributions.csv"))
 
 #' # All indicators with 2005 data
 #' 

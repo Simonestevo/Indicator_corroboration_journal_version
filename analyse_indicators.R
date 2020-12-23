@@ -650,7 +650,8 @@ plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex 
 
 # * Indicators and additional variables ----
 
-all_variables_pca_data <- pca_data_5[,c("ecoregion_id", numeric_variables, indicators_for_pca)]
+all_variables_pca_data <- pca_data_5[,c("ecoregion_id", numeric_variables, 
+                                        indicators_for_pca)]
 
 
 # ** PCA ----
@@ -1671,12 +1672,54 @@ step_glm <- stepAIC(test_glm, scope = list(upper = ~ HFP_2005 + RLI_records +
 
 summary(step_glm)
 
-# Map indicators ----
+# Create an interactive map ----
 
 indicator_map_data_all <- left_join(ecoregion_map_renamed, 
-                                correlation_input_data[c("ecoregion_id", "realm",
-                                                         indicators)],
-                                by = "ecoregion_id")
+                                    correlation_input_data[c("ecoregion_id", "realm",
+                                                             indicators)],
+                                    by = "ecoregion_id") 
+
+ecoregion_subset <- ecoregion_countries %>%
+  filter(CNTRY_NAME == "Australia") %>%
+  unique(.)
+
+
+indicator_map_input_data <- indicator_map_data_all[indicator_map_data_all$ecoregion_id %in% 
+                                   ecoregion_subset$ECO_ID,] 
+
+# Create a colour palette for proportion of extinctions
+
+indicator_map_input_data <- indicator_map_input_data_sf
+
+ext_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$extinct_2005)
+hfp_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$HFP_2005)
+
+
+indicator_map_input_data %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(weight = 1, color = ~ext_pal(extinct_2005),
+              fillOpacity = 0.8, group = "Proportion of species extinct",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste(ecoregion_id, "proportion extinct =", extinct_2005, 
+                              sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+  addPolygons(weight = 1, color = ~hfp_pal(HFP_2005),
+              fillOpacity = 0.8, group = "Human footprint index",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste(ecoregion_id, "HFP =", HFP_2005, sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+  addLayersControl(baseGroups = c("OSM", "Carto", "Esri"), 
+                   overlayGroups = c("Proportion of species extinct", 
+                                     "Human footprint index"))
+
+
+# Map indicators ----
+
 
 # indicator_map_data <- left_join(ecoregion_map_renamed,
 #                                  data)

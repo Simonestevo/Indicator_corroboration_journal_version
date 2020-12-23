@@ -1694,6 +1694,9 @@ indicator_map_input_data <- indicator_map_input_data_sf
 ext_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$extinct_2005)
 hfp_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$HFP_2005)
 
+#' TODO: Add real, not scaled indicator values
+#' TODO: Add ecoregion labels?
+#' TODO: Try adding all the indicator values into one label
 
 indicator_map_input_data %>% 
   leaflet() %>% 

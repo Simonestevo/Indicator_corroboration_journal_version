@@ -162,6 +162,8 @@ date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_interim_output_files"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+external_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs/species_data_checks"
+
   
 output_directory <- file.path(parent_outputs, 
                               paste(date, 
@@ -176,6 +178,20 @@ dir.create(output_directory)
 
 species_data <- readRDS(file.path(inputs, "global_species_data_3.rds"))
 
+species_data_unique <- species_data %>%
+                       group_by(ecoregion_id) %>%
+                       mutate(spp_number = match(tsn, unique(tsn))) %>%
+                       select(ecoregion_id, binomial, class, spp_number) %>%
+                       distinct(.)
+
+species_data_2008 <- species_data %>%
+                     filter(redlist_assessment_year == 2008,
+                            ecoregion_id != 0,
+                            class != "Reptilia") %>%
+                     select(ecoregion_id, binomial, 
+                            redlist_status, class) %>%
+                     distinct(.)
+
 
 # Load ecoregion map
 
@@ -185,50 +201,61 @@ ecoregion_map_all <- readRDS(paste(
             "Ecoregions2017valid.rds"))
 
 ecoregion_map <- ecoregion_map_all %>%
-                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+                 dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, BIOME_NAME, geometry)
 
 rm(ecoregion_map_all)
+
+# Add Biome to species data
+
+ecoregion_biomes <- ecoregion_map %>%
+                    select(ECO_ID, BIOME_NAME) %>%
+                    st_set_geometry(NULL) %>%
+                    rename(ecoregion_id = ECO_ID,
+                           biome = BIOME_NAME)
+
+species_data <- species_data %>%
+                merge(ecoregion_biomes,
+                      by = "ecoregion_id") 
+                
 
 world_map <- st_read("N:/Quantitative-Ecology/Simone/extinction_test/inputs/countries_WGS84")
 
 australia <- world_map %>%
              filter(CNTRY_NAME == "Australia")
 
-# Subset by country
-
-if (!is.na(country)) {
-
 ecoregion_country_df <- readRDS(file.path("N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_database_output_files",
                                           "ecoregion_country_data.rds"))
 
-ecoregion_subset <- ecoregion_country_df %>%
-                    filter(CNTRY_NAME == country) %>%
-                    unique(.)
-  
-ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
-                                   ecoregion_subset$ECO_ID,]
-
-species_data <- species_data[species_data$ecoregion_id %in% 
-                               ecoregion_subset$ECO_ID,]
-  
-}
-
-
-species_data_unique <- species_data %>%
-  group_by(ecoregion_id) %>%
-  mutate(spp_number = match(tsn, unique(tsn))) %>%
-  select(ecoregion_id, binomial, class, spp_number) %>%
-  distinct(.)
 
 # Australia comparison ----
 
+ecoregion_subset <- ecoregion_country_df %>%
+                    filter(CNTRY_NAME == "Australia") %>%
+                    unique(.)
+
+aus_ecoregion_map <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                                 ecoregion_subset$ECO_ID,]
+
+aus_species_data_ours <- species_data[species_data$ecoregion_id %in% 
+                               ecoregion_subset$ECO_ID,]
+
+aus_species_data_ours <- aus_species_data_ours %>%
+                         filter(class != "Reptilia") %>%
+                          group_by(tsn) %>%
+                          mutate(redlist_assessment_year = 
+                                   as.numeric(as.character(redlist_assessment_year))) %>%
+                          filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
+                          select(binomial, tsn, redlist_status) %>%
+                          distinct(.)
+
 # source - https://www.environment.gov.au/cgi-bin/sprat/public/sprat.pl
 
-v2_gov_species_data_all <- read.csv("N:/Quantitative-Ecology/Simone/extinction_test/inputs/australian_threatened_species_gov/07012021-024331-report.csv", head = TRUE)
+v2_gov_species_data_all <- read.csv(file.path(external_inputs, 
+                                              "aus_07012021-024331-report.csv"))
 
 # Subset to relevant columns
 
-aus_species_data <- v2_gov_species_data_all %>%
+aus_species_data_gov <- v2_gov_species_data_all %>%
                     select(Scientific.Name, EPBC.Threat.Status,
                            Class, IUCN.Red.List.Listed.Names,
                            IUCN.Red.List) %>%
@@ -236,38 +263,34 @@ aus_species_data <- v2_gov_species_data_all %>%
 
 # Get taxonomic serial numbers so can be matched to our data
 
-aus_binomials <- unique(aus_species_data$Scientific.Name)
+aus_binomials <- unique(aus_species_data_gov$Scientific.Name)
 aus_synonyms <- find_synonyms(aus_binomials)
 
-aus_species_data <- aus_species_data %>%
+aus_species_data_gov <- aus_species_data_gov %>%
                     merge(aus_synonyms[c("binomial", "tsn")],
                           by.x = "Scientific.Name",
                           by.y = "binomial")
 
-head(aus_species_data)
+head(aus_species_data_gov)
 
 # Check how many species on australian list
-length(unique(aus_species_data$Scientific.Name))
+length(unique(aus_species_data_gov$Scientific.Name))
+
+length(unique(aus_species_data_ours$tsn))
 
 # EPBC status breakdown
-table(aus_species_data$EPBC.Threat.Status)
+table(aus_species_data_gov$EPBC.Threat.Status)
 
 # Australian red list status breakdown
-table(aus_species_data$IUCN.Red.List)
+table(aus_species_data_gov$IUCN.Red.List)
 
 # Our red list status breakdown
 table(species_data$redlist_status)
 
 # Join the australian government data to ours so we can compare
 
-species_comparison <- species_data %>%
-                      group_by(tsn) %>%
-                      mutate(redlist_assessment_year = 
-                             as.numeric(as.character(redlist_assessment_year))) %>%
-                      filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
-                      select(binomial, tsn, redlist_status) %>%
-                      distinct(.) %>%
-                      merge(aus_species_data, by = "tsn", all = TRUE) %>%
+species_comparison <- aus_species_data_ours %>%
+                      merge(aus_species_data_gov, by = "tsn", all = TRUE) %>%
                       mutate(epbc_status = ifelse(EPBC.Threat.Status == 
                                                  "Vulnerable", "VU",
                                                  ifelse(EPBC.Threat.Status == 
@@ -320,99 +343,463 @@ barplot(prop.table(table(species_comparison$redlist_status)), main = "Our data")
 barplot(prop.table(table(species_comparison$aus_redlist_status)),
                 main = "Australian\ngovernment\ndata")
 
+table(aus_species_data_gov$IUCN.Red.List)
+table(aus_species_data_ours$redlist_status)
+
 ### Note - our numbers are different, but proportions mostly the same, 
 ### with the exceptions of extinctions - they have the same number we do, 
 ### even though overall they have about a quarter of the number of species
 
+spp_on_aus_list_only <- species_comparison %>%
+                        filter(is.na(redlist_status))
+
+length(unique(spp_on_aus_list_only$tsn))
+
+spp_on_our_list_only <- species_comparison %>%
+                        filter(is.na(aus_redlist_status))
+
+length(unique(spp_on_our_list_only$tsn))
+
+### Note - there are quite a few extinct species not on our list, pretty sure
+### because there are no range maps available for them
+
+# Serengeti comparison ----
+
+serengeti_species_external <- read.csv(file.path(external_inputs, "serengeti_map_of_life_2.csv"))
+
+serengeti_species_external <- serengeti_species_external %>%
+                              dplyr::filter(Taxonomic.Group == "Birds"|
+                                     Taxonomic.Group == "Mammals"|
+                                       Taxonomic.Group == "Amphibians")
+
+unique(serengeti_species_external$Taxonomic.Group)
+
+# Subset to ecoregion 57 Southern Acacia-Commiphora bushlands and thickets
+
+serengeti_species <- species_data %>%
+                     filter(ecoregion_id == 57) %>%
+                     filter(class != "Reptilia") %>%
+                     group_by(tsn) %>%
+                     mutate(redlist_assessment_year = 
+                               as.numeric(as.character(redlist_assessment_year))) %>%
+                     filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
+                     select(binomial, tsn, redlist_status) %>%
+                     distinct(.) 
+
+head(serengeti_species)
+
+# Get tsn for external list so we can match properly
+
+serengeti_binomials <- unique(serengeti_species_external$Scientific.Name)
+serengeti_synonyms <- find_synonyms(serengeti_binomials)
+
+serengeti_synonyms <- serengeti_synonyms %>%
+                      rename(external_species_list = accepted_name)
 
 
+# Check how many species in each data set
+
+length(unique(serengeti_species$tsn))
+length(unique(serengeti_synonyms$tsn))
+
+serengeti_comparison <- serengeti_species %>%
+                        merge(serengeti_synonyms[c("external_species_list", 
+                                                           "tsn")],
+                              by = "tsn", all = TRUE) %>%
+                        rename(internal_species_list = binomial) %>%
+                        distinct(.)
+
+head(serengeti_comparison)
+
+serengeti_internal_only <- serengeti_comparison %>%
+                           filter(is.na(external_species_list))
+
+length(unique(serengeti_internal_only$tsn))
+
+serengeti_external_only <- serengeti_comparison %>%
+                           filter(is.na(internal_species_list))
+
+length(unique(serengeti_external_only$tsn))
+
+# Xeric shrublands check ----
+
+xeric_species_data <- species_data %>%
+                      filter(biome == "Deserts & Xeric Shrublands") %>%
+                      mutate(redlist_assessment_year = 
+                               as.numeric(as.character(redlist_assessment_year))) %>%
+                      select(ecoregion_id, tsn, binomial, redlist_assessment_year,
+                             redlist_status, biome) %>%
+                      merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+                            by.x = "ecoregion_id",
+                            by.y = "ECO_ID") %>%
+                      filter(redlist_assessment_year == 2008) %>%
+                      distinct(.) %>%
+                      rename(country = CNTRY_NAME)
+
+xeric_species_data_simple <- xeric_species_data %>%
+                             select(tsn, binomial, redlist_status) %>%
+                             distinct(.)
+
+# IUCN breakdown
+table(xeric_species_data_simple$redlist_status)
+
+# Total spp number
+
+xeric_tot <- length(unique(xeric_species_data_simple$tsn))
+xeric_tot
+
+# Proportion extinct
+
+xeric_rl <- xeric_species_data_simple %>%
+  group_by(redlist_status) %>%
+  mutate(rl = n_distinct(tsn)) %>%
+  select(redlist_status, rl) %>%
+  distinct(.)
+
+xeric_rl
+
+14/xeric_tot
+
+# Proportion threatened
+
+(180+269+14+62+1)/xeric_tot
 
 
+# Look at a biome positively correlated - Mangroves
+
+mangrove_species_data <- species_data %>%
+                          filter(biome == "Mangroves") %>%
+                          mutate(redlist_assessment_year = 
+                                   as.numeric(as.character(redlist_assessment_year))) %>%
+                          select(ecoregion_id, tsn, binomial, redlist_assessment_year,
+                                 redlist_status, biome) %>%
+                          merge(ecoregion_country_df[c("ECO_ID", "CNTRY_NAME")],
+                                by.x = "ecoregion_id",
+                                by.y = "ECO_ID") %>%
+                          filter(redlist_assessment_year == 2008) %>%
+                          distinct(.) %>%
+                          rename(country = CNTRY_NAME)
+
+mangrove_species_data_simple <- mangrove_species_data %>%
+  select(tsn, binomial, redlist_status) %>%
+  distinct(.)
+
+
+# IUCN breakdown
+table(mangrove_species_data_simple$redlist_status)
+
+# Total spp number
+
+mangrove_tot <- length(unique(mangrove_species_data_simple$tsn))
+mangrove_tot
+
+# Proportion extinct
+
+mangrove_rl <- mangrove_species_data_simple %>%
+                    group_by(redlist_status) %>%
+                    mutate(rl = n_distinct(tsn)) %>%
+                select(redlist_status, rl) %>%
+                distinct(.)
+
+5/mangrove_tot
+
+# Proportion threatened
+
+(180+49+322+5)/mangrove_tot
+
+# Look at Madagascar
+
+mad_xeric <- xeric_species_data %>%
+  filter(country == "Madagascar") %>%
+  select(binomial, redlist_status) %>%
+  distinct(.)
+
+mad_xeric_rl <- mad_xeric %>%
+  group_by(redlist_status) %>%
+  mutate(rl = n_distinct(binomial)) %>%
+  select(redlist_status, rl) %>%
+  distinct(.)
+
+mad_xeric_rl
+
+length(unique(mad_xeric$binomial))
+
+# Proportion extinct
+
+0/329
+
+# Proportion threatened
+
+(2+14+25+24)/329
+
+
+## Australia
+
+au_xeric <- xeric_species_data %>%
+            filter(country == "Australia") %>%
+            select(binomial, redlist_status) %>%
+            distinct(.)
+
+au_xeric_rl <- au_xeric %>%
+               group_by(redlist_status) %>%
+               mutate(rl = n_distinct(binomial)) %>%
+               select(redlist_status, rl) %>%
+               distinct(.)
+
+au_xeric_rl
+
+length(unique(au_xeric$binomial))
+
+4/556
+
+table(au_xeric$redlist_status)
+
+# TNC comparison ----
+
+# Compare our species count to TNC species count (noting not all ecoregions match)
+
+ecoregion_differences <- read.csv(file.path(external_inputs, 
+                                            "ecoregion_join_changes.csv"))
+
+tnc_data_all <- st_read(file.path(external_inputs, "tnc_wwf_spp_list/data0"))
+
+tnc_key <- tnc_data_all %>%
+           dplyr::select(ECO_NAME, ECO_ID) %>%
+           st_set_geometry(NULL) %>%
+           distinct(.)
+
+names(tnc_key)
+
+ecoregions <- ecoregion_map %>% st_set_geometry(NULL)
+
+ecoregion_key <- ecoregions %>%
+                  rename(ecoregion_id = ECO_ID) %>%
+                  merge(tnc_key,
+                        by = "ECO_NAME") %>%
+                  rename(ecoregion_id_tnc = ECO_ID) %>%
+                  select(ECO_NAME, ecoregion_id, ecoregion_id_tnc) %>%
+                  distinct(.)
+  
+head(ecoregion_key)
+
+tnc_data <- tnc_data_all %>%
+            st_set_geometry(NULL) %>%
+            rename(external_threatened_n = thrtnd_cnt) %>%
+            dplyr::select(ECO_ID, 
+                   external_threatened_n) %>%
+            merge(ecoregion_key, 
+                  by.x = "ECO_ID",
+                  by.y = "ecoregion_id_tnc") %>%
+            distinct(.) %>%
+            filter(ECO_ID != -9999) %>%
+            rename(ecoregion_id_tnc = ECO_ID) %>%
+            dplyr::select(ECO_NAME, ecoregion_id, ecoregion_id_tnc, everything())
+
+head(tnc_data)
+
+internal_cnt <- species_data %>%
+                filter(redlist_assessment_year == 2008) %>%
+                group_by(ecoregion_id) %>%
+                mutate(internal_threatened_n = n_distinct(binomial[redlist_status == "EN"|
+                                                      redlist_status == "CR"|
+                                                      redlist_status == "CR(PE)"|
+                                                      redlist_status == "VU"])) %>%
+                select(ecoregion_id, internal_threatened_n) %>%
+                distinct(.)
+  
+head(internal_cnt)
+
+count_comparison <- internal_cnt %>%
+                    merge(tnc_data,
+                          by = "ecoregion_id") %>%
+                    mutate(difference = internal_threatened_n - external_threatened_n)
+
+head(count_comparison)
+
+hist(count_comparison$difference, breaks = 40)
+
+## Look at species in biggest difference ecoregions
+
+# We have 122 fewer species in borneo rainforest
+
+borneo_rforest <- species_data_2008 %>%
+                  filter(ecoregion_id == 219)
+
+# We have around 70 species more in north andean paramo
+
+n_andean_paramo <- species_data_2008 %>%
+                   filter(ecoregion_id == 593)
+
+# Look at area - are the biggest discrepancies in the small ecoregions?
+
+ecoregion_area <- read.csv("N:/Quantitative-Ecology/Simone/extinction_test/inputs/ecoregions_2017/ecoregions2017_area_km2.csv")
+ecoregion_area <- rename(ecoregion_area, ecoregion_id = Eco..ID,
+                         area = Ecoregion.area..km2.)
+count_comparison <- count_comparison %>%
+                    merge(ecoregion_area[c("ecoregion_id","area")],
+                          by = "ecoregion_id") %>%
+                    mutate(rel_area = area/max(area))
+
+diff_mean <- mean(count_comparison$difference)
+diff_sd <- sd(count_comparison$difference)
+
+confidence_interval <- function(vector, interval) {
+  # Standard deviation of sample
+  vec_sd <- sd(vector)
+  # Sample size
+  n <- length(vector)
+  # Mean of sample
+  vec_mean <- mean(vector)
+  # Error according to t distribution
+  error <- qt((interval + 1)/2, df = n - 1) * vec_sd / sqrt(n)
+  # Confidence interval as a vector
+  result <- c("lower" = vec_mean - error, "upper" = vec_mean + error)
+  return(result)
+}
+
+confidence_interval(count_comparison$difference, 0.95)
+
+# Find extinct species without an ecoregion ----
+
+extinct_species_redlist_data <- readRDS("N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2020-08-10_interim_output_files\\global_extinct_species_redlist_data.rds")
+
+extinct_w_ecoregions <- species_data %>%
+                        filter(redlist_status == "EX") %>%
+                        select(ecoregion_id, tsn, binomial, 
+                               redlist_status, class) %>%
+                        distinct(.)
+
+extinct_stocktake <- extinct_species_redlist_data %>%
+                     merge(extinct_w_ecoregions[c("binomial", "ecoregion_id")],
+                           by = "binomial",
+                           all = TRUE) %>%
+                     select(-redlist_assessment_year) %>%
+                     dplyr::select(binomial, tsn, ecoregion_id) %>%
+                     distinct(.)
+
+extinct_with_no_ecoregion <- extinct_stocktake %>%
+                             filter(is.na(ecoregion_id))
+
+write.csv(extinct_with_no_ecoregion, file.path(output_directory, 
+                                     "extinct_species_needing_ecoregions.csv"))
+
+extinct_with_ecoregions <- extinct_stocktake %>%
+                           filter(!is.na(ecoregion_id))
+
+write.csv(extinct_with_ecoregions, file.path(output_directory, 
+                                               "extinct_species_location_known.csv"))
+
+length(unique(extinct_with_no_ecoregion$binomial))
 
 
 # Create map of species present ----
 
-# Add an index
+species_data_for_map <- species_data_unique[complete.cases(species_data_unique),]
+species_data_for_map <- ungroup(species_data_for_map)
 
+country <- "Australia"
 
-head(species_data_unique)
-
-max_sp <- max(species_data_unique$spp_number)
-
-sp_cols <- 1:max_sp
-
-sp_cols <- rep(sp_cols, times = length(unique(species_data_unique$ecoregion_id)))
-
-ecoregion_id <- rep(unique(species_data_unique$ecoregion_id), each = max_sp)
-
-x <- species_data_unique %>%
-     group_by(ecoregion_id) %>%
-     add_row()
-
-# Spread the species data
-
-species_data_wide <- species_data_unique %>%
-                     spread(key = ecoregion_id,
-                            value = binomial)
-
-species_data_wide <- species_data_wide[1:5, 1:5]
-
-for (i in seq(nrow(species_data_wide))) {
+if (!is.na(country)) {
   
-for (j in seq(ncol(species_data_wide[2:length(species_data_wide)]))) {
-
-if (!is.na(species_data_wide[i,j])) {
-
-species_data_wide[,j] <- as.character(species_data_wide[,j])
+  ecoregion_subset <- ecoregion_country_df %>%
+    filter(CNTRY_NAME == country) %>%
+    unique(.)
   
-species_data_wide[i,j] <- colnames(species_data_wide[,j])
-
-print(paste("replacing cell value with", colnames(species_data_wide[,j]), sep = " "))
-  
-    }
-  }
 }
 
-species_data_wide <- species_data_wide %>%
-                     mutate(number_species = rowSums(!is.na(.))))
+if (!is.na(country)) {
+  
+species_data_for_map <- species_data_for_map[species_data_for_map$ecoregion_id %in% 
+                          ecoregion_subset$ECO_ID,] 
+
+ecoregion_map_subset <- ecoregion_map[ecoregion_map$ECO_ID %in% 
+                                 ecoregion_subset$ECO_ID,] 
+  
+}
+
+# Create a species list per ecoregion
+
+ecos <- unique(species_data_for_map$ecoregion_id)
+
+eco_spp <- list()
+
+for (i in seq_along(ecos)){
+
+id <- ecos[i]  
+
+spp <- species_data_for_map %>%
+       filter(ecoregion_id == id) %>%
+       select(binomial) %>%
+       pull(.)
+
+ecoregion_id <- as.numeric(id)
+
+number_species <- length(spp)
+
+species_list <- paste(spp, collapse = ",  ")
+
+eco_spp[[i]] <- as.data.frame(cbind(ecoregion_id, number_species, species_list))
+
+print(paste("Completed loop for ecoregion", ecoregion_id, sep = " "))
+
+}
+
+ecoregion_sp_lists <- do.call(rbind,eco_spp)
+ecoregion_sp_lists$ecoregion_id <- as.numeric(ecoregion_sp_lists$ecoregion_id)
+class(ecoregion_sp_lists$ecoregion_id)
+
+ecoregion_map_subset <- rename(ecoregion_map_subset, ecoregion_id = ECO_ID)
+names(ecoregion_map_subset)
+
+View(ecoregion_sp_lists)
         
-species_map_data <- left_join(ecoregion_map[c("ECO_ID", "ECO_NAME", "geometry")], 
-                              species_data_wide,
-                              by.x = "ECO_ID",
-                              by.y = "ecoregion_id") 
+species_map_data <- left_join(ecoregion_map_subset,
+                              ecoregion_sp_lists, by = "ecoregion_id") 
 
-
+names(species_map_data)
 
 # Create a colour palette for proportion of extinctions
 
-ext_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$number_species)
-hfp_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$HFP_2005)
+species_map_data$number_species <- as.numeric(species_map_data$number_species)
 
-#' TODO: Add real, not scaled indicator values
-#' TODO: Add ecoregion labels?
-#' TODO: Try adding all the indicator values into one label
+num_pal <- colorNumeric("PuBu", domain = species_map_data$number_species)
+spp_pal <- colorNumeric("PuBu", domain = species_map_data$HFP_2005)
 
-indicator_map_input_data %>% 
+# Make map
+
+species_map_data %>% 
   leaflet() %>% 
   addTiles() %>% 
-  addPolygons(weight = 1, color = ~ext_pal(extinct_2005),
-              fillOpacity = 0.8, group = "Proportion of species extinct",
+  addPolygons(weight = 1, color = ~num_pal(number_species),
+              fillOpacity = 0.8, group = "Number of species in ecoregion",
               # add labels that display indicator value and ecoregion id
-              label = ~paste(ecoregion_id, "proportion extinct =", extinct_2005, 
+              label = ~paste("ecoregion", ecoregion_id, "number of species =", 
+                             number_species, 
                              sep = " "),
               # highlight polygons on hover
               highlightOptions = highlightOptions(weight = 5, color = "white",
                                                   bringToFront = TRUE)) %>%
-  addPolygons(weight = 1, color = ~hfp_pal(HFP_2005),
-              fillOpacity = 0.8, group = "Human footprint index",
+  addPolygons(weight = 1, #color = ~num_pal(species_list),
+              #fillOpacity = 0.8, 
+              group = "Species in ecoregion",
               # add labels that display indicator value and ecoregion id
-              label = ~paste(ecoregion_id, "HFP =", HFP_2005, sep = " "),
+              label = ~paste("ecoregion", ecoregion_id, "Species list:", 
+                             species_list, sep = " "),
               # highlight polygons on hover
               highlightOptions = highlightOptions(weight = 5, color = "white",
                                                   bringToFront = TRUE)) %>%
-  addLayersControl(baseGroups = c("OSM", "Carto", "Esri"), 
-                   overlayGroups = c("Proportion of species extinct", 
-                                     "Human footprint index"))
+  addPolygons(weight = 1, #color = ~num_pal(species_list),
+              #fillOpacity = 0.8, 
+              group = "Species in ecoregion",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste("ecoregion", ecoregion_id, "Species list:", 
+                             species_list, sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+  addLayersControl(#baseGroups = c("OSM", "Carto", "Esri"), 
+                   overlayGroups = c("Number of species in ecoregion", 
+                                     "Species identities"))
 
 
   

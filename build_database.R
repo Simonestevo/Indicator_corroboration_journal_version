@@ -2018,8 +2018,7 @@ saveRDS(species_data_2, file.path(interim_outputs,
     rename(redlist_assessment_year = year) %>%
     mutate(redlist_source = "IUCN API")
   
-  
-  saveRDS(extinct_species_redlist_data, file.path(interim_outputs, 
+    saveRDS(extinct_species_redlist_data, file.path(interim_outputs, 
                                         paste(location, 
                                         "extinct_species_redlist_data.rds", 
                                                         sep = "_" )))

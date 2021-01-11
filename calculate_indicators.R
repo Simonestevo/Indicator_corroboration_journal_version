@@ -658,20 +658,6 @@ spp_per_timepoint <- species_data %>%
                      group_by(redlist_assessment_year) %>%
                      summarise(n_distinct(binomial))
 
-# Remove duplicate errors (species with more than one redlist status in the same year)
-
-duplicates <- species_data %>%
-                    group_by(binomial, redlist_assessment_year) %>%
-                    summarise(check = n_distinct(redlist_status)) %>%
-              filter(check > 1) %>%
-              select(binomial) %>%
-              distinct(.)
-
-species_data  <- species_data[! species_data$binomial %in% 
-                     duplicates$binomial,] 
-
-rm(duplicates)
-
 # Look at the data in each year
 
 species_data_by_yr <- split(species_data, species_data$redlist_assessment_year)

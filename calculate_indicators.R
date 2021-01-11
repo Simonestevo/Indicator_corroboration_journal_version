@@ -725,9 +725,7 @@ if (!is.na(country)) {
   
 }
 
-## Get complete cases, but this time use 'decade' to determine if a species
-## has complete data (decade bins redlist year into 5 year breaks)
-# Get only complete cases (RL status for each decade)
+# Get only complete cases (RL status for 2008 and 2016)
 
 complete_cases <- species_data %>% 
                   group_by(binomial) %>%
@@ -865,7 +863,7 @@ at_risk_values <- readRDS(file.path(indicator_outputs,
 
 at_risk_values <- species_by_ecoregion %>%
                   mutate(indicator = "proportion at risk") %>%
-                  select(indicator, redlist_assessment_year, 
+                  dplyr::select(indicator, redlist_assessment_year, 
                            ecoregion_id, proportion_atrisk) %>%
                   rename(year = redlist_assessment_year, 
                           raw_indicator_value = proportion_atrisk) %>%
@@ -943,7 +941,7 @@ bird_rli_values <- readRDS(file.path(indicator_outputs,
 # * Bird RLI 2008 ----
   
 bird_data_for_rli_2008 <- bird_species_data_complete %>%
-                          select(-source) %>%
+                          dplyr::select(-source) %>%
                           distinct(.) %>%
                           filter(class == "Aves") %>%
                           filter(tsn != 1444976) %>%
@@ -978,17 +976,18 @@ bird_data_ecoregions_2008 <- list.clean(bird_data_ecoregions_2008,
   
 rli_birds_2008_values <- rli_birds_2008 %>%
                          ungroup(.) %>%
-                         select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+                         dplyr::select(redlist_assessment_year, Ecoregion_id, RLI) %>%
                          mutate(indicator = "RLI-birds",
                                    year = 2008,
                                    ecoregion_id = Ecoregion_id) %>%
                          rename(raw_indicator_value = RLI) %>%
-                         select(indicator, year, ecoregion_id, raw_indicator_value)
+                         dplyr::select(indicator, year, ecoregion_id, 
+                                       raw_indicator_value)
   
 # * Bird RLI 2016 ----
   
 bird_data_for_rli_2016<- bird_species_data_complete %>%
-                         select(-source) %>%
+                         dplyr::select(-source) %>%
                          distinct(.) %>%
                          filter(class == "Aves") %>%
                          filter(tsn != 1444976) %>%
@@ -1021,14 +1020,14 @@ rli_birds_2016<- do.call(rbind, bird_rli_ecoregions_2016)
   
   # Format
   
-rli_birds_2016_values <- rli_birds_2016%>%
+rli_birds_2016_values <-   rli_birds_2016%>%
                            ungroup(.) %>%
-                           select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+                           dplyr::select(redlist_assessment_year, Ecoregion_id, RLI) %>%
                            mutate(indicator = "RLI-birds",
                                    year = 2016,
                                    ecoregion_id = Ecoregion_id) %>%
                            rename(raw_indicator_value = RLI) %>%
-                           select(indicator, year, ecoregion_id, raw_indicator_value)
+                           dplyr::select(indicator, year, ecoregion_id, raw_indicator_value)
   
   
 bird_rli_values <- rbind(rli_birds_2008_values, rli_birds_2016_values)
@@ -1054,51 +1053,51 @@ rli_mammals_2005_values <- readRDS(file.path(indicator_outputs,
                                             sep = "_"))) 
 } else {
 
-mammal_data_for_rli_2005 <- species_data %>%
-                             select(-source) %>%
+mammal_data_for_rli_2008 <- species_data %>%
+                             dplyr::select(-source) %>%
                              distinct(.) %>%
                              filter(class == "Mammalia") %>%
                              filter(tsn != 1444976) %>%
                              filter(redlist_assessment_year == 2008)
 
 
-mammal_data_ecoregions_2005 <- split(mammal_data_for_rli_2005, 
-                                     mammal_data_for_rli_2005$ecoregion_id)
+mammal_data_ecoregions_2008 <- split(mammal_data_for_rli_2008, 
+                                     mammal_data_for_rli_2008$ecoregion_id)
 
 # Remove the empty lists with no data in them
 
-mammal_data_ecoregions_2005 <- list.clean(mammal_data_ecoregions_2005, 
+mammal_data_ecoregions_2008 <- list.clean(mammal_data_ecoregions_2008, 
                                 fun = is.null, recursive = FALSE)
 
 # Calculate the RLI per ecoregion
 
-mammal_rli_ecoregions_2005 <- list()
+mammal_rli_ecoregions_2008 <- list()
 
-for (i in seq_along(mammal_data_ecoregions_2005)) {
+for (i in seq_along(mammal_data_ecoregions_2008)) {
   
-  eco <- mammal_data_ecoregions_2005[[i]][[1]][1] # Pull out species list for one ecoregion
+  eco <- mammal_data_ecoregions_2008[[i]][[1]][1] # Pull out species list for one ecoregion
   
-  mammal_rli_ecoregions_2005[[i]] <- calculate_red_list_index(mammal_data_ecoregions_2005[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
+  mammal_rli_ecoregions_2008[[i]] <- calculate_red_list_index(mammal_data_ecoregions_2008[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
   
   print(paste("Processed mammal redlist values in year 2005 for ecoregion",
               eco, sep = " "))
   
 } 
 
-rli_mammals_2005 <- do.call(rbind, mammal_rli_ecoregions_2005)
+rli_mammals_2008 <- do.call(rbind, mammal_rli_ecoregions_2008)
 
 # Format
 
-rli_mammals_2005_values <- rli_mammals_2005 %>%
+rli_mammals_2008_values <- rli_mammals_2008 %>%
                        ungroup(.) %>%
-                       select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+                       dplyr::select(redlist_assessment_year, Ecoregion_id, RLI) %>%
                        mutate(indicator = "RLI-mammals",
-                              year = 2005,
+                              year = 2008,
                               ecoregion_id = Ecoregion_id) %>%
                        rename(raw_indicator_value = RLI) %>%
-                       select(indicator, year, ecoregion_id, raw_indicator_value)
+                       dplyr::select(indicator, year, ecoregion_id, raw_indicator_value)
 
-saveRDS(rli_mammals_2005_values, file.path(indicator_outputs, 
+saveRDS(rli_mammals_2008_values, file.path(indicator_outputs, 
                                   paste(location, eco_version, 
                                         "RLI_mammals.rds",
                                         sep = "_")))
@@ -1112,58 +1111,58 @@ if ((paste(location, eco_version, "RLI_amphibians.rds", sep = "_") %in%
   
   #' TODO: Work out why this is producing so many NaNs
   
-  rli_amphibians_2005_values <- readRDS(file.path(indicator_outputs, 
+  rli_amphibians_2008_values <- readRDS(file.path(indicator_outputs, 
                                                paste(location, eco_version, 
                                                      "RLI_amphibians_classes.rds",
                                                      sep = "_"))) 
 } else {
   
-  amphibian_data_for_rli_2005 <- species_data %>%
-    select(-source) %>%
+  amphibian_data_for_rli_2008 <- species_data %>%
+    dplyr::select(-source) %>%
     distinct(.) %>%
     filter(class == "Amphibia") %>%
     filter(tsn != 1444976) %>%
     filter(redlist_assessment_year == 2008)
   
   
-  amphibian_data_ecoregions_2005 <- split(amphibian_data_for_rli_2005, 
-                                       amphibian_data_for_rli_2005$ecoregion_id)
+  amphibian_data_ecoregions_2008 <- split(amphibian_data_for_rli_2008, 
+                                       amphibian_data_for_rli_2008$ecoregion_id)
   
   # Remove the empty lists with no data in them
   
-  amphibian_data_ecoregions_2005 <- list.clean(amphibian_data_ecoregions_2005, 
+  amphibian_data_ecoregions_2008 <- list.clean(amphibian_data_ecoregions_2008, 
                                             fun = is.null, recursive = FALSE)
   
   # Calculate the RLI per ecoregion
   
-  amphibian_rli_ecoregions_2005 <- list()
+  amphibian_rli_ecoregions_2008 <- list()
   
-  for (i in seq_along(amphibian_data_ecoregions_2005)) {
+  for (i in seq_along(amphibian_data_ecoregions_2008)) {
     
-    eco <- amphibian_data_ecoregions_2005[[i]][[1]][1] # Pull out species list for one ecoregion
+    eco <- amphibian_data_ecoregions_2008[[i]][[1]][1] # Pull out species list for one ecoregion
     
-    amphibian_rli_ecoregions_2005[[i]] <- calculate_red_list_index(
-      amphibian_data_ecoregions_2005[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
+    amphibian_rli_ecoregions_2008[[i]] <- calculate_red_list_index(
+      amphibian_data_ecoregions_2008[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
     
     print(paste("Processed amphibian redlist values in year 2005 for ecoregion",
                 eco, sep = " "))
     
   } 
   
-  rli_amphibians_2005 <- do.call(rbind, amphibian_rli_ecoregions_2005)
+  rli_amphibians_2008 <- do.call(rbind, amphibian_rli_ecoregions_2008)
   
   # Format
   
-  rli_amphibians_2005_values <- rli_amphibians_2005 %>%
+  rli_amphibians_2008_values <- rli_amphibians_2008 %>%
     ungroup(.) %>%
-    select(redlist_assessment_year, Ecoregion_id, RLI) %>%
+    dplyr::select(redlist_assessment_year, Ecoregion_id, RLI) %>%
     mutate(indicator = "RLI-amphibians",
-           year = 2005,
+           year = 2008,
            ecoregion_id = Ecoregion_id) %>%
     rename(raw_indicator_value = RLI) %>%
-    select(indicator, year, ecoregion_id, raw_indicator_value)
+    dplyr::select(indicator, year, ecoregion_id, raw_indicator_value)
   
-  saveRDS(rli_amphibians_2005_values, file.path(indicator_outputs, 
+  saveRDS(rli_amphibians_2008_values, file.path(indicator_outputs, 
                                              paste(location, eco_version, 
                                                    "RLI_amphibians.rds",
                                                    sep = "_")))
@@ -1178,31 +1177,31 @@ if ((paste(location, eco_version, "RLI_all_classes.rds", sep = "_") %in%
   
   #' TODO: Work out why this is producing so many NaNs
   
-rli_all_2005_values <- readRDS(file.path(indicator_outputs, 
+rli_all_2008_values <- readRDS(file.path(indicator_outputs, 
                                                   paste(location, eco_version, 
                                                         "RLI_all_classes.rds",
                                                         sep = "_"))) 
 } else {
   
-rli_all_2005_values <-  rli_birds_2008_values %>%
+rli_all_2008_values <-  rli_birds_2008_values %>%
                         rename(bird_rli = raw_indicator_value) %>%
-                        merge(rli_mammals_2005_values[c("ecoregion_id", 
+                        merge(rli_mammals_2008_values[c("ecoregion_id", 
                                                         "raw_indicator_value")],
                               by = "ecoregion_id")%>%
                         rename(mammal_rli = raw_indicator_value) %>%
-                        merge(rli_amphibians_2005_values[c("ecoregion_id", 
+                        merge(rli_amphibians_2008_values[c("ecoregion_id", 
                                                            "raw_indicator_value")],
                               by = "ecoregion_id")%>%
                         rename(amphibian_rli = raw_indicator_value) %>%
-                        mutate(raw_indicator_value = rowMeans(select(., 
+                        mutate(raw_indicator_value = rowMeans(dplyr::select(., 
                                bird_rli, mammal_rli, amphibian_rli), 
                                na.rm = TRUE)) %>%
                         mutate(indicator = "RLI",
-                               year = 2005) %>%
-                        select(indicator, year, ecoregion_id, 
+                               year = 2008) %>%
+                        dplyr::select(indicator, year, ecoregion_id, 
                                raw_indicator_value)
   
-saveRDS(rli_all_2005_values, file.path(indicator_outputs, 
+saveRDS(rli_all_2008_values, file.path(indicator_outputs, 
                                                 paste(location, eco_version, 
                                                       "RLI_all.rds",
                                                       sep = "_")))
@@ -2619,9 +2618,9 @@ indicator_values <- rbind(extinction_values,
                           at_risk_values, 
                           bird_rli_values,
                           rli_birds_2008_values,
-                          rli_mammals_2005_values,
-                          rli_amphibians_2005_values,
-                          rli_all_2005_values,
+                          rli_mammals_2008_values,
+                          rli_amphibians_2008_values,
+                          rli_all_2008_values,
                           # rli_lu_2005_values,
                           # rli_other_2005_values,
                           hfp_values,

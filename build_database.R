@@ -2089,9 +2089,41 @@ saveRDS(species_data_2, file.path(interim_outputs,
            redlist_assessment_year,
            redlist_status, redlist_source, class)
   
-
-  saveRDS(species_data_3, file.path(interim_outputs, 
-                                    paste(location,"species_data_3.rds", 
+  
+# Tidy species data 
+  
+  
+  # Check for duplicates (same tsn but different binomials)
+  
+  length(unique(species_data_3$binomial))
+  length(unique(species_data_3$tsn))
+  
+  # Species that aren't duplicated
+  
+  species_data1 <- species_data_3 %>% 
+    group_by_at(vars(-binomial, -source)) %>% 
+    filter(n() < 2) 
+  
+  # Find species that are duplicated and pick the BI record
+  
+  species_data2 <- species_data_3 %>% 
+    group_by_at(vars(-binomial, -source)) %>% 
+    filter(n() > 1) %>%
+    filter(source == "birdlife_international")
+  
+  # Combine
+  
+  species_data_3 <- rbind(species_data1, species_data2)
+  
+  # Check if number binomial and tsn are different
+  
+  length(unique(species_data_3$binomial))
+  length(unique(species_data_3$tsn))
+  
+  rm(species_data1, species_data2)
+  
+  saveRDS(species_data_3, file.path(outputs, 
+                                    paste(location,"species_data_3_final.rds", 
                                           sep = "_")))
   
   

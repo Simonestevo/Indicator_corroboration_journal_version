@@ -649,16 +649,16 @@ species_data <- species_data_all %>%
 
 # Check the distribution of data over years
 
-hist(species_data$redlist_assessment_year)
-
 ggplot(species_data) +
   geom_bar(aes(x = redlist_assessment_year)) 
 
 spp_per_timepoint <- species_data %>%
                      group_by(redlist_assessment_year) %>%
-                     summarise(n_distinct(binomial))
+                     summarise(no_spp = n_distinct(tsn)) %>%
+                     arrange(no_spp, desc())
 
-# Look at the data in each year
+
+# Look at distribution assessment years in each class
 
 species_data_by_yr <- split(species_data, species_data$redlist_assessment_year)
 
@@ -761,7 +761,7 @@ species_by_ecoregion_complete <- species_data_complete %>%
 
 species_by_ecoregion <- species_data %>%
                         distinct(.) %>%
-                        group_by(ecoregion_id, decade) %>%
+                        group_by(ecoregion_id, redlist_assessment_year) %>%
                         mutate(number_of_species_year = n_distinct(tsn),
                                number_extinct = n_distinct(tsn[redlist_status == "EX"|
                                                                redlist_status == "EW"]),

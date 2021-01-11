@@ -2122,6 +2122,19 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
   rm(species_data1, species_data2)
   
+  # Remove duplicate errors (species with more than one redlist status in the same year)
+  duplicates <- species_data_3 %>%
+                group_by(binomial, redlist_assessment_year) %>%
+                summarise(check = n_distinct(redlist_status)) %>%
+                filter(check > 1) %>%
+                select(binomial) %>%
+                distinct(.)
+  
+  species_data_3  <- species_data_3[! species_data_3$binomial %in% 
+                                  duplicates$binomial,] 
+  
+  rm(duplicates)
+  
   saveRDS(species_data_3, file.path(outputs, 
                                     paste(location,"species_data_3_final.rds", 
                                           sep = "_")))

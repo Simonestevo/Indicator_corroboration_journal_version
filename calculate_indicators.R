@@ -46,6 +46,7 @@ create_new_database_version <- FALSE # Only set to true if you want to create an
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+database_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_database_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 eco_version <- "ecoregions_2017"
@@ -598,8 +599,8 @@ if (!is.na(country)) {
 # Load species data ----
 
 
-species_data_all <- readRDS(file.path(interim_outputs, 
-                                  "global_species_data_3.rds"))
+species_data_all <- readRDS(file.path(database_inputs, 
+                                  "global_species_data_3_final.rds"))
 
 ecoregion_subset <- ecoregion_country_df %>%
   filter(CNTRY_NAME == country) %>%
@@ -616,11 +617,8 @@ species_data_all <- species_data[species_data$ecoregion_id %in%
                                        ecoregion_subset$ECO_ID,]
 
 }
-                        
-# species_data <- readRDS(file.path(interim_outputs, 
-#                                   "version_3_species_data_v1.rds"))
 
-# Rename classes so they match and remove country variable
+# Add a summary variable that bins assessment years into 5 - 10 year breaks
 
 species_data <- species_data_all %>%
                 distinct(.) %>%
@@ -641,36 +639,13 @@ species_data <- species_data_all %>%
                                               redlist_assessment_year < 2021, 2015,
                                        NA))))))) %>%
                filter(redlist_assessment_year != 2020,
-                      redlist_assessment_year != 2019) %>%
-               drop_na(decade)
+                      redlist_assessment_year != 2019,
+                      binomial != "Poospiza nigrorufa") %>% # Duplicated
+               drop_na(decade) 
+              
 
-# * Tidy species data ----
+# * Check completeness across years ----
 
-#' TODO: Sort this out in the build_database script
-
-# Check for duplicates (same tsn but different binomials)
-
-length(unique(species_data$binomial))
-length(unique(species_data$tsn))
-
-# Species that aren't duplicated
-
-species_data1 <- species_data %>% 
-  group_by_at(vars(-binomial, -source)) %>% 
-  filter(n() < 2) 
-
-# Find species that are duplicated and pick the BI record
-
-species_data2 <- species_data %>% 
-  group_by_at(vars(-binomial, -source)) %>% 
-  filter(n() > 1) %>%
-  filter(source == "birdlife_international")
-
-# Combine
-
-species_data <- rbind(species_data1, species_data2)
-
-rm(species_data1, species_data2)
 
 # Check the distribution of data over years
 

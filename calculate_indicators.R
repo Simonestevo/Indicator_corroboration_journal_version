@@ -707,6 +707,15 @@ species_with_complete_data <- unique(data_check_complete$binomial)
 species_data_complete_all_classes <- species_data[species_data$binomial %in% 
                                         species_with_complete_data,]
 
+# * Subset species data by years ----
+
+## We are only going to use 2008 and 2016, but could pick whatever years 
+## without breaking code I think (more years = longer processing times)
+
+species_data <- species_data %>%
+                filter(redlist_assessment_year == 2008|
+                       redlist_assessment_year == 2016)
+
 # Subset by test country
 
 if (!is.na(country)) {
@@ -722,7 +731,7 @@ if (!is.na(country)) {
 
 complete_cases <- species_data %>% 
                   group_by(binomial) %>%
-                  summarise(number_timepoints = n_distinct(decade)) %>%
+                  summarise(number_timepoints = n_distinct(redlist_assessment_year)) %>%
                   filter(number_timepoints == 6) %>%
                   distinct(.)
 
@@ -733,7 +742,7 @@ species_data_complete <- species_data[species_data$binomial %in%
 
 species_by_ecoregion_complete <- species_data_complete %>%
   distinct(.) %>%
-  group_by(ecoregion_id, decade) %>%
+  group_by(ecoregion_id, redlist_assessment_year) %>%
   mutate(number_of_species_year = n_distinct(tsn),
          number_extinct = n_distinct(tsn[redlist_status == "EX"|
                                            redlist_status == "EW"]),
@@ -803,9 +812,9 @@ extinction_values <- readRDS(file.path(indicator_outputs,
 
 extinction_values <- species_by_ecoregion %>%
                      mutate(indicator = "proportion extinct") %>%
-                     dplyr::select(indicator, decade, 
+                     dplyr::select(indicator, redlist_assessment_year, 
                             ecoregion_id, proportion_extinct) %>%
-                     rename(year = decade) %>%
+                     rename(year = redlist_assessment_year) %>%
                      distinct(.) %>%
                      drop_na(year) %>%
                      group_by(ecoregion_id) %>%
@@ -814,6 +823,8 @@ extinction_values <- species_by_ecoregion %>%
 
 
 extinction_values <- as.data.frame(extinction_values)
+
+head(extinction_values)
 
 # Check extinction values behave as anticipated
 
@@ -852,14 +863,14 @@ at_risk_values <- readRDS(file.path(indicator_outputs,
 } else {
 
 
-at_risk_values <- species_by_ecoregion_complete %>%
-                 mutate(indicator = "proportion at risk") %>%
-                 select(indicator, decade, 
-                         ecoregion_id, proportion_atrisk) %>%
-                 rename(year = decade, 
-                        raw_indicator_value = proportion_atrisk) %>%
-                 distinct(.) %>%
-                 drop_na(year) 
+at_risk_values <- species_by_ecoregion %>%
+                  mutate(indicator = "proportion at risk") %>%
+                  select(indicator, redlist_assessment_year, 
+                           ecoregion_id, proportion_atrisk) %>%
+                  rename(year = redlist_assessment_year, 
+                          raw_indicator_value = proportion_atrisk) %>%
+                  distinct(.) %>%
+                  drop_na(year) 
 
 
 at_risk_values <- as.data.frame(at_risk_values)
@@ -877,7 +888,8 @@ ECO <- east_australia
 atrisk_test <- at_risk_values %>% filter(ecoregion_id == ECO)
 
 ggplot(atrisk_test) +
-  geom_line(aes(x = year, y = raw_indicator_value)) 
+  geom_line(aes(x = year, y = raw_indicator_value)) +
+  ylim(0, 1)
 
 # Bird Red List Index 2008 - 2016 ----
 
@@ -890,7 +902,7 @@ bird_species_data <- species_data %>%
                      ungroup(.) %>%
                      dplyr::select(ecoregion_id, tsn, binomial, 
                                    redlist_assessment_year, 
-                                   redlist_status) %>%
+                                   redlist_status, source) %>%
                      distinct(.)
 
 head(bird_species_data)
@@ -915,6 +927,7 @@ birds_with_complete_data <- unique(birds$tsn)
 bird_species_data_complete <- species_data[species_data$tsn %in% 
                                                     birds_with_complete_data,]
 
+head(bird_species_data_complete)
 
 if ((paste(location, eco_version, "RLI-birds.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {

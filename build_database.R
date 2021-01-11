@@ -2092,6 +2092,14 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
 # Tidy species data 
   
+  # Order the redlist categories and add index so we can select by highest
+  
+
+  species_data_3$redlist_status <- ordered(as.factor(species_data_3$redlist_status),
+                                 c("DD", "LC", "NT","VU","EN","CR", "EW", "EX"))
+  
+  species_data_3 <- species_data_3 %>% 
+       mutate(category_rank = as.integer(redlist_status))
   
   # Check for duplicates (same tsn but different binomials)
   
@@ -2109,11 +2117,14 @@ saveRDS(species_data_2, file.path(interim_outputs,
   species_data2 <- species_data_3 %>% 
     group_by_at(vars(-binomial, -source)) %>% 
     filter(n() > 1) %>%
-    filter(source == "birdlife_international")
+    filter(category_rank == max(category_rank))
   
   # Combine
   
   species_data_3 <- rbind(species_data1, species_data2)
+  
+  species_data_3 <- species_data_3 %>%
+                    select(-category_rank)
   
   # Check if number binomial and tsn are different
   

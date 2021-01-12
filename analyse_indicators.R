@@ -72,8 +72,8 @@ eco_version <- "ecoregions_2017"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
-timepoint <- "2005"
-load_map <- FALSE
+timepoints <- c("2005", "2008")
+load_map <- TRUE
 indicators_to_remove <- c("RLIother", "RLILU")
 
 
@@ -373,8 +373,13 @@ pca_input_data <- indicators_wide %>%
 
 if (!is.na(timepoint)) {
   
-  indicators <- names(pca_input_data)[str_detect(names(pca_input_data),
-                                                 timepoint)]
+  indicators_05 <- names(pca_input_data)[str_detect(names(pca_input_data),
+                                                 timepoints[[1]])]
+  
+  indicators_08 <- names(pca_input_data)[str_detect(names(pca_input_data),
+                                                 timepoints[[2]])]
+  
+  indicators <- c(indicators_05, indicators_08)
   
   pca_input_data <- pca_input_data %>%
     dplyr::select(all_of(c("ecoregion_id", indicators)))
@@ -384,7 +389,7 @@ if (!is.na(timepoint)) {
 # Prepare data
 
 pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
-                     "BHI_plants_2005":"threatened_2005", factor_key=TRUE)
+                     "BHI_plants_2005":"threatened_2008", factor_key=TRUE)
 
 pca_data_2 <- pca_data_1 %>%
   merge(ecoregions_wide,by = "ecoregion_id") %>%
@@ -1197,17 +1202,17 @@ BHI_data <- correlation_input_data %>%
 # 
 RLI_birds_data <- correlation_input_data %>%
   dplyr::select(all_of(c("ecoregion_id", "realm", 
-                         "RLIbirds_2008", 
-                         "RLIbirds_2016")))
+                         "BirdRLI_2008", 
+                         "BirdRLI_2016")))
 
 
 extinct_data <- correlation_input_data %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "extinct_2005", "extinct_2015")))
+                         "extinct_2008", "extinct_2016")))
 
 threatened_data <- correlation_input_data %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "threatened_2005", "threatened_2015")))
+                         "threatened_2008", "threatened_2016")))
 
 # LPI_data <- correlation_input_data %>%
 #   dplyr::select(all_of(c("ecoregion_id", "realm",
@@ -1243,7 +1248,7 @@ for (i in seq_along(time_correlation_input_list)) {
   
 }
 
-time_scatterplots[[2]]
+time_scatterplots[[4]]
 
 
 # Grouping variables ----
@@ -1278,9 +1283,9 @@ grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ec
 
 if (!is.na(timepoint)) {
   
-  indicators <- names(correlation_input_data)[str_detect(names(correlation_input_data),
-                                                                   timepoint)]
-  
+  # indicators <- names(correlation_input_data)[str_detect(names(correlation_input_data),
+  #                                                                  timepoint)]
+  # 
   indicators_timepoint_names <- c(grouping_variables_all,
                                   indicators)
   
@@ -1333,7 +1338,7 @@ scatterplots[[i]] <- scatterplot
 
 }
 
-scatterplots[[1]]
+scatterplots[[8]]
 
 # Get the ecoregions with the strangest results (eg really high HFP, low RLI)
 
@@ -1384,6 +1389,8 @@ for (j in seq_along(group_indicator_list)) {
                    na.omit(.)
    
    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
+   
+   names(group_matrix) <- str_remove(names(group_matrix), "_2008")
 
    group_matrices[[j]] <- group_matrix
   
@@ -1493,7 +1500,10 @@ all_heatmaps[[i]] <- heatmap
 
 names(all_groups) <- grouping_variables
 names(all_heatmaps) <- grouping_variables
-all_heatmaps[[2]]
+
+i <- i + 1
+
+all_heatmaps[[i]]
 
 
 # * Plot PCA ----

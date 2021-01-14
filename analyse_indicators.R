@@ -1501,9 +1501,7 @@ all_heatmaps[[i]] <- heatmap
 names(all_groups) <- grouping_variables
 names(all_heatmaps) <- grouping_variables
 
-i <- i + 1
-
-all_heatmaps[[i]]
+all_heatmaps[[1]]
 
 
 # * Plot PCA ----

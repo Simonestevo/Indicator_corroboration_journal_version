@@ -2839,212 +2839,278 @@ threat_map <-  ggplot(data) +
 # Map the indicators ----
 
 ecoregion_map_data <- ecoregion_map %>%
-                     rename(ecoregion_id = ECO_ID) %>%
-                     select(ecoregion_id, geometry)
+                      rename(ecoregion_id = ECO_ID) %>%
+                      dplyr::select(ecoregion_id, geometry)
 
 indicator_values_map <- indicator_values_master %>%
-                        select(ecoregion_id, indicator, year, raw_indicator_value) %>%
+                        dplyr::select(ecoregion_id, indicator, year, raw_indicator_value) %>%
                         distinct(.)
 
 indicator_map_data <- left_join(ecoregion_map_data, indicator_values_map,
                                 by = "ecoregion_id")
 
 indicator_map_data <- indicator_map_data %>%
-                      select(-country) %>%
+                      dplyr::select(-country) %>%
                       distinct(.)
+
+
+
+    indicator_map_data <- indicator_map_data %>%
+      mutate(extinct_2008 = ifelse(extinct_2008 < -1,
+                                   -1, extinct_2008))
+    
 
 
 # * BII Richness ----
 
-richness_bii_map <- indicator_map_data %>%
-                    filter(indicator == 
-                           "richness biodiversity intactness index") %>%
-                    map_indicators(.$raw_indicator_value,
-                                   "BII\n(richness)", 
-                                   "right",
-                                   TRUE,
-                                   2005)
-richness_bii_map
-
-if (save_outputs == "yes") {
-
-ggsave(file.path(indicator_outputs, paste(location,
-                                          "richness_bii_ecoregion_map.png", 
-                                          sep = "_")), 
-       richness_bii_map,  device = "png")
-
-}
-
-rm(richness_bii_map)
+    rbii_data <- indicator_map_data %>%
+      filter(indicator == "richness biodiversity intactness index" & year == 2005)
+    
+    rbii <- tm_shape(rbii_data) +
+      tm_polygons(col = "raw_indicator_value",
+                  border.col = "black",
+                  style = "cont",
+                  pal = "viridis",
+                  title = "Biodiversity\nIntactness Index\n(Richness)") +
+      tm_layout(legend.outside = TRUE,
+                legend.outside.position = "right") 
+    
+    rbii
+    
+    tmap_save(rbii, file.path(indicator_outputs, paste(location,
+                               "richness_BII_map.png", sep = "_")),
+              width=1920, height=1080, asp=0)
+    
+    rm(rbii, rbii_data)
 
 # * BII Abundance ----
 
-abundance_bii_map <- indicator_map_data %>%
-                     filter(indicator == 
-                               "abundance biodiversity intactness index") %>%
-                     map_indicators(.$raw_indicator_value,
-                                    "BII\n(abundance)", 
-                                     "right",
-                                    TRUE,
-                                    2005)
-abundance_bii_map
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "abundance_bii_ecoregion_map.png", 
-                                            sep = "_")),  
-         abundance_bii_map,  device = "png")
-
-}
-
-rm(abundance_bii_map)
-
+    abii_data <- indicator_map_data %>%
+      filter(indicator == "abundance biodiversity intactness index" & year == 2005)
+    
+    abii <- tm_shape(abii_data) +
+      tm_polygons(col = "raw_indicator_value",
+                  border.col = "black",
+                  style = "cont",
+                  pal = "viridis",
+                  title = "Biodiversity\nIntactness Index\n(Abundance)") +
+      tm_layout(legend.outside = TRUE,
+                legend.outside.position = "right") 
+    
+    abii
+    
+    tmap_save(abii, file.path(indicator_outputs, paste(location,
+                              "abundance_BII_map.png", sep = "_")),
+              width=1920, height=1080, asp=0)
+    
+    rm(abii_data, abii)
+    
 # * BHI Plants ----
 
-bhi_map <- indicator_map_data %>%
-           filter(indicator == "BHI plants") %>%
-           map_indicators(.$raw_indicator_value,
-                          "BHI plants", 
-                          "right", 2005)
-bhi_map
+    bhi_data <- indicator_map_data %>%
+      filter(indicator == "BHI plants" & year == 2005)
+    
+    bhi <- tm_shape(bhi_data) +
+      tm_polygons(col = "raw_indicator_value",
+                  border.col = "black",
+                  style = "cont",
+                  pal = "viridis",
+                  title = "Biodiversity\nHabitat Index\n(Plants)") +
+      tm_layout(legend.outside = TRUE,
+                legend.outside.position = "right") 
+    
+    bhi
+    
+    tmap_save(bhi, file.path(indicator_outputs, paste(location,
+                            "BHI_plants_map.png", sep = "_")),
+              width=1920, height=1080, asp=0)
 
-# Create a separate sf object to save as shapefile
-
-# bhi_2015_plants_sf <- indicator_map_data %>%
-#                       filter(indicator == "biodiversity habitat index plants") %>%
-#                       select(eco_id, ecoregion_name, eco_objectid,
-#                              raw_indicator_value, geometry) %>%
-#                       rename(BHI = raw_indicator_value)
-
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                            "bhi_ecoregion_map.png", 
-                                            sep = "_")), 
-         bhi_map,  device = "png")
-  
-  # st_write(bhi_2015_plants_sf, file.path(indicator_outputs, 
-  #                                        paste(location, 
-  #                                              "_bhi_plants_2015_map.shp")))
-  # saveRDS(bhi_map, file.path(indicator_outputs,paste(location,
-  #                                                    "bhi_plants_map.rds",
-  #                                                    sep = "_")))
-  
-}
-
-rm(bhi_map)
+rm(bhi, bhi_data)
 
 # * Proportion at risk ----
 
-at_risk_map <- indicator_map_data %>%
-               filter(indicator == "proportion at risk") %>%
-               map_indicators(.$raw_indicator_value,
-                             "Proportion\nof species\nat risk", 
-                             "right",
-                             FALSE,
-                             2005)
+threatened_data <- indicator_map_data %>%
+              filter(indicator == "proportion at risk" & year == 2008)
 
-at_risk_map
+threatened <- tm_shape(threatened_data) +
+              tm_polygons(col = "raw_indicator_value",
+                           border.col = "black",
+                           style = "order",
+                           pal = "-viridis",
+                           title = "Proportion of\nspecies threatened ") +
+              tm_layout(legend.outside = TRUE,
+                         legend.outside.position = "right") 
 
-if(save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "proportion_at_risk_ecoregion_map.png", 
-                                            sep = "_")),  
-at_risk_map,  device = "png")
-    
+threatened
 
-}
+tmap_save(threatened, file.path(indicator_outputs, paste(location,
+                       "proportion_threatened_map.png", sep = "_")),
+                       width=1920, height=1080, asp=0)
 
-rm(at_risk_map)
+rm(threatened, threatened_data)
 
 # * Proportion extinct ----
 
-extinct_map <- indicator_map_data %>%
-               filter(indicator == "proportion extinct") %>%
-               map_indicators(.$raw_indicator_value,
-                               "Proportion\nof species\nextinct", 
-                               "right",
-                              FALSE,
-                              2005)
+extinct_data <- indicator_map_data %>%
+  filter(indicator == "proportion extinct" & year == 2008) 
+# %>%
+#   mutate(raw_indicator_value = ifelse(raw_indicator_value == 0,
+#                                       NA, raw_indicator_value))
 
-extinct_map
 
-if(save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "proportion_extinct_ecoregion_map.png", 
-                                            sep = "_")),  
-         extinct_map,  device = "png")
-  
-  
-}
+
+extinct <- tm_shape(extinct_data) +
+           tm_polygons(col = "raw_indicator_value",
+                        border.col = "black",
+                        style = "log10_pretty",
+                        pal = "-viridis",
+                        title = "Proportion of\nspecies extinct") +
+           tm_layout(legend.outside = TRUE,
+                     legend.outside.position = "right") 
+
+extinct
+
+tmap_save(extinct, file.path(indicator_outputs, paste(location,
+                   "proportion_extinct_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(extinct_data, extinct)
   
 # * RLI ----
 
-rli_map <- indicator_map_data %>%
-           filter(indicator == "RLI") %>%
-           map_indicators(.$raw_indicator_value,
-                                "Red List\nIndex", 
-                                "right",
-                          TRUE,
-                          2005)
+# ** All groups ----
 
-rli_map
+rli_data <- indicator_map_data %>%
+  filter(indicator == "RLI" & year == 2008)
 
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "2005_rli_ecoregion_map.png", 
-                                            sep = "_")),  
-         rli_map,  device = "png")
-  
-}
+rli <- tm_shape(rli_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "viridis",
+              title = "Red List Index") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+rli
+
+tmap_save(rli, file.path(indicator_outputs, paste(location,
+               "RLI_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(rli_data, rli)
+
+# ** Bird RLI ----
+
+bird_rli_data <- indicator_map_data %>%
+  filter(indicator == "RLI-birds" & year == 2008)
+
+bird_rli <- tm_shape(bird_rli_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "viridis",
+              title = "Bird Red List Index") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+bird_rli
+
+tmap_save(bird_rli, file.path(indicator_outputs, paste(location,
+                                                  "bird_RLI_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(bird_rli_data, bird_rli)
+
+# ** Mammal RLI ----
+
+mammal_rli_data <- indicator_map_data %>%
+  filter(indicator == "RLI-mammals" & year == 2008)
+
+mammal_rli <- tm_shape(mammal_rli_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "viridis",
+              title = "Mammal Red List Index") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+mammal_rli
+
+tmap_save(mammal_rli, file.path(indicator_outputs, paste(location,
+                                                       "mammal_RLI_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(mammal_rli_data, mammal_rli)
+
+# ** Amphibian RLI ----
+
+amphibian_rli_data <- indicator_map_data %>%
+  filter(indicator == "RLI-amphibians" & year == 2008)
+
+amphibian_rli <- tm_shape(amphibian_rli_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "viridis",
+              title = "Amphibian Red List Index") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+amphibian_rli
+
+tmap_save(amphibian_rli, file.path(indicator_outputs, paste(location,
+                                                       "amphibian_RLI_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(amphibian_rli_data, amphibian_rli)
 
 
 
 # * HFP ----
 
-hfp_map <- indicator_map_data %>%
-           filter(indicator == "HFP ") %>%
-           map_indicators(.$raw_indicator_value,
-                          "Human\nFootprint\nIndex",
-                          "right",
-                          FALSE,
-                          2005)
-hfp_map
+hfp_data <- indicator_map_data %>%
+  filter(indicator == "mean human footprint index" & year == 2005)
 
+hfp <- tm_shape(hfp_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "-viridis",
+              title = "Human\nFootprint Index") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
 
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location, "hfp_ecoregion_map.png", 
-                                            sep = "_")), 
-         hfp_map,  device = "png")
-  
-}
+hfp
+
+tmap_save(hfp, file.path(indicator_outputs, paste(location,
+                         "human_footprint_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(hfp_data, hfp)
 
 # * LPI ----
 
-lpi_map <- indicator_map_data %>%
-  filter(indicator == 
-           "LPI") %>%
-  map_indicators(.$raw_indicator_value,
-                 "LPI", 
-                 "right",
-                 TRUE,
-                 2005)
-lpi_map
+lpi_data <- indicator_map_data %>%
+  filter(indicator == "LPI" & year == 2005)
 
-if (save_outputs == "yes") {
-  
-  ggsave(file.path(indicator_outputs, paste(location,
-                                            "lpi_ecoregion_map.png", 
-                                            sep = "_")), 
-         lpi_map,  device = "png")
-  
-}
+lpi <- tm_shape(lpi_data) +
+       tm_polygons(col = "raw_indicator_value",
+                    border.col = "black",
+                    style = "order",
+                    pal = "viridis",
+                    title = "Living Planet Index") +
+       tm_layout(legend.outside = TRUE,
+                  legend.outside.position = "right") 
 
+lpi
+
+tmap_save(lpi, file.path(indicator_outputs, paste(location,
+                          "LPI_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(lpi_data, lpi)
 
 # RLI vs HFP scatterplot ----
 

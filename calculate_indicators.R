@@ -2853,14 +2853,6 @@ indicator_map_data <- indicator_map_data %>%
                       dplyr::select(-country) %>%
                       distinct(.)
 
-
-
-    indicator_map_data <- indicator_map_data %>%
-      mutate(extinct_2008 = ifelse(extinct_2008 < -1,
-                                   -1, extinct_2008))
-    
-
-
 # * BII Richness ----
 
     rbii_data <- indicator_map_data %>%
@@ -3111,6 +3103,212 @@ tmap_save(lpi, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(lpi_data, lpi)
+
+# Map the ecoregion characteristics ----
+
+ecoregion_map_data <- ecoregion_map %>%
+  rename(ecoregion_id = ECO_ID) %>%
+  dplyr::select(ecoregion_id, geometry)
+
+ecoregion_values_map <- ecoregion_values_master %>%
+  dplyr::select(ecoregion_id, indicator, year, raw_indicator_value) %>%
+  distinct(.)
+
+eco_variable_map_data <- left_join(ecoregion_map_data, ecoregion_values_map,
+                                by = "ecoregion_id")
+# * Biome ----
+
+biome_data <- eco_variable_map_data %>%
+  filter(indicator == "Biome")
+
+biome <- tm_shape(biome_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Biome") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+biome
+
+tmap_save(biome, file.path(indicator_outputs, paste(location,
+          "biome_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(biome, biome_data)
+
+# * Realm ----
+
+realm_data <- eco_variable_map_data %>%
+  filter(indicator == "realm")
+
+realm <- tm_shape(realm_data) +
+  tm_polygons(col = "raw_indicator_value",
+              style = "cont",
+              border.col = "black",
+              pal = "viridis",
+              title = "Realm") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+realm
+
+tmap_save(realm, file.path(indicator_outputs, paste(location,
+          "realm_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(realm, realm_data)
+
+# * Number of RLI records ----
+
+rli_record_data <- eco_variable_map_data %>%
+  filter(indicator == "RLI_records")
+
+rli_record <- tm_shape(rli_record_data) +
+  tm_polygons(col = "raw_indicator_value",
+              style = "cont",
+              border.col = "black",
+              pal = "viridis",
+              title = "RLI records") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+rli_record
+
+tmap_save(rli_record, file.path(indicator_outputs, paste(location,
+          "rli_record_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(rli_record, rli_record_data)
+
+# * predominant threat type ----
+
+threat_data <- eco_variable_map_data %>%
+  filter(indicator == "predominant threat type")
+
+threat <- tm_shape(threat_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Predominant threat type") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+threat
+
+tmap_save(threat, file.path(indicator_outputs, paste(location,
+                  "predominant_threat_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(threat, threat_data)
+
+# * headline threat type ----
+
+headline_threat_data <- eco_variable_map_data %>%
+  filter(indicator == "headline threat type")
+
+headline_threat <- tm_shape(headline_threat_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Headline threat type") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+headline_threat
+
+tmap_save(headline_threat, file.path(indicator_outputs, paste(location,
+           "headline_threat_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(headline_threat, headline_threat_data)
+
+# * Included in HFP ----
+
+incl_hfp_data <- eco_variable_map_data %>%
+  filter(indicator == "included in HFP")
+
+incl_hfp <- tm_shape(incl_hfp_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Included in HFP") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+incl_hfp
+
+tmap_save(incl_hfp, file.path(indicator_outputs, paste(location,
+          "hfp_inclusion_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(incl_hfp, incl_hfp_data)
+
+# * Number of endemics ----
+
+endemics_data <- eco_variable_map_data %>%
+  filter(indicator == "number of endemics")
+
+endemics <- tm_shape(endemics_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Number of endemics",
+              style = "order") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+endemics
+
+tmap_save(endemics, file.path(indicator_outputs, paste(location,
+          "endemics_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(endemics, endemics_data)
+
+# * Mean human population density ----
+
+human_pop_data <- eco_variable_map_data %>%
+  filter(indicator == "mean human population density")
+
+human_pop <- tm_shape(human_pop_data) +
+  tm_polygons(col = "raw_indicator_value",
+              style = "cont",
+              border.col = "black",
+              pal = "viridis",
+              title = "Mean human population density") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+human_pop
+
+tmap_save(human_pop, file.path(indicator_outputs, paste(location,
+          "human_population_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(human_pop, human_pop_data)
+
+# * Number of LPI records ----
+
+lpi_records_data <- eco_variable_map_data %>%
+  filter(indicator == "LPI_records")
+
+lpi_records <- tm_shape(lpi_records_data) +
+  tm_polygons(col = "raw_indicator_value",
+              style = "cont",
+              border.col = "black",
+              pal = "viridis",
+              title = "LPI records") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+lpi_records
+
+tmap_save(lpi_records, file.path(indicator_outputs, paste(location,
+          "lpi_records_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(lpi_records, lpi_records_data)
 
 # RLI vs HFP scatterplot ----
 

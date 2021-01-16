@@ -2211,8 +2211,8 @@ for (i in seq_along(amphibian_list)) {
 
 # Convert list of threat data back into a nice dataframe 
 
-# all_amphibians_out <- list.files(threat_directory)
-# out <- lapply(file.path(threat_directory, all_amphibians_out), readRDS)
+all_amphibians_out <- list.files(threat_directory)
+out <- lapply(file.path(threat_directory, all_amphibians_out), readRDS)
 
 amphibian_threat_data <- do.call(rbind, out)
 
@@ -2312,6 +2312,17 @@ bird_threat_data <- do.call(rbind, out)
 
 saveRDS(bird_threat_data, 
         file.path(interim_outputs, paste(location, "bird_threat_data.rds",
+                                         sep = "_")))
+
+# Combine
+
+all_threats_out <- list.files(threat_directory)
+out <- lapply(file.path(threat_directory, all_threats_out), readRDS)
+
+all_threat_data <- do.call(rbind, out)
+
+saveRDS(all_threat_data, 
+        file.path(interim_outputs, paste(location, "all_threat_data.rds",
                                          sep = "_")))
 
 # * Reptiles ----

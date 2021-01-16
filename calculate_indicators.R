@@ -2463,20 +2463,21 @@ formatted_threat_data <- all_threat_data %>%
                          merge(species_data[c("tsn", 
                                               "ecoregion_id")], 
                                by = "tsn") %>%
-                         dplyr::select(-code, - invasive) %>%
-                         dplyr::select(ecoregion_id, binomial, tsn, headline,
-                                       headline_name, title, included_in_hfp) %>%
+                         dplyr::select(- invasive) %>%  
+                         dplyr::select(ecoregion_id, code,title, binomial, tsn, headline,
+                                       headline_name, included_in_hfp) %>%
                          distinct(.) %>%
-                         group_by(ecoregion_id, title) %>%
+                         group_by(ecoregion_id, code) %>%
                          mutate(number_of_species_affected = n_distinct(tsn)) %>%
+                         ungroup(.) %>%
                          group_by(ecoregion_id) %>%
                          mutate(number_of_species = n_distinct(tsn)) %>%
-                         dplyr::select(ecoregion_id, headline_name, title, 
+                         dplyr::select(ecoregion_id,code, title, headline, headline_name, 
                                 number_of_species_affected, number_of_species, 
                                 included_in_hfp) %>%
                          distinct(.) %>%
                          mutate(proportion_affected = 
-                                  number_of_species_affected/number_of_species) %>%
+                                number_of_species_affected/number_of_species) %>%
                          group_by(ecoregion_id) %>%
                          filter(proportion_affected == max(proportion_affected)) %>%
                          group_by(ecoregion_id) %>%
@@ -2486,7 +2487,10 @@ formatted_threat_data <- all_threat_data %>%
                          mutate(included_in_hfp = ifelse(included_in_hfp == "1, 0",
                                               "1",
                                               ifelse(included_in_hfp == "0, 1",
-                                                     "1", included_in_hfp)))
+                                                     "1", included_in_hfp))) %>%
+                         mutate(headline_name = ifelse(nchar(headline) > 2,
+                                                       "Mixed threats",
+                                                       headline_name))
 
 
 

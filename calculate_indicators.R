@@ -2412,13 +2412,10 @@ ecoregion_hfp_threats <- readRDS(file.path(indicator_outputs,
   
 if(is.null(all_threat_data) == TRUE) {
   
-  threat_files <-  list.files(interim_outputs, 
-                              recursive = FALSE)[grepl("threat_data.rds",
-                              list.files(interim_outputs))]
 
-  threat_list <- lapply(file.path(interim_outputs, threat_files), readRDS)
-
-  all_threat_data <- do.call(rbind, threat_list)
+  all_threat_data <- readRDS(file.path(interim_outputs, 
+                                       paste(location,"all_threat_data.rds",
+                                             sep = "_")))
 
   # Check the threat data for synonyms and add tsn so we can match with
   # species_data more accurately

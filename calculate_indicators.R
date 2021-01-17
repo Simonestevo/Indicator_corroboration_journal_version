@@ -22,6 +22,7 @@
 # library(devtools)
 # Install from main ZSL repository online
 # install_github("Zoological-Society-of-London/rlpi", dependencies=TRUE)
+
 library(rlpi)
 library(raster)
 library(tidyverse)
@@ -39,6 +40,7 @@ library(e1071)
 library(tm)
 library(PerformanceAnalytics)
 library(ncdf4)
+library(tmap)
 
 # Set input and output locations ----
 
@@ -2451,7 +2453,8 @@ threat_scheme$code <- as.character(threat_scheme$code)
 formatted_threat_data <- all_threat_data %>%
                          merge(threat_scheme[c("code", "headline", 
                                                "headline_name", 
-                                               "included_in_hfp")], 
+                                               "included_in_hfp",
+                                               "terrestrial")], 
                                by = "code") %>%
                          filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>%
                          filter(timing != "Future") %>%
@@ -2463,6 +2466,7 @@ formatted_threat_data <- all_threat_data %>%
                          merge(species_data[c("tsn", 
                                               "ecoregion_id")], 
                                by = "tsn") %>%
+                         filter(terrestrial == 0) 
                          dplyr::select(- invasive) %>%  
                          dplyr::select(ecoregion_id, code,title, binomial, tsn, headline,
                                        headline_name, included_in_hfp) %>%
@@ -2484,17 +2488,22 @@ formatted_threat_data <- all_threat_data %>%
                          mutate(threat_count = n()) %>%
                          summarise_all(~ toString(unique(.))) %>%
                          rename(predominant_threat = title) %>%
-                         mutate(included_in_hfp = ifelse(included_in_hfp == "1, 0",
-                                              "1",
-                                              ifelse(included_in_hfp == "0, 1",
-                                                     "1", included_in_hfp))) %>%
                          mutate(headline_name = ifelse(nchar(headline) > 2,
                                                        "Mixed threats",
-                                                       headline_name))
-
-
+                                                       headline_name)) %>%
+                        mutate(predominant_threat = ifelse(nchar(code) > 3,
+                                                      "Mixed threats",
+                                                      predominant_threat)) %>%
+                        mutate(included_in_hfp = ifelse(included_in_hfp == "1, 0",
+                                                        "1",
+                                                        ifelse(included_in_hfp == "0, 1",
+                                                               "1", included_in_hfp))) %>%
+                        mutate(predominant_threat = ifelse(str_detect(predominant_threat, 
+                                                    "Invasive"),
+                          "Invasive species", predominant_threat))
 
 head(formatted_threat_data)
+unique(formatted_threat_data$predominant_threat)
 
 ecoregion_threats <- formatted_threat_data %>%
                      dplyr::select(ecoregion_id, predominant_threat, 
@@ -2607,11 +2616,59 @@ ecoregion_realms <- ecoregions %>%
                     distinct(.) %>%
                     dplyr::select(all_of(indicator_columns))
 
-# GDP ----
+# Anthromes ----
 
-# x <- nc_open("N:/Quantitative-Ecology/Simone/extinction_test/inputs/gdp/GDP_PPP_30arcsec_v3.nc") 
-# 
-# y <- x$var
+anthromes_1700_init <- raster(file.path(inputs, "anthromes", "1700", "anthro2_a1700.tif"))
+# anthromes_1800
+# anthromes_1900
+anthromes_2000 <- raster(file.path(inputs, "anthromes", "2000", "anthro2_a2000.tif"))
+
+anthromes_1700 <- readAll(anthromes_1700_init)
+anthromes_2000 <- readAll(anthromes_2000)
+
+aus <- raster("N:/Quantitative-Ecology/Simone/extinction_test/inputs/biodiversity_intactness_index/bii_rich_2005_aus.tif")
+
+new_values <- as.data.frame(anthromes_1700@data@values) %>%
+  mutate(new = ifelse(anthromes_1700@data@values == 43, 1,
+                      ifelse(anthromes_1700@data@values == 53,1,
+                             ifelse(anthromes_1700@data@values == 54,1,
+                             ifelse(anthromes_1700@data@values == 61,1,
+                             ifelse(anthromes_1700@data@values == 62,1,
+                             0))))))
+
+anth1700_aus <- crop(anthromes_1700, extent(aus))
+plot(anth1700_aus)
+
+anth2000_aus <- crop(anthromes_2000, extent(aus))
+plot(anth2000_aus)
+
+# Reclassify the raster values
+
+anthromes_1700_mask <- reclassify(anth1700_aus, 
+                                  rcl = new_values)
+
+plot(anthromes_1700_mask)
+
+anthromes_2000_mask <- reclassify(anth2000_aus, 
+                                  rcl = new_values)
+
+plot(anthromes_2000_mask)
+
+anthromes_1700_vals <- raster::extract(anthromes_2000_mask, ecoregion_map)
+
+undisturbed_sum <- lapply(anthromes_1700_vals, sum) 
+total_cells <- lapply(anthromes_1700_vals, length)
+
+x <- do.call(rbind, undisturbed_sum)
+y <- do.call(rbind, total_cells)
+z <- as.data.frame(cbind(x,y))
+a <- mutate(z, prop = x/y)
+a <- mutate(a, ECO_ID = ecoregion_map$ECO_ID)
+
+c <- left_join(ecoregion_map, a, by = "ECO_ID")  
+
+plot(c["prop"])
+plot(b["prop"])
 
 # Combine indicator values into a single dataframe ----
 
@@ -3190,10 +3247,10 @@ threat_data <- eco_variable_map_data %>%
 threat <- tm_shape(threat_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
-              pal = "viridis",
+              pal = "Set3",
               title = "Predominant threat type") +
   tm_layout(legend.outside = TRUE,
-            legend.outside.position = "right") 
+            legend.outside.position = "bottom") 
 
 threat
 
@@ -3211,7 +3268,7 @@ headline_threat_data <- eco_variable_map_data %>%
 headline_threat <- tm_shape(headline_threat_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
-              pal = "viridis",
+              pal = "Set3",
               title = "Headline threat type") +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 

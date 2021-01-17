@@ -23,6 +23,18 @@ library(leaflet)
 
 # Functions ----
 
+get_binomial_list <- function(data) {
+  
+  data$binomial <- as.character(data$binomial)
+  
+  data <- unname(unlist(data$binomial))
+  
+  data <- data[!is.na(data)]
+  
+  binomial_list <- unique(data)
+  
+}
+
 find_synonyms <- function( species ) {
   
   require(taxizedb)
@@ -160,23 +172,22 @@ find_synonyms <- function( species ) {
 
 date <- Sys.Date()
 country <- "Australia" # If not subsetting, set as NA, e.g. country <- NA
-inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_interim_output_files"
+inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_database_output_files"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
 external_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs/species_data_checks"
-
-  
-output_directory <- file.path(parent_outputs, 
-                              paste(date, 
-                                    "species_data_check_output_files", 
-                                    sep = "_"))
+analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+interim_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-10_interim_output_files"
+parent_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/inputs"
+output_directory <- file.path("N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/", 
+                              "species_data_check_output_files")
 
 dir.create(output_directory)
 
-# Get input data ----
+# Get species data ----
 
 # Load species data
 
-species_data <- readRDS(file.path(inputs, "global_species_data_3.rds"))
+species_data <- readRDS(file.path(inputs, "global_species_data_3_final.rds"))
 
 species_data_unique <- species_data %>%
                        group_by(ecoregion_id) %>%
@@ -227,7 +238,7 @@ ecoregion_country_df <- readRDS(file.path("N:/Quantitative-Ecology/Simone/extinc
                                           "ecoregion_country_data.rds"))
 
 
-# Australia comparison ----
+# Australian species comparison ----
 
 ecoregion_subset <- ecoregion_country_df %>%
                     filter(CNTRY_NAME == "Australia") %>%
@@ -245,7 +256,7 @@ aus_species_data_ours <- aus_species_data_ours %>%
                           mutate(redlist_assessment_year = 
                                    as.numeric(as.character(redlist_assessment_year))) %>%
                           filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
-                          select(binomial, tsn, redlist_status) %>%
+                          select(binomial, tsn, redlist_status, ecoregion_id) %>%
                           distinct(.)
 
 # source - https://www.environment.gov.au/cgi-bin/sprat/public/sprat.pl
@@ -285,7 +296,7 @@ table(aus_species_data_gov$EPBC.Threat.Status)
 table(aus_species_data_gov$IUCN.Red.List)
 
 # Our red list status breakdown
-table(species_data$redlist_status)
+table(aus_species_data_ours$redlist_status)
 
 # Join the australian government data to ours so we can compare
 
@@ -363,7 +374,7 @@ length(unique(spp_on_our_list_only$tsn))
 ### Note - there are quite a few extinct species not on our list, pretty sure
 ### because there are no range maps available for them
 
-# Serengeti comparison ----
+# Serengeti species comparison ----
 
 serengeti_species_external <- read.csv(file.path(external_inputs, "serengeti_map_of_life_2.csv"))
 
@@ -421,7 +432,7 @@ serengeti_external_only <- serengeti_comparison %>%
 
 length(unique(serengeti_external_only$tsn))
 
-# Xeric shrublands check ----
+# Biome type checks ----
 
 xeric_species_data <- species_data %>%
                       filter(biome == "Deserts & Xeric Shrublands") %>%
@@ -801,8 +812,270 @@ species_map_data %>%
                    overlayGroups = c("Number of species in ecoregion", 
                                      "Species identities"))
 
+# Australian threat distributions ----
 
+raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
+                               "global_ecoregions_2017_ecoregion_values_master.rds")) 
+  
+threats <- raw_ecoregions_long %>%
+           filter(indicator == "predominant threat type")
+
+threats_australia <- threats[threats$ecoregion_id %in% 
+                             ecoregion_subset$ECO_ID,]
+
+ecoregion_map_data <- ecoregion_map %>%
+                      rename(ecoregion_id = ECO_ID) %>%
+                      dplyr::select(ecoregion_id, geometry)
+
+australia_map <- ecoregion_map_data[ecoregion_map_data$ecoregion_id %in% 
+                           ecoregion_subset$ECO_ID,]
+
+australian_threat_map_data <- left_join(threats_australia, australia_map,
+                                   by = "ecoregion_id")
+
+australian_threat_map_data <- st_as_sf(australian_threat_map_data)
+
+au_predominant_threat <- tm_shape(australian_threat_map_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "Set3",
+              title = "Predominant threat type") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "bottom") 
+
+au_predominant_threat
+
+tmap_save(au_predominant_threat, file.path(indicator_outputs, paste(location,
+          "australian_predominant_threat_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+## Look at the threat types
+
+all_threat_data <- readRDS(file.path("N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2020-08-10_interim_output_files", 
+                           "global_all_threat_data.rds"))
+
+# Check the threat data for synonyms and add tsn so we can match with
+# species_data more accurately
+
+threat_binomials <- get_binomial_list(aus_species_data_ours)
+
+# Line below takes about 15 - 20 minutes
+
+threat_data_synonyms <- find_synonyms(threat_binomials)
+
+# Join the tsn to the threat data
+
+all_threat_data <- all_threat_data %>%
+  merge(threat_data_synonyms[c("tsn", "binomial",
+                               "accepted_name")],
+        by = "binomial") %>%
+  distinct(.) %>%
+  dplyr::select(-binomial) %>%
+  rename(binomial = accepted_name)
+
+threat_scheme <- read.csv(file.path(parent_inputs, "iucn_threats\\iucn_threat_classification_scheme.csv"))
+threat_scheme$code <- as.character(threat_scheme$code)
+
+formatted_threat_data <- all_threat_data %>%
+  merge(threat_scheme[c("code", "headline", 
+                        "headline_name", 
+                        "included_in_hfp",
+                        "terrestrial")], 
+        by = "code") %>%
+  filter(scope == "Majority (50-90%)" | scope == "Whole (>90%)") %>%
+  filter(timing != "Future") %>%
+  filter(score == "Medium Impact: 6" |
+           score == "Medium Impact: 7"|
+           score == "High Impact: 8"|
+           score == "High Impact: 9") %>%
+  distinct(.) %>%
+  merge(aus_species_data_ours[c("tsn", 
+                       "ecoregion_id")], 
+        by = "tsn") 
+
+# Sensitivity analysis
+
+correlation_input_data <- readRDS("tbd")
+
+correlation_input_data_all <- correlation_input_data
+
+correlation_input_data <- correlation_input_data_all %>%
+  merge(pca_data_6[c("ecoregion_id", "cluster")])
+
+
+grouping_variables_all <- names(correlation_input_data)[!(names(correlation_input_data) %in% 
+                                                            indicators_all)]
+
+# Get categorical grouping variables only 
+
+grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ecoregion_id",
+                                                                             "predominant.threat.type",
+                                                                             "headline.threat.type",
+                                                                             "ecoregion.area.km.sq",
+                                                                             "RLI_records",
+                                                                             "LPI_records",
+                                                                             "scenario.numeric",
+                                                                             "predominant.threat.count",
+                                                                             "mean.scientific.publications",
+                                                                             "number.of.endemics",
+                                                                             "mean.human.population.density"))]
+
+if (!is.na(timepoint)) {
+  
+  indicators_timepoint_names <- c(grouping_variables_all,
+                                  indicators)
+  
+  correlation_input_data <- correlation_input_data %>%
+    dplyr::select(all_of(indicators_timepoint_names))
+  
+}
+
+
+all_grouping_variables <- paste("all", grouping_variables, sep = ".")
+nice_grouping_variables <- str_to_title(gsub(".", " ", grouping_variables, fixed=TRUE))
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Hfp", "HFP")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
+nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
+
+all_groups <- list()
+all_heatmaps <- list()
+
+for (i in seq_along(grouping_variables)) {
+  
+  vargroup <- grouping_variables[i]
+  varall <- all_grouping_variables[i]
+  
+  x <- c("ecoregion_id", indicators, vargroup)
+  
+  group_indicators <- correlation_input_data %>%
+    dplyr::select(all_of(x))
+  
+  all <- group_indicators
+  
+  group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
+  
+  all[, ncol(all)] <- varall
+  
+  group_indicator_list[[varall]] <- all
+  
+  group_correlations <- list()
+  group_correlations_dataframes <- list()
+  group_matrices <- list()
+  
+  for (j in seq_along(group_indicator_list)) {
+    
+    group_matrix <- group_indicator_list[[j]] %>%
+      dplyr::select(-ecoregion_id, -vargroup) %>%
+      na.omit(.)
+    
+    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
+    
+    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
+    
+    group_matrices[[j]] <- group_matrix
+    
+  }
+  
+  names(group_matrices) <- names(group_indicator_list)
+  
+  for (j in seq_along(group_matrices)) {
+    
+    subset_matrix <- group_matrices[[j]]
+    
+    n <- nrow(subset_matrix)
+    
+    name <- paste(names(group_matrices)[j], "n =", n, sep = " ")
+    name <- str_replace(name, "&", "and")
+    name <- str_replace(name, "/", "_and_")
+    name <- str_replace(name, "<", " less than ")
+    name <- str_replace(name, ">", " more than ")
+    name <- gsub("[()]", "", name)
+    
+    if (nrow(subset_matrix) < 3) {
+      
+      print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
+      
+    } else {
+      
+      p.mat <- cor_pmat(subset_matrix)
+      
+      correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
+                                     title = name, 
+                                     p.mat = p.mat, 
+                                     type = "lower", insig = "blank",
+                                     outline.color = "white",
+                                     colors = c("#453781FF", "white", "#287D8EFF"),
+                                     lab = TRUE)
+      
+      correlation_df <- correlation_plot$data[,1:3] %>%
+        merge(indicator_properties[c("indicator","inputs")], 
+              by.x = "Var1", by.y = "indicator") %>%
+        rename(input1 = inputs) %>%
+        merge(indicator_properties[c("indicator","inputs")], 
+              by.x = "Var2", by.y = "indicator") %>%
+        rename(input2 = inputs) %>%
+        mutate(subgroup = names(group_matrices)[j],
+               combination = paste(Var1, "x", Var2, sep = " "),
+               inputs = paste(input1, "x", input2, sep = " ")) %>%
+        mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                               "iucn red list x land use data", inputs)) %>%
+        rename(coefficient = value) %>%
+        dplyr::select(-Var1, -Var2) %>%
+        merge(indicator_relationships, by = "combination")
+      
+      group_directory <- file.path(current_analysis_outputs, paste(vargroup,
+                         "correlation matrices", sep = " "))
+      
+      if ( !dir.exists( group_directory ) ) {
+        
+        dir.create( group_directory, recursive = TRUE )
+        
+      }
+      
+      ggsave(file.path(group_directory,
+                       paste(name, "indicator_correlation_matrix.png", sep = "_")),
+             correlation_plot, device = "png")
+    }
+    
+    group_correlations[[j]] <- correlation_plot
+    
+    group_correlations_dataframes[[j]] <- correlation_df
+    
+  }
   
   
+  all_groups[[i]] <- group_correlations
   
+  correlation_dataframe <- do.call(rbind, group_correlations_dataframes)
+  
+  heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
+                                               y = combination,
+                                               fill = coefficient)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
+         y = "Pairwise indicator comparisons") +
+    guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "grey97"),
+          legend.position = "bottom",
+          axis.title.x = element_text(size=8),
+          axis.title.y = element_text(size=8),
+          axis.text.x = element_text(size= 7),
+          axis.text.y = element_text(size= 7)) +
+    facet_wrap(~input_relationship) + 
+    theme(strip.text.x = element_text(size = 7, hjust = 0))
+  
+  heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
+  
+  ggsave(file.path(group_directory,
+                   paste(grouping_variables[i], "correlation_heatmap.png", sep = "_")),
+         heatmap, device = "png")
+  
+  all_heatmaps[[i]] <- heatmap
+  
+}
   

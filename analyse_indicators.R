@@ -1185,6 +1185,9 @@ rm(raw_indicators_long, raw_indicators_wide)
 correlation_input_data <- indicators_wide_centred_trunc %>%
   merge(ecoregions_wide, by = "ecoregion_id") 
 
+saveRDS(correlation_input_data,
+        file.path(current_analysis_outputs, "correlation_input_data.RDS"))
+
 # Time by time scatterplots ----
 
 # Select the correct time point columns
@@ -1746,12 +1749,12 @@ legend_title <- indicators[i]
 indicator_map_data <- indicator_map_data_all[,c("ecoregion_id",indicators[i])]
 
 
-if(legend_title == "extinct_2005") {
+if(legend_title == "extinct_2008") {
   
 
 indicator_map_data <- indicator_map_data %>%
-                      mutate(extinct_2005 = ifelse(extinct_2005 < -1,
-                                                 -1, extinct_2005))
+                      mutate(extinct_2008 = ifelse(extinct_2008 < -1,
+                                                 -1, extinct_2008))
 
 print(paste(legend_title, "truncated fill values for visualisation", sep = " "))
 
@@ -1759,7 +1762,7 @@ print(paste(legend_title, "truncated fill values for visualisation", sep = " "))
 
 names(indicator_map_data) <- c("ecoregion_id", "indicator","geometry")
 
-if(legend_title == "threatened_2005" | legend_title == "RLI_2005") {
+if(legend_title == "threatened_2008" | legend_title == "RLI_2008") {
   
   
   indicator_map_data <- indicator_map_data %>%

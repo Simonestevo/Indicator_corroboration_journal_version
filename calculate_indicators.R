@@ -2618,57 +2618,82 @@ ecoregion_realms <- ecoregions %>%
 
 # Anthromes ----
 
-anthromes_1700_init <- raster(file.path(inputs, "anthromes", "1700", "anthro2_a1700.tif"))
-# anthromes_1800
-# anthromes_1900
-anthromes_2000 <- raster(file.path(inputs, "anthromes", "2000", "anthro2_a2000.tif"))
+anthromes_1700_raster <- raster(file.path(inputs, "anthromes", "1700", "anthro2_a1700.tif"))
+anthromes_1800_raster <- raster(file.path(inputs, "anthromes", "1800", "anthro2_a1800.tif"))
+anthromes_1900_raster <- raster(file.path(inputs, "anthromes", "1900", "anthro2_a1900.tif"))
+anthromes_2000_raster <- raster(file.path(inputs, "anthromes", "2000", "anthro2_a2000.tif"))
 
-anthromes_1700 <- readAll(anthromes_1700_init)
-anthromes_2000 <- readAll(anthromes_2000)
+anthromes_1700_raster <- readAll(anthromes_1700_raster)
+anthromes_1800_raster <- readAll(anthromes_1800_raster)
+anthromes_1900_raster <- readAll(anthromes_1900_raster)
+anthromes_2000_raster <- readAll(anthromes_2000_raster)
 
-aus <- raster("N:/Quantitative-Ecology/Simone/extinction_test/inputs/biodiversity_intactness_index/bii_rich_2005_aus.tif")
-
-new_values <- as.data.frame(anthromes_1700@data@values) %>%
-  mutate(new = ifelse(anthromes_1700@data@values == 43, 1,
-                      ifelse(anthromes_1700@data@values == 53,1,
-                             ifelse(anthromes_1700@data@values == 54,1,
-                             ifelse(anthromes_1700@data@values == 61,1,
-                             ifelse(anthromes_1700@data@values == 62,1,
-                             0))))))
-
-anth1700_aus <- crop(anthromes_1700, extent(aus))
-plot(anth1700_aus)
-
-anth2000_aus <- crop(anthromes_2000, extent(aus))
-plot(anth2000_aus)
+#aus <- raster("N:/Quantitative-Ecology/Simone/extinction_test/inputs/biodiversity_intactness_index/bii_rich_2005_aus.tif")
 
 # Reclassify the raster values
 
-anthromes_1700_mask <- reclassify(anth1700_aus, 
-                                  rcl = new_values)
+get_anthromes <- function(anthrome, map, timepoint) {
+  
+df <- as.data.frame(anthrome@data@values) %>%
+                      mutate(new = ifelse(anthrome@data@values == 53,1,
+                                   ifelse(anthrome@data@values == 61,1,
+                                   ifelse(anthrome@data@values == 62,1, 0))))
 
-plot(anthromes_1700_mask)
+# Reclassify pixels as disturbed or undisturbed
+anthrome_mask <- reclassify(anthrome, rcl = df)
 
-anthromes_2000_mask <- reclassify(anth2000_aus, 
-                                  rcl = new_values)
+# Split the pixel values into the ecoregion polygons
+anthrome_vals <- raster::extract(anthrome_mask, map)
 
-plot(anthromes_2000_mask)
+# Get the sum of pixel values classified as "1" (undisturbed)
+undisturbed_sum <- lapply(anthrome_vals, sum) 
 
-anthromes_1700_vals <- raster::extract(anthromes_2000_mask, ecoregion_map)
+# Get the total number of pixels in the ecoregion
+total_cells <- lapply(anthrome_vals, length)
 
-undisturbed_sum <- lapply(anthromes_1700_vals, sum) 
-total_cells <- lapply(anthromes_1700_vals, length)
+# Combine into dataframes
+undisturbed_sum <- do.call(rbind, undisturbed_sum)
+total_cells <- do.call(rbind, total_cells)
+df <- as.data.frame(cbind(undisturbed_sum, total_cells))
 
-x <- do.call(rbind, undisturbed_sum)
-y <- do.call(rbind, total_cells)
-z <- as.data.frame(cbind(x,y))
-a <- mutate(z, prop = x/y)
-a <- mutate(a, ECO_ID = ecoregion_map$ECO_ID)
+# Calculate proportion of undisturbed habitat in that ecoregion
+prop_undisturbed <- mutate(df, prop_undisturbed = undisturbed_sum/total_cells)
 
-c <- left_join(ecoregion_map, a, by = "ECO_ID")  
+# Add the ecoregion ID back in
 
-plot(c["prop"])
-plot(b["prop"])
+ecoregion_id <- dplyr::select(map, ECO_ID)
+ecoregion_id <- ecoregion_id %>% st_set_geometry(NULL)
+proportion_undisturbed <- cbind(ecoregion_id, prop_undisturbed)
+proportion_undisturbed <- proportion_undisturbed %>%
+                          mutate(year = timepoint) %>%
+                          rename(undisturbed_cells = V1,
+                                 total_cells = V2)
+
+saveRDS(proportion_undisturbed, file.path(indicator_outputs, 
+                                          paste(location,
+                                                as.character(timepoint),
+                                                "anthrome.rds",
+                                                sep = "_")))
+
+return(proportion_undisturbed)
+
+}
+
+system.time(anthromes_1700 <- get_anthromes(anthromes_1700_raster, ecoregion_map, 1700))
+system.time(anthromes_1800 <- get_anthromes(anthromes_1800_raster, ecoregion_map, 1800))
+system.time(anthromes_1900 <- get_anthromes(anthromes_1900_raster, ecoregion_map, 1900))
+system.time(anthromes_2000 <- get_anthromes(anthromes_2000_raster, ecoregion_map, 2000))
+
+
+
+x <- left_join(ecoregion_map,
+               anthromes_1700,
+               by.x = "ECO_ID",
+               by.y = "ecoregion_id")
+
+head(x)
+
+plot(x["prop_undisturbed"])
 
 # Combine indicator values into a single dataframe ----
 

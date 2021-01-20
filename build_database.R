@@ -2068,7 +2068,7 @@ saveRDS(species_data_2, file.path(interim_outputs,
                                    "class")], by = "binomial", 
           all = TRUE) %>%
     rename(ecoregion_id = ECO_ID) %>% # This part needs fixing
-    select(ecoregion_id, tsn, binomial, source, 
+    select(ecoregion_id, tsn, binomial,  
            redlist_assessment_year,
            redlist_status, redlist_source, class)
   
@@ -2089,8 +2089,9 @@ saveRDS(species_data_2, file.path(interim_outputs,
            redlist_assessment_year,
            redlist_status, redlist_source, class)
   
-  
-# Tidy species data 
+  length(unique(species_data_3$tsn))
+
+  # Tidy species data 
   
   # Order the redlist categories and add index so we can select by highest
   
@@ -2101,23 +2102,193 @@ saveRDS(species_data_2, file.path(interim_outputs,
   species_data_3 <- species_data_3 %>% 
        mutate(category_rank = as.integer(redlist_status))
   
-  # Check for duplicates (same tsn but different binomials)
+  # * Check for duplicates (same tsn but different binomials) ----
   
-  length(unique(species_data_3$binomial))
-  length(unique(species_data_3$tsn))
+  # First just check for straight up duplicates bc theres heaps
+  dim(species_data_3)
   
-  # Species that aren't duplicated
+  species_data_3 <- distinct(species_data_3)
   
-  species_data1 <- species_data_3 %>% 
-    group_by_at(vars(-binomial, -source)) %>% 
-    filter(n() < 2) 
+  dim(species_data_3)
   
-  # Find species that are duplicated and pick the BI record
+  # Now remove incomplete cases
   
-  species_data2 <- species_data_3 %>% 
-    group_by_at(vars(-binomial, -source)) %>% 
-    filter(n() > 1) %>%
-    filter(category_rank == max(category_rank))
+  species_data_4 <- species_data_3[complete.cases(species_data_3), ]
+  
+  dim(species_data_4)
+  
+  # We still have a problem (double ups with diff binomial & source, but same tsn + RL data)
+  
+  length(unique(species_data_4$binomial))
+  length(unique(species_data_4$tsn))
+  
+  # Count how many binomials there are per tsn
+  
+  num_binomials <- species_data_3 %>%
+                   select(tsn, binomial) %>%
+                   distinct(.) %>%
+                   group_by(tsn) %>%
+                   summarise(num = n_distinct(binomial)) %>%
+                   as.data.frame(.)
+  
+  head(num_binomials)
+  class(num_binomials)
+  
+  # Get the tsns with duplicated binomials
+  
+  duplicated_tsn <- num_binomials %>%
+                    filter(num > 1) %>%
+                    dplyr::select(tsn) %>%
+                    pull(.)
+
+  # Get non duplicated species
+  
+  single_tsn <- num_binomials %>%
+                filter(num == 1) %>%
+                dplyr::select(tsn) %>%
+                pull(.)
+  
+  # Split data into duplicated and not duplicated
+  
+  dup_species_data <- species_data_3[species_data_3$tsn %in% 
+                               duplicated_tsn,]
+  
+  length(unique(dup_species_data$tsn))
+  length(unique(dup_species_data$binomial))
+
+  single_species_data <- species_data_3[species_data_3$tsn %in% 
+                                  single_tsn,]
+
+  
+  length(unique(single_species_data$tsn))
+  length(unique(single_species_data$binomial))
+  
+  unique(dup_species_data$source)
+ 
+  
+
+  
+
+  
+## Thylacine test
+  
+  thylacine_tsn <- 9275
+  
+  check_tt <- species_data_3 %>%
+              filter(tsn == thylacine_tsn) %>%
+              filter(redlist_assessment_year == 2008)
+  
+  ## Make a test dataset
+  
+  test_data <- species_data_3 %>%
+               filter(tsn == 8319| # 1 binomial
+                      tsn == 8296| # 1 binomial
+                      tsn == 8838| # 2 binomials
+                      tsn == 51908| # 3 binomials
+                      tsn == 2071562) # 4 binomials
+  
+  dim(test_data)
+  
+  test_data <- distinct(test_data)
+  
+  dim(test_data)
+  
+  # The correct answer should be 5 tsn, 5 binomials
+  length(unique(test_data$tsn))
+  length(unique(test_data$binomial))
+  
+  # Identify duplicated rows
+  
+  all_binomials <- species_data_4 %>%
+                   select(binomial) %>%
+                   distinct(.) %>%
+                   pull(.)
+  
+  system.time(all_synonyms <- find_synonyms(all_binomials))
+  
+  saveRDS(all_synonyms, file.path(outputs, 
+                                  paste(location,"all_synonyms.rds", 
+                                        sep = "_")))
+  
+  length(unique(species_data_4$tsn))
+  length(unique(species_data_4$binomial))
+  
+  species_data_4 <- species_data_4 %>%
+               merge(all_synonyms[c("tsn", "accepted_name")], by = "tsn") %>%
+               select(-binomial) %>%
+               rename(binomial = accepted_name) %>%
+               select(-source) %>%
+               distinct(.)  
+  
+  length(unique(species_data_4$tsn))
+  length(unique(species_data_4$binomial))
+  
+  # Get non duplicated species
+  
+  num_binomials <- test_data %>%
+                   select(tsn, binomial) %>%
+                   distinct(.) %>%
+                   group_by(tsn) %>%
+                   summarise(num = n_distinct(binomial)) %>%
+                   as.data.frame(.)
+  
+  head(num_binomials)
+  
+  
+  duplicated_tsn <- num_binomials %>%
+                    filter(num > 1) %>%
+                    dplyr::select(tsn) %>%
+                    pull(.)
+  # Answer should be 8838, 51908, 2071562
+  
+  duplicated_tsn
+  
+
+  # Get non duplicated species
+  
+  single_tsn <- num_binomials %>%
+    filter(num == 1) %>%
+    dplyr::select(tsn) %>%
+    pull(.)
+  
+  # Correct answer should be 8319 and 8296
+ 
+   single_tsn
+  
+  # Split data into duplicated and not duplicated
+   
+   dup_test_data <- test_data[test_data$tsn %in% 
+                              duplicated_tsn,]
+   # 8838 51908 20715
+   
+   unique(dup_test_data$tsn)
+   
+   single_test_data <- test_data[test_data$tsn %in% 
+                                single_tsn,]
+   # 8296, 8319
+   unique(single_test_data$tsn)
+   
+   # Sort out the duplicated ones
+   length(unique(dup_test_data$tsn))
+   length(unique(dup_test_data$binomial))
+   
+   x <- dup_test_data %>%
+        filter(source == "birdlife_international")
+   
+   length(unique(x$tsn))
+   length(unique(x$binomial))
+   
+   new_test_data <- rbind(single_test_data, x)
+  
+   length(unique(new_test_data$tsn))
+   length(unique(new_test_data$binomial))
+   
+   # Find species that are duplicated and pick the BI record
+  
+  # species_data2 <- species_data_3 %>% 
+  #   group_by_at(vars(-binomial, -source)) %>% 
+  #   filter(n() > 1) %>%
+  #   filter(category_rank == max(category_rank))
   
   # Combine
   

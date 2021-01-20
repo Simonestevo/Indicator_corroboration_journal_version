@@ -2102,7 +2102,7 @@ saveRDS(species_data_2, file.path(interim_outputs,
   species_data_3 <- species_data_3 %>% 
        mutate(category_rank = as.integer(redlist_status))
   
-  # * Check for duplicates (same tsn but different binomials) ----
+# Species Data 4: Clean duplicates ----
   
   # First just check for straight up duplicates bc theres heaps
   dim(species_data_3)
@@ -2121,81 +2121,6 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
   length(unique(species_data_4$binomial))
   length(unique(species_data_4$tsn))
-  
-  # Count how many binomials there are per tsn
-  
-  num_binomials <- species_data_3 %>%
-                   select(tsn, binomial) %>%
-                   distinct(.) %>%
-                   group_by(tsn) %>%
-                   summarise(num = n_distinct(binomial)) %>%
-                   as.data.frame(.)
-  
-  head(num_binomials)
-  class(num_binomials)
-  
-  # Get the tsns with duplicated binomials
-  
-  duplicated_tsn <- num_binomials %>%
-                    filter(num > 1) %>%
-                    dplyr::select(tsn) %>%
-                    pull(.)
-
-  # Get non duplicated species
-  
-  single_tsn <- num_binomials %>%
-                filter(num == 1) %>%
-                dplyr::select(tsn) %>%
-                pull(.)
-  
-  # Split data into duplicated and not duplicated
-  
-  dup_species_data <- species_data_3[species_data_3$tsn %in% 
-                               duplicated_tsn,]
-  
-  length(unique(dup_species_data$tsn))
-  length(unique(dup_species_data$binomial))
-
-  single_species_data <- species_data_3[species_data_3$tsn %in% 
-                                  single_tsn,]
-
-  
-  length(unique(single_species_data$tsn))
-  length(unique(single_species_data$binomial))
-  
-  unique(dup_species_data$source)
- 
-  
-
-  
-
-  
-## Thylacine test
-  
-  thylacine_tsn <- 9275
-  
-  check_tt <- species_data_3 %>%
-              filter(tsn == thylacine_tsn) %>%
-              filter(redlist_assessment_year == 2008)
-  
-  ## Make a test dataset
-  
-  test_data <- species_data_3 %>%
-               filter(tsn == 8319| # 1 binomial
-                      tsn == 8296| # 1 binomial
-                      tsn == 8838| # 2 binomials
-                      tsn == 51908| # 3 binomials
-                      tsn == 2071562) # 4 binomials
-  
-  dim(test_data)
-  
-  test_data <- distinct(test_data)
-  
-  dim(test_data)
-  
-  # The correct answer should be 5 tsn, 5 binomials
-  length(unique(test_data$tsn))
-  length(unique(test_data$binomial))
   
   # Identify duplicated rows
   
@@ -2223,102 +2148,37 @@ saveRDS(species_data_2, file.path(interim_outputs,
   length(unique(species_data_4$tsn))
   length(unique(species_data_4$binomial))
   
-  # Get non duplicated species
-  
-  num_binomials <- test_data %>%
-                   select(tsn, binomial) %>%
-                   distinct(.) %>%
-                   group_by(tsn) %>%
-                   summarise(num = n_distinct(binomial)) %>%
-                   as.data.frame(.)
-  
-  head(num_binomials)
-  
-  
-  duplicated_tsn <- num_binomials %>%
-                    filter(num > 1) %>%
-                    dplyr::select(tsn) %>%
-                    pull(.)
-  # Answer should be 8838, 51908, 2071562
-  
-  duplicated_tsn
-  
-
-  # Get non duplicated species
-  
-  single_tsn <- num_binomials %>%
-    filter(num == 1) %>%
-    dplyr::select(tsn) %>%
-    pull(.)
-  
-  # Correct answer should be 8319 and 8296
- 
-   single_tsn
-  
-  # Split data into duplicated and not duplicated
-   
-   dup_test_data <- test_data[test_data$tsn %in% 
-                              duplicated_tsn,]
-   # 8838 51908 20715
-   
-   unique(dup_test_data$tsn)
-   
-   single_test_data <- test_data[test_data$tsn %in% 
-                                single_tsn,]
-   # 8296, 8319
-   unique(single_test_data$tsn)
-   
-   # Sort out the duplicated ones
-   length(unique(dup_test_data$tsn))
-   length(unique(dup_test_data$binomial))
-   
-   x <- dup_test_data %>%
-        filter(source == "birdlife_international")
-   
-   length(unique(x$tsn))
-   length(unique(x$binomial))
-   
-   new_test_data <- rbind(single_test_data, x)
-  
-   length(unique(new_test_data$tsn))
-   length(unique(new_test_data$binomial))
-   
-   # Find species that are duplicated and pick the BI record
-  
-  # species_data2 <- species_data_3 %>% 
-  #   group_by_at(vars(-binomial, -source)) %>% 
-  #   filter(n() > 1) %>%
-  #   filter(category_rank == max(category_rank))
-  
-  # Combine
-  
-  species_data_3 <- rbind(species_data1, species_data2)
-  
-  species_data_3 <- species_data_3 %>%
-                    select(-category_rank)
-  
-  # Check if number binomial and tsn are different
-  
-  length(unique(species_data_3$binomial))
-  length(unique(species_data_3$tsn))
-  
-  rm(species_data1, species_data2)
-  
   # Remove duplicate errors (species with more than one redlist status in the same year)
-  duplicates <- species_data_3 %>%
-                group_by(binomial, redlist_assessment_year) %>%
+  
+  species_data_4 <- species_data_4 %>%
+                    group_by_at(vars(-redlist_status)) %>%
+                    group_by(ecoregion_id, tsn) %>%
+                    filter(category_rank == max(category_rank))
+  
+  # Duplicates row number should equal zero (no duplicates)
+  
+  duplicates <- species_data_4 %>%
+                group_by(tsn, redlist_assessment_year) %>%
                 summarise(check = n_distinct(redlist_status)) %>%
                 filter(check > 1) %>%
-                select(binomial) %>%
+                select(tsn) %>%
                 distinct(.)
   
-  species_data_3  <- species_data_3[! species_data_3$binomial %in% 
-                                  duplicates$binomial,] 
+  nrow(duplicates)
   
-  rm(duplicates)
+  ## Thylacine test - check thylacine hasn't dropped out (nrow > 0)
   
-  saveRDS(species_data_3, file.path(outputs, 
-                                    paste(location,"species_data_3_final.rds", 
+  thylacine_tsn <- 9275
+  
+  check_tt <- species_data_4 %>%
+    filter(tsn == thylacine_tsn) %>%
+    filter(redlist_assessment_year == 2008)
+  
+  nrow(check_tt)
+  
+ 
+  saveRDS(species_data_4, file.path(outputs, 
+                                    paste(location,"species_data_4_final.rds", 
                                           sep = "_")))
   
   

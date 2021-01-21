@@ -2071,25 +2071,51 @@ saveRDS(species_data_2, file.path(interim_outputs,
     select(ecoregion_id, tsn, binomial,  
            redlist_assessment_year,
            redlist_status, redlist_source, class)
-  
-  saveRDS(extinct_species_ecoregion_redlist, file.path(interim_outputs, 
+ 
+ # Remove incomplete stuff
+ 
+extinct_species_ecoregion_redlist <- extinct_species_ecoregion_redlist[
+   complete.cases(extinct_species_ecoregion_redlist), ]
+
+extinct_species_ecoregion_redlist <- extinct_species_ecoregion_redlist %>%
+                                     mutate(source = "gbif") %>%
+                                     select(colnames(species_data_2))
+
+
+# Add a 2008 time point for any species extinct before 2008
+
+pre_2008_extinctions <- extinct_species_ecoregion_redlist %>%
+                        filter(redlist_assessment_year < 2009)
+
+extra_timepoints <- pre_2008_extinctions %>%
+                    mutate(redlist_assessment_year = 2008)
+
+all_timepoints <- rbind(extinct_species_ecoregion_redlist, extra_timepoints)
+
+# Remove any double ups
+
+extinct_species_ecoregion_redlist <- distinct(all_timepoints)
+ 
+saveRDS(extinct_species_ecoregion_redlist, file.path(interim_outputs, 
                                                  paste(location,"extinct_species", 
                                                        "ecoregion_redlist.rds", 
                                                        sep = "_")))
   
   
+  species_data_3 <- rbind(species_data_2, extinct_species_ecoregion_redlist)
   
-  species_data_3 <- species_data_2 %>%
-    merge(extinct_species_ecoregion_redlist[c("ecoregion_id", "binomial")],
-          by ="binomial", all = TRUE) %>%
-    mutate(eco_source = "gbif",
-           ecoregion_id = coalesce(ecoregion_id.x, ecoregion_id.y),
-           source = coalesce(source, eco_source)) %>%
-    select(ecoregion_id, tsn, binomial, source, 
-           redlist_assessment_year,
-           redlist_status, redlist_source, class)
+  # species_data_3 <- species_data_2 %>%
+  #   merge(extinct_species_ecoregion_redlist[c("ecoregion_id", "binomial")],
+  #         by ="binomial", all = TRUE) %>%
+  #   mutate(eco_source = "gbif",
+  #          ecoregion_id = coalesce(ecoregion_id.x, ecoregion_id.y),
+  #          source = coalesce(source, eco_source)) %>%
+  #   select(ecoregion_id, tsn, binomial, source, 
+  #          redlist_assessment_year,
+  #          redlist_status, redlist_source, class)
   
   length(unique(species_data_3$tsn))
+  unique(species_data_3$class)
 
   # Tidy species data 
   
@@ -2176,7 +2202,6 @@ saveRDS(species_data_2, file.path(interim_outputs,
   
   nrow(check_tt)
   
- 
   saveRDS(species_data_4, file.path(outputs, 
                                     paste(location,"species_data_4_final.rds", 
                                           sep = "_")))

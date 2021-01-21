@@ -192,14 +192,16 @@ species_data <- readRDS(file.path(inputs, "global_species_data_4_final.rds"))
 species_data_unique <- species_data %>%
                        group_by(ecoregion_id) %>%
                        mutate(spp_number = match(tsn, unique(tsn))) %>%
-                       select(ecoregion_id, binomial, class, spp_number) %>%
+                       dplyr::select(ecoregion_id, binomial, class, spp_number) %>%
                        distinct(.)
 
 species_data_2008 <- species_data %>%
                      filter(redlist_assessment_year == 2008,
                             ecoregion_id != 0,
-                            class != "Reptilia") %>%
-                     select(ecoregion_id, binomial, 
+                            class == "Amphibia"|
+                            class == "Aves"|
+                            class == "Mammalia") %>%
+                     dplyr::select(ecoregion_id, binomial, 
                             redlist_status, class) %>%
                      distinct(.)
 
@@ -913,189 +915,108 @@ formatted_threat_data <- all_threat_data %>%
                        "ecoregion_id")], 
         by = "tsn") 
 
-# Sensitivity analysis
+# Check large ecoregions ----
+## They show a very strong negative correlation between BIIri and threatened
 
-correlation_input_data <- readRDS("tbd")
+raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
+                                         "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
 
-correlation_input_data_all <- correlation_input_data
+ecoregions_wide <- raw_ecoregions_wide %>%
+  mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
+                                         0, LPI_records)))
 
-correlation_input_data <- correlation_input_data_all %>%
-  merge(pca_data_6[c("ecoregion_id", "cluster")])
-
-
-grouping_variables_all <- names(correlation_input_data)[!(names(correlation_input_data) %in% 
-                                                            indicators_all)]
-
-# Get categorical grouping variables only 
-
-grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ecoregion_id",
-                                                                             "predominant.threat.type",
-                                                                             "headline.threat.type",
-                                                                             "ecoregion.area.km.sq",
-                                                                             "RLI_records",
-                                                                             "LPI_records",
-                                                                             "scenario.numeric",
-                                                                             "predominant.threat.count",
-                                                                             "mean.scientific.publications",
-                                                                             "number.of.endemics",
-                                                                             "mean.human.population.density"))]
-
-if (!is.na(timepoint)) {
-  
-  indicators_timepoint_names <- c(grouping_variables_all,
-                                  indicators)
-  
-  correlation_input_data <- correlation_input_data %>%
-    dplyr::select(all_of(indicators_timepoint_names))
-  
-}
+ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
+                                   labels = c("Small_ecoregions", 
+                                              "Medium_ecoregions",
+                                              "Large_ecoregions"))
 
 
-all_grouping_variables <- paste("all", grouping_variables, sep = ".")
-nice_grouping_variables <- str_to_title(gsub(".", " ", grouping_variables, fixed=TRUE))
-nice_grouping_variables <- str_replace(nice_grouping_variables, "Hfp", "HFP")
-nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
-nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
-nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
+ecoregions_wide$test <- discretize(ecoregions_wide$ecoregion.area.km.sq, 
+                                   method = "frequency",
+                                   breaks = 3, 
+                                   labels = c("Small_ecoregions", 
+                                              "Medium_ecoregions",
+                                              "Large_ecoregions"),
+                                   ordered_result = TRUE)
 
-all_groups <- list()
-all_heatmaps <- list()
+large_ecoregions <- ecoregions_wide %>% filter(area.factor == "Large_ecoregions")
 
-for (i in seq_along(grouping_variables)) {
-  
-  vargroup <- grouping_variables[i]
-  varall <- all_grouping_variables[i]
-  
-  x <- c("ecoregion_id", indicators, vargroup)
-  
-  group_indicators <- correlation_input_data %>%
-    dplyr::select(all_of(x))
-  
-  all <- group_indicators
-  
-  group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
-  
-  all[, ncol(all)] <- varall
-  
-  group_indicator_list[[varall]] <- all
-  
-  group_correlations <- list()
-  group_correlations_dataframes <- list()
-  group_matrices <- list()
-  
-  for (j in seq_along(group_indicator_list)) {
-    
-    group_matrix <- group_indicator_list[[j]] %>%
-      dplyr::select(-ecoregion_id, -vargroup) %>%
-      na.omit(.)
-    
-    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
-    
-    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
-    
-    group_matrices[[j]] <- group_matrix
-    
-  }
-  
-  names(group_matrices) <- names(group_indicator_list)
-  
-  for (j in seq_along(group_matrices)) {
-    
-    subset_matrix <- group_matrices[[j]]
-    
-    n <- nrow(subset_matrix)
-    
-    name <- paste(names(group_matrices)[j], "n =", n, sep = " ")
-    name <- str_replace(name, "&", "and")
-    name <- str_replace(name, "/", "_and_")
-    name <- str_replace(name, "<", " less than ")
-    name <- str_replace(name, ">", " more than ")
-    name <- gsub("[()]", "", name)
-    
-    if (nrow(subset_matrix) < 3) {
-      
-      print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
-      
-    } else {
-      
-      p.mat <- cor_pmat(subset_matrix)
-      
-      correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
-                                     title = name, 
-                                     p.mat = p.mat, 
-                                     type = "lower", insig = "blank",
-                                     outline.color = "white",
-                                     colors = c("#453781FF", "white", "#287D8EFF"),
-                                     lab = TRUE)
-      
-      correlation_df <- correlation_plot$data[,1:3] %>%
-        merge(indicator_properties[c("indicator","inputs")], 
-              by.x = "Var1", by.y = "indicator") %>%
-        rename(input1 = inputs) %>%
-        merge(indicator_properties[c("indicator","inputs")], 
-              by.x = "Var2", by.y = "indicator") %>%
-        rename(input2 = inputs) %>%
-        mutate(subgroup = names(group_matrices)[j],
-               combination = paste(Var1, "x", Var2, sep = " "),
-               inputs = paste(input1, "x", input2, sep = " ")) %>%
-        mutate(inputs = ifelse(inputs == "land use data x iucn red list",
-                               "iucn red list x land use data", inputs)) %>%
-        rename(coefficient = value) %>%
-        dplyr::select(-Var1, -Var2) %>%
-        merge(indicator_relationships, by = "combination")
-      
-      group_directory <- file.path(current_analysis_outputs, paste(vargroup,
-                         "correlation matrices", sep = " "))
-      
-      if ( !dir.exists( group_directory ) ) {
-        
-        dir.create( group_directory, recursive = TRUE )
-        
-      }
-      
-      ggsave(file.path(group_directory,
-                       paste(name, "indicator_correlation_matrix.png", sep = "_")),
-             correlation_plot, device = "png")
-    }
-    
-    group_correlations[[j]] <- correlation_plot
-    
-    group_correlations_dataframes[[j]] <- correlation_df
-    
-  }
-  
-  
-  all_groups[[i]] <- group_correlations
-  
-  correlation_dataframe <- do.call(rbind, group_correlations_dataframes)
-  
-  heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
-                                               y = combination,
-                                               fill = coefficient)) +
-    geom_tile(color = "white") +
-    scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
-         y = "Pairwise indicator comparisons") +
-    guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
-    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_rect(fill = "grey97"),
-          legend.position = "bottom",
-          axis.title.x = element_text(size=8),
-          axis.title.y = element_text(size=8),
-          axis.text.x = element_text(size= 7),
-          axis.text.y = element_text(size= 7)) +
-    facet_wrap(~input_relationship) + 
-    theme(strip.text.x = element_text(size = 7, hjust = 0))
-  
-  heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
-  
-  ggsave(file.path(group_directory,
-                   paste(grouping_variables[i], "correlation_heatmap.png", sep = "_")),
-         heatmap, device = "png")
-  
-  all_heatmaps[[i]] <- heatmap
-  
-}
-  
+# Large indicators are 53 (Sahelian Acacia savanna), 
+# 710 (east siberian taiga which is intact), and 
+# 842 (south sahara desert)
+
+large_ids <- unique(large_ecoregions$ecoregion_id)
+
+# Get the indicator values for these ecoregions
+
+raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
+                                             "global_ecoregions_2017_indicator_values_master.rds"))
+
+raw_indicators_long_all$indicator_year <- str_replace(raw_indicators_long_all$indicator_year, " ", "_")
+
+raw_indicators_long_all <- raw_indicators_long_all %>%
+  filter(indicator != "LPI")
+
+raw_indicators_long <- raw_indicators_long_all %>%
+  dplyr::select(ecoregion_id, indicator_year,
+                raw_indicator_value) %>%
+  distinct(.)
+
+raw_indicators_wide <- raw_indicators_long %>%
+  spread(key = indicator_year, 
+         value = raw_indicator_value) 
+
+## Checking these values, a few points:
+# 1. only 3 ecoregions in this group, it definitely hasn't been broken up properly
+# 2. 710 and 843 have really good BII scores (more intact than average), but
+# pretty avergae proportion of threatened species (but not really high)
+large_ind_vals <- raw_indicators_wide %>%
+                  filter(ecoregion_id == 53|
+                         ecoregion_id == 710|
+                         ecoregion_id == 842)
+
+# Double check the species data
+
+sa_savanna <- species_data_2008 %>%
+              filter(ecoregion_id == 53)
+
+siberian_taiga <- species_data_2008 %>%
+  filter(ecoregion_id == 710)
+
+sahara_desert <- species_data_2008 %>%
+  filter(ecoregion_id == 842)
+
+
+
+# Check biomes ----
+
+summary(raw_indicators_wide)
+
+#* Temperate broadleaf ----
+
+temp_broadleaf <- ecoregions_wide %>%
+                  filter(Biome == "Temperate Broadleaf & Mixed Forests") %>%
+                  merge(raw_indicators_wide, by = "ecoregion_id") %>%
+  dplyr::select(ecoregion_id, Biome, extinct_2008, threatened_2008, 
+                HFP_2005,`BHI_plants 2005`)
+
+summary(temp_broadleaf)
+
+#* Deserts & Xeric ----
+
+deserts_xeric <- ecoregions_wide %>%
+  filter(Biome == "Deserts & Xeric Shrublands") %>%
+  merge(raw_indicators_wide, by = "ecoregion_id") %>%
+  dplyr::select(ecoregion_id, Biome, extinct_2008, RLI_2008,
+                HFP_2005,`BHI_plants 2005`)
+
+summary(deserts_xeric) 
+
+#* Mediterannean forests ----
+
+med_forests <- ecoregions_wide %>%
+  filter(Biome == "Mediterranean Forests, Woodlands & Scrub" ) %>%
+  merge(raw_indicators_wide, by = "ecoregion_id") %>%
+  dplyr::select(ecoregion_id, Biome, threatened_2008, `BHI_plants 2005`)
+
+summary(med_forests) 

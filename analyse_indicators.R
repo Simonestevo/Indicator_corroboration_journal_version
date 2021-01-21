@@ -312,6 +312,13 @@ ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics,
                                    labels = c("no endemics", 
                                               "endemics"))
 
+ecoregions_wide$High.beta.area <- cut(ecoregions_wide$High.beta.area, 
+                                       breaks = 4, 
+                                       labels = c("low", 
+                                                  "medium",
+                                                  "high",
+                                                  "very high"))
+
 ecoregions_wide_countries <- ecoregions_wide %>%
                              merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
                                    by.x = "ecoregion_id", by.y = "ECO_ID") %>%
@@ -1269,7 +1276,8 @@ grouping_variables_all <- names(correlation_input_data)[!(names(correlation_inpu
 
 # Get categorical grouping variables only 
 
-grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ecoregion_id",
+grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% 
+                                            c("ecoregion_id",
                                             "predominant.threat.type",
                                             "headline.threat.type",
                                             "ecoregion.area.km.sq",
@@ -1284,11 +1292,16 @@ grouping_variables <- grouping_variables_all[!(grouping_variables_all %in% c("ec
 
 # Subset to a single timepoint ----
 
-if (!is.na(timepoint)) {
+if (!is.na(timepoints)) {
   
-  # indicators <- names(correlation_input_data)[str_detect(names(correlation_input_data),
-  #                                                                  timepoint)]
-  # 
+  indicators_05 <- names(correlation_input_data)[str_detect(names(
+    correlation_input_data), timepoints[[1]])]
+  
+  indicators_08 <- names(correlation_input_data)[str_detect(names(
+    correlation_input_data), timepoints[[2]])]
+  
+  indicators <- c(indicators_05, indicators_08)
+  
   indicators_timepoint_names <- c(grouping_variables_all,
                                   indicators)
   
@@ -1303,7 +1316,9 @@ if (!is.na(timepoint)) {
 # correlation_input_data <- correlation_input_data_all
 # correlation_input_data_all <- correlation_input_data
 
-vargroup <- "realm"
+correlation_input_data$disturbance.year <- as.factor(correlation_input_data$disturbance.year)
+
+vargroup <- "disturbance.year"
 
 indicator_combinations <- combn(indicators, 2)
 
@@ -1341,7 +1356,9 @@ scatterplots[[i]] <- scatterplot
 
 }
 
-scatterplots[[8]]
+i <- i + 1
+
+scatterplots[[i]]
 
 # Get the ecoregions with the strangest results (eg really high HFP, low RLI)
 
@@ -1504,7 +1521,8 @@ all_heatmaps[[i]] <- heatmap
 names(all_groups) <- grouping_variables
 names(all_heatmaps) <- grouping_variables
 
-all_heatmaps[[1]]
+i <- i + 1
+all_heatmaps[[i]]
 
 
 # * Plot PCA ----

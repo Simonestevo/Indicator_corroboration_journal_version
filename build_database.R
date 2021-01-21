@@ -2068,29 +2068,56 @@ saveRDS(species_data_2, file.path(interim_outputs,
                                    "class")], by = "binomial", 
           all = TRUE) %>%
     rename(ecoregion_id = ECO_ID) %>% # This part needs fixing
-    select(ecoregion_id, tsn, binomial, source, 
+    select(ecoregion_id, tsn, binomial,  
            redlist_assessment_year,
            redlist_status, redlist_source, class)
-  
-  saveRDS(extinct_species_ecoregion_redlist, file.path(interim_outputs, 
+ 
+ # Remove incomplete stuff
+ 
+extinct_species_ecoregion_redlist <- extinct_species_ecoregion_redlist[
+   complete.cases(extinct_species_ecoregion_redlist), ]
+
+extinct_species_ecoregion_redlist <- extinct_species_ecoregion_redlist %>%
+                                     mutate(source = "gbif") %>%
+                                     select(colnames(species_data_2))
+
+
+# Add a 2008 time point for any species extinct before 2008
+
+pre_2008_extinctions <- extinct_species_ecoregion_redlist %>%
+                        filter(redlist_assessment_year < 2009)
+
+extra_timepoints <- pre_2008_extinctions %>%
+                    mutate(redlist_assessment_year = 2008)
+
+all_timepoints <- rbind(extinct_species_ecoregion_redlist, extra_timepoints)
+
+# Remove any double ups
+
+extinct_species_ecoregion_redlist <- distinct(all_timepoints)
+ 
+saveRDS(extinct_species_ecoregion_redlist, file.path(interim_outputs, 
                                                  paste(location,"extinct_species", 
                                                        "ecoregion_redlist.rds", 
                                                        sep = "_")))
   
   
+  species_data_3 <- rbind(species_data_2, extinct_species_ecoregion_redlist)
   
-  species_data_3 <- species_data_2 %>%
-    merge(extinct_species_ecoregion_redlist[c("ecoregion_id", "binomial")],
-          by ="binomial", all = TRUE) %>%
-    mutate(eco_source = "gbif",
-           ecoregion_id = coalesce(ecoregion_id.x, ecoregion_id.y),
-           source = coalesce(source, eco_source)) %>%
-    select(ecoregion_id, tsn, binomial, source, 
-           redlist_assessment_year,
-           redlist_status, redlist_source, class)
+  # species_data_3 <- species_data_2 %>%
+  #   merge(extinct_species_ecoregion_redlist[c("ecoregion_id", "binomial")],
+  #         by ="binomial", all = TRUE) %>%
+  #   mutate(eco_source = "gbif",
+  #          ecoregion_id = coalesce(ecoregion_id.x, ecoregion_id.y),
+  #          source = coalesce(source, eco_source)) %>%
+  #   select(ecoregion_id, tsn, binomial, source, 
+  #          redlist_assessment_year,
+  #          redlist_status, redlist_source, class)
   
-  
-# Tidy species data 
+  length(unique(species_data_3$tsn))
+  unique(species_data_3$class)
+
+  # Tidy species data 
   
   # Order the redlist categories and add index so we can select by highest
   
@@ -2101,53 +2128,82 @@ saveRDS(species_data_2, file.path(interim_outputs,
   species_data_3 <- species_data_3 %>% 
        mutate(category_rank = as.integer(redlist_status))
   
-  # Check for duplicates (same tsn but different binomials)
+# Species Data 4: Clean duplicates ----
   
-  length(unique(species_data_3$binomial))
-  length(unique(species_data_3$tsn))
+  # First just check for straight up duplicates bc theres heaps
+  dim(species_data_3)
   
-  # Species that aren't duplicated
+  species_data_3 <- distinct(species_data_3)
   
-  species_data1 <- species_data_3 %>% 
-    group_by_at(vars(-binomial, -source)) %>% 
-    filter(n() < 2) 
+  dim(species_data_3)
   
-  # Find species that are duplicated and pick the BI record
+  # Now remove incomplete cases
   
-  species_data2 <- species_data_3 %>% 
-    group_by_at(vars(-binomial, -source)) %>% 
-    filter(n() > 1) %>%
-    filter(category_rank == max(category_rank))
+  species_data_4 <- species_data_3[complete.cases(species_data_3), ]
   
-  # Combine
+  dim(species_data_4)
   
-  species_data_3 <- rbind(species_data1, species_data2)
+  # We still have a problem (double ups with diff binomial & source, but same tsn + RL data)
   
-  species_data_3 <- species_data_3 %>%
-                    select(-category_rank)
+  length(unique(species_data_4$binomial))
+  length(unique(species_data_4$tsn))
   
-  # Check if number binomial and tsn are different
+  # Identify duplicated rows
   
-  length(unique(species_data_3$binomial))
-  length(unique(species_data_3$tsn))
+  all_binomials <- species_data_4 %>%
+                   select(binomial) %>%
+                   distinct(.) %>%
+                   pull(.)
   
-  rm(species_data1, species_data2)
+  system.time(all_synonyms <- find_synonyms(all_binomials))
+  
+  saveRDS(all_synonyms, file.path(outputs, 
+                                  paste(location,"all_synonyms.rds", 
+                                        sep = "_")))
+  
+  length(unique(species_data_4$tsn))
+  length(unique(species_data_4$binomial))
+  
+  species_data_4 <- species_data_4 %>%
+               merge(all_synonyms[c("tsn", "accepted_name")], by = "tsn") %>%
+               select(-binomial) %>%
+               rename(binomial = accepted_name) %>%
+               select(-source) %>%
+               distinct(.)  
+  
+  length(unique(species_data_4$tsn))
+  length(unique(species_data_4$binomial))
   
   # Remove duplicate errors (species with more than one redlist status in the same year)
-  duplicates <- species_data_3 %>%
-                group_by(binomial, redlist_assessment_year) %>%
+  
+  species_data_4 <- species_data_4 %>%
+                    group_by_at(vars(-redlist_status)) %>%
+                    group_by(ecoregion_id, tsn) %>%
+                    filter(category_rank == max(category_rank))
+  
+  # Duplicates row number should equal zero (no duplicates)
+  
+  duplicates <- species_data_4 %>%
+                group_by(tsn, redlist_assessment_year) %>%
                 summarise(check = n_distinct(redlist_status)) %>%
                 filter(check > 1) %>%
-                select(binomial) %>%
+                select(tsn) %>%
                 distinct(.)
   
-  species_data_3  <- species_data_3[! species_data_3$binomial %in% 
-                                  duplicates$binomial,] 
+  nrow(duplicates)
   
-  rm(duplicates)
+  ## Thylacine test - check thylacine hasn't dropped out (nrow > 0)
   
-  saveRDS(species_data_3, file.path(outputs, 
-                                    paste(location,"species_data_3_final.rds", 
+  thylacine_tsn <- 9275
+  
+  check_tt <- species_data_4 %>%
+    filter(tsn == thylacine_tsn) %>%
+    filter(redlist_assessment_year == 2008)
+  
+  nrow(check_tt)
+  
+  saveRDS(species_data_4, file.path(outputs, 
+                                    paste(location,"species_data_4_final.rds", 
                                           sep = "_")))
   
   

@@ -490,6 +490,53 @@ find_synonyms <- function( species ) {
   
 }
 
+get_anthromes <- function(anthrome, map, timepoint) {
+  
+  df <- as.data.frame(anthrome@data@values) %>%
+    mutate(new = ifelse(anthrome@data@values == 53,1,
+                        ifelse(anthrome@data@values == 61,1,
+                               ifelse(anthrome@data@values == 62,1,
+                                      ifelse(anthrome@data@values == 43,1,0)))))
+  
+  # Reclassify pixels as disturbed or undisturbed
+  anthrome_mask <- reclassify(anthrome, rcl = df)
+  
+  # Split the pixel values into the ecoregion polygons
+  anthrome_vals <- raster::extract(anthrome_mask, map)
+  
+  # Get the sum of pixel values classified as "1" (undisturbed)
+  undisturbed_sum <- lapply(anthrome_vals, sum) 
+  
+  # Get the total number of pixels in the ecoregion
+  total_cells <- lapply(anthrome_vals, length)
+  
+  # Combine into dataframes
+  undisturbed_sum <- do.call(rbind, undisturbed_sum)
+  total_cells <- do.call(rbind, total_cells)
+  df <- as.data.frame(cbind(undisturbed_sum, total_cells))
+  
+  # Calculate proportion of undisturbed habitat in that ecoregion
+  prop_undisturbed <- mutate(df, prop_undisturbed = undisturbed_sum/total_cells)
+  
+  # Add the ecoregion ID back in
+  
+  ecoregion_id <- dplyr::select(map, ECO_ID)
+  ecoregion_id <- ecoregion_id %>% st_set_geometry(NULL)
+  proportion_undisturbed <- cbind(ecoregion_id, prop_undisturbed)
+  proportion_undisturbed <- proportion_undisturbed %>%
+    mutate(year = timepoint) %>%
+    rename(undisturbed_cells = V1,
+           total_cells = V2)
+  
+  saveRDS(proportion_undisturbed, file.path(indicator_outputs, 
+                                            paste(location,
+                                                  as.character(timepoint),
+                                                  "anthrome.rds",
+                                                  sep = "_")))
+  
+  return(proportion_undisturbed)
+  
+}
 
 # Get ecoregions and their attributes ----
 
@@ -602,7 +649,7 @@ if (!is.na(country)) {
 
 
 species_data_all <- readRDS(file.path(database_inputs, 
-                                  "global_species_data_3_final.rds"))
+                                  "global_species_data_4_final.rds"))
 
 ecoregion_subset <- ecoregion_country_df %>%
   filter(CNTRY_NAME == country) %>%
@@ -770,6 +817,9 @@ species_by_ecoregion_complete <- species_data_complete %>%
 
 species_by_ecoregion <- species_data %>%
                         distinct(.) %>%
+                        filter(class == "Amphibia"|
+                               class == "Aves"|
+                               class == "Mammalia") %>%
                         group_by(ecoregion_id, redlist_assessment_year) %>%
                         mutate(number_of_species_year = n_distinct(tsn),
                                number_extinct = n_distinct(tsn[redlist_status == "EX"|
@@ -819,7 +869,7 @@ extinction_values <- species_by_ecoregion %>%
                      drop_na(year) %>%
                      group_by(ecoregion_id) %>%
                      arrange(year) %>%
-                     mutate(raw_indicator_value = cummax(proportion_extinct))
+                     mutate(raw_indicator_value = cummax(proportion_extinct)) 
 
 
 extinction_values <- as.data.frame(extinction_values)
@@ -846,8 +896,6 @@ saveRDS(extinction_values, file.path(indicator_outputs,
                                            sep = "_")))
 
 }
-
-indicator_df_colnames <- names(extinction_values)
 
 # Proportion of species threatened ----
 
@@ -902,7 +950,7 @@ bird_species_data <- species_data %>%
                      ungroup(.) %>%
                      dplyr::select(ecoregion_id, tsn, binomial, 
                                    redlist_assessment_year, 
-                                   redlist_status, source) %>%
+                                   redlist_status) %>%
                      distinct(.)
 
 head(bird_species_data)
@@ -932,8 +980,6 @@ head(bird_species_data_complete)
 if ((paste(location, eco_version, "RLI-birds.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
-  #' TODO: Work out why this is producing so many NaNs
-  
 bird_rli_values <- readRDS(file.path(indicator_outputs, 
                                            paste(location, eco_version, 
                                                  "RLI-Birds.rds",
@@ -943,7 +989,6 @@ bird_rli_values <- readRDS(file.path(indicator_outputs,
 # * Bird RLI 2008 ----
   
 bird_data_for_rli_2008 <- bird_species_data_complete %>%
-                          dplyr::select(-source) %>%
                           distinct(.) %>%
                           filter(class == "Aves") %>%
                           filter(tsn != 1444976) %>%
@@ -963,7 +1008,7 @@ bird_data_ecoregions_2008 <- list.clean(bird_data_ecoregions_2008,
   
   for (i in seq_along(bird_data_ecoregions_2008)) {
     
-    eco <- bird_data_ecoregions_2008[[i]][[1]][1] # Pull out species list for one ecoregion
+    eco <- bird_data_ecoregions_2008[[i]][[2]][1] # Pull out species list for one ecoregion
     
     bird_rli_ecoregions_2008[[i]] <- calculate_red_list_index(bird_data_ecoregions_2008[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
     
@@ -989,7 +1034,6 @@ rli_birds_2008_values <- rli_birds_2008 %>%
 # * Bird RLI 2016 ----
   
 bird_data_for_rli_2016<- bird_species_data_complete %>%
-                         dplyr::select(-source) %>%
                          distinct(.) %>%
                          filter(class == "Aves") %>%
                          filter(tsn != 1444976) %>%
@@ -1009,7 +1053,7 @@ bird_rli_ecoregions_2016<- list()
   
   for (i in seq_along(bird_data_ecoregions_2016)) {
     
-    eco <- bird_data_ecoregions_2016[[i]][[1]][1] # Pull out species list for one ecoregion
+    eco <- bird_data_ecoregions_2016[[i]][[2]][1] # Pull out species list for one ecoregion
     
     bird_rli_ecoregions_2016[[i]] <- calculate_red_list_index(bird_data_ecoregions_2016[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
     
@@ -1018,7 +1062,7 @@ bird_rli_ecoregions_2016<- list()
     
   } 
   
-rli_birds_2016<- do.call(rbind, bird_rli_ecoregions_2016)
+rli_birds_2016 <- do.call(rbind, bird_rli_ecoregions_2016)
   
   # Format
   
@@ -1056,11 +1100,10 @@ rli_mammals_2005_values <- readRDS(file.path(indicator_outputs,
 } else {
 
 mammal_data_for_rli_2008 <- species_data %>%
-                             dplyr::select(-source) %>%
-                             distinct(.) %>%
-                             filter(class == "Mammalia") %>%
-                             filter(tsn != 1444976) %>%
-                             filter(redlist_assessment_year == 2008)
+                            distinct(.) %>%
+                            filter(class == "Mammalia") %>%
+                            filter(tsn != 1444976) %>%
+                            filter(redlist_assessment_year == 2008)
 
 
 mammal_data_ecoregions_2008 <- split(mammal_data_for_rli_2008, 
@@ -1077,7 +1120,7 @@ mammal_rli_ecoregions_2008 <- list()
 
 for (i in seq_along(mammal_data_ecoregions_2008)) {
   
-  eco <- mammal_data_ecoregions_2008[[i]][[1]][1] # Pull out species list for one ecoregion
+  eco <- mammal_data_ecoregions_2008[[i]]$ecoregion_id[1] # Pull out species list for one ecoregion
   
   mammal_rli_ecoregions_2008[[i]] <- calculate_red_list_index(mammal_data_ecoregions_2008[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
   
@@ -1120,8 +1163,7 @@ if ((paste(location, eco_version, "RLI_amphibians.rds", sep = "_") %in%
 } else {
   
   amphibian_data_for_rli_2008 <- species_data %>%
-    dplyr::select(-source) %>%
-    distinct(.) %>%
+       distinct(.) %>%
     filter(class == "Amphibia") %>%
     filter(tsn != 1444976) %>%
     filter(redlist_assessment_year == 2008)
@@ -1141,7 +1183,7 @@ if ((paste(location, eco_version, "RLI_amphibians.rds", sep = "_") %in%
   
   for (i in seq_along(amphibian_data_ecoregions_2008)) {
     
-    eco <- amphibian_data_ecoregions_2008[[i]][[1]][1] # Pull out species list for one ecoregion
+    eco <- amphibian_data_ecoregions_2008[[i]]$ecoregion_id[1] # Pull out species list for one ecoregion
     
     amphibian_rli_ecoregions_2008[[i]] <- calculate_red_list_index(
       amphibian_data_ecoregions_2008[[i]]) # Calculate RLI for each ecoregion for one timestep, one class
@@ -2618,6 +2660,16 @@ ecoregion_realms <- ecoregions %>%
 
 # Anthromes ----
 
+if ((paste(location, eco_version, "anthrome_values.rds", sep = "_") %in% 
+     list.files(indicator_outputs))) {
+  
+ecoregion_anthrome_values <- readRDS(file.path(indicator_outputs, 
+                                                     paste(location, eco_version, 
+                                                           "anthrome_values.rds",
+                                                           sep = "_")))
+  
+} else {
+
 anthromes_1700_raster <- raster(file.path(inputs, "anthromes", "1700", "anthro2_a1700.tif"))
 anthromes_1800_raster <- raster(file.path(inputs, "anthromes", "1800", "anthro2_a1800.tif"))
 anthromes_1900_raster <- raster(file.path(inputs, "anthromes", "1900", "anthro2_a1900.tif"))
@@ -2628,74 +2680,135 @@ anthromes_1800_raster <- readAll(anthromes_1800_raster)
 anthromes_1900_raster <- readAll(anthromes_1900_raster)
 anthromes_2000_raster <- readAll(anthromes_2000_raster)
 
-#aus <- raster("N:/Quantitative-Ecology/Simone/extinction_test/inputs/biodiversity_intactness_index/bii_rich_2005_aus.tif")
-
-# Reclassify the raster values
-
-get_anthromes <- function(anthrome, map, timepoint) {
-  
-df <- as.data.frame(anthrome@data@values) %>%
-                      mutate(new = ifelse(anthrome@data@values == 53,1,
-                                   ifelse(anthrome@data@values == 61,1,
-                                   ifelse(anthrome@data@values == 62,1, 0))))
-
-# Reclassify pixels as disturbed or undisturbed
-anthrome_mask <- reclassify(anthrome, rcl = df)
-
-# Split the pixel values into the ecoregion polygons
-anthrome_vals <- raster::extract(anthrome_mask, map)
-
-# Get the sum of pixel values classified as "1" (undisturbed)
-undisturbed_sum <- lapply(anthrome_vals, sum) 
-
-# Get the total number of pixels in the ecoregion
-total_cells <- lapply(anthrome_vals, length)
-
-# Combine into dataframes
-undisturbed_sum <- do.call(rbind, undisturbed_sum)
-total_cells <- do.call(rbind, total_cells)
-df <- as.data.frame(cbind(undisturbed_sum, total_cells))
-
-# Calculate proportion of undisturbed habitat in that ecoregion
-prop_undisturbed <- mutate(df, prop_undisturbed = undisturbed_sum/total_cells)
-
-# Add the ecoregion ID back in
-
-ecoregion_id <- dplyr::select(map, ECO_ID)
-ecoregion_id <- ecoregion_id %>% st_set_geometry(NULL)
-proportion_undisturbed <- cbind(ecoregion_id, prop_undisturbed)
-proportion_undisturbed <- proportion_undisturbed %>%
-                          mutate(year = timepoint) %>%
-                          rename(undisturbed_cells = V1,
-                                 total_cells = V2)
-
-saveRDS(proportion_undisturbed, file.path(indicator_outputs, 
-                                          paste(location,
-                                                as.character(timepoint),
-                                                "anthrome.rds",
-                                                sep = "_")))
-
-return(proportion_undisturbed)
-
-}
+# Extract the proportion of each ecoregion that is undisturbed in years 1700, 1800, 1900 and 2000
+# SLOW - takes 45 mins to an hour each
 
 system.time(anthromes_1700 <- get_anthromes(anthromes_1700_raster, ecoregion_map, 1700))
 system.time(anthromes_1800 <- get_anthromes(anthromes_1800_raster, ecoregion_map, 1800))
 system.time(anthromes_1900 <- get_anthromes(anthromes_1900_raster, ecoregion_map, 1900))
 system.time(anthromes_2000 <- get_anthromes(anthromes_2000_raster, ecoregion_map, 2000))
 
+# Set the threshold for when an ecoregion is considered 'disturbed'
 
+threshold <- 0.7
 
-x <- left_join(ecoregion_map,
-               anthromes_1700,
-               by.x = "ECO_ID",
-               by.y = "ecoregion_id")
+# Assign 'disturbed' class to each (should have gone in function)
 
-head(x)
+anthromes <- list(anthromes_1700, anthromes_1800, anthromes_1900, anthromes_2000)
 
-plot(x["prop_undisturbed"])
+anthromes_classified <- list()
+
+for ( i in seq_along(anthromes)){
+  
+  anthrome <- anthromes[[i]]
+  y <- as.character(anthrome$year[1])
+  oldnames <- colnames(anthrome)
+  newnames <- c("ECO_ID", paste(y, c("total_cells",
+                                     "prop_undisturbed", 
+                                     "status"), sep = "_"))
+  
+  anthrome_classified <- anthrome %>%
+                         mutate(status = 
+                                ifelse(prop_undisturbed > 0.6, # Where 1 = undisturbed
+                                1, 0)) 
+  anthromes_classified[[i]] <- anthrome_classified 
+
+}
+
+x <- do.call(rbind, anthromes_classified) 
+
+# Get first year ecoregion was classified as disturbed (proportion of undisturbed 
+# land is less than 60% of the ecoregion)
+
+y <-  x  %>%
+      dplyr::group_by(ECO_ID) %>%
+      arrange(year) %>%
+      filter(status == 0) %>%
+      filter(year == min(year))
+
+head(y)
+table(y$year)
+
+# Get the ecoregions still classified as undisturbed in 2000
+
+undisturbed <- x %>%
+               filter(status == 1) %>%
+               filter(year == 2000) %>%
+               mutate(year = 3000) # Change year of disturbance to some time in 
+# the future so we can distinguish between ecoregions disturbed in 2000, and ecoregions
+# not disturbed in 2000
+
+head(undisturbed)
+
+# Combine
+
+ecoregion_anthromes <- rbind(y, undisturbed)
+
+# Check for duplicates
+
+duplicates <- ecoregion_anthromes$ECO_ID[duplicated(ecoregion_anthromes$ECO_ID)]
+
+# Currently none, duplicates seem to occur when an ecoregion switches from one
+# disturbed to undisturbed, but usually the values are very close to the threshold
+
+# Remove from the total data altogether
+
+ecoregion_anthromes <- ecoregion_anthromes[!ecoregion_anthromes$ECO_ID %in% 
+                                       duplicates,] 
+
+x <- left_join(ecoregion_map, ecoregion_anthromes, by = "ECO_ID")
+
+plot(x["year"])
+
+# Convert into consistent format
+
+ecoregion_anthrome_values <- ecoregion_anthromes %>%
+                   mutate(indicator = "disturbance year") %>%
+                   rename(raw_indicator_value = year, 
+                          ecoregion_id = ECO_ID) %>%
+                   mutate(year = NA) %>%
+                   select(indicator_columns)
+
+head(ecoregion_anthrome_values)
+
+saveRDS(ecoregion_anthrome_values, file.path(indicator_outputs, 
+                                         paste(location, eco_version, 
+                                               "anthrome_values.rds",
+                                               sep = "_")))
+}
+
+# Beta diversity ----
+
+dinerstein_data <- read.csv(file.path(inputs, "ecoregions_2017",
+                                      "ecoregions_2020_data_subset.csv"))
+
+ecoregion_beta_values <- dinerstein_data %>%
+                         mutate(raw_indicator_value = High.Beta.Diversity/Ecoregion.size) %>%
+                         mutate(indicator = "High beta area",
+                                year = NA) %>%
+                         rename(ecoregion_id = Ecoregion.ID) %>%
+                         select(indicator_columns)
+
+head(ecoregion_beta_values)
 
 # Combine indicator values into a single dataframe ----
+
+ind_list <- list(extinction_values, 
+                 at_risk_values, 
+                 bird_rli_values,
+                 rli_birds_2008_values,
+                 rli_mammals_2008_values,
+                 rli_amphibians_2008_values,
+                 rli_all_2008_values,
+                 # rli_lu_2005_values,
+                 # rli_other_2005_values,
+                 hfp_values,
+                 bhi_plants_values,
+                 lpi_values,
+                 bii_richness_values,
+                 bii_abundance_values)
+
+lapply(ind_list, ncol)
 
 indicator_values <- rbind(extinction_values, 
                           at_risk_values, 
@@ -2819,7 +2932,9 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_scientific_capacity,
                     ecoregion_realms, 
                     ecoregion_populations, 
-                    ecoregion_endemics) %>%
+                    ecoregion_endemics,
+                    ecoregion_anthrome_values,
+                    ecoregion_beta_values) %>%
                     dplyr::select(ecoregion_id, indicator, year, 
                                   raw_indicator_value)
 
@@ -2869,7 +2984,9 @@ ecoregion_values_wide <- ecoregion_values_wide %>%
                          predominant.threat.count = as.numeric(predominant.threat.count),
                          RLI_records = as.numeric(RLI_records),
                          mean.human.population.density = as.numeric(mean.human.population.density),
-                         number.of.endemics = as.numeric(number.of.endemics))
+                         number.of.endemics = as.numeric(number.of.endemics),
+                         disturbance.year = as.numeric(disturbance.year),
+                         High.beta.area = as.numeric(High.beta.area))
 
 summary(ecoregion_values_wide)
 
@@ -3392,6 +3509,52 @@ tmap_save(lpi_records, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(lpi_records, lpi_records_data)
+
+# * Anthromes ----
+
+anthrome_data <- eco_variable_map_data %>%
+  filter(indicator == "disturbance year")
+
+anthrome <- tm_shape(anthrome_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "viridis",
+              title = "Disturbance year") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+anthrome
+
+tmap_save(anthrome, file.path(indicator_outputs, paste(location,
+                              "disturbance_year_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(anthrome, anthrome_data)
+
+# * High beta diversity ----
+
+beta_data <- eco_variable_map_data %>%
+  filter(indicator == "High beta area")
+
+beta_data$raw_indicator_value <- as.numeric(beta_data$raw_indicator_value)
+
+beta <- tm_shape(beta_data) +
+        tm_polygons(col = "raw_indicator_value",
+                    border.col = "black",
+                    style = "cont",
+                    pal = "viridis",
+                    title = "High beta area km^2") +
+        tm_layout(legend.outside = TRUE,
+                  legend.outside.position = "right") 
+
+beta
+
+tmap_save(beta, file.path(indicator_outputs, paste(location,
+          "proportion_high_beta_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(beta, beta_data)
+
 
 # RLI vs HFP scatterplot ----
 

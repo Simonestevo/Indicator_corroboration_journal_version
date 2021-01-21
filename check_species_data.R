@@ -187,7 +187,7 @@ dir.create(output_directory)
 
 # Load species data
 
-species_data <- readRDS(file.path(inputs, "global_species_data_3_final.rds"))
+species_data <- readRDS(file.path(inputs, "global_species_data_4_final.rds"))
 
 species_data_unique <- species_data %>%
                        group_by(ecoregion_id) %>%
@@ -202,6 +202,8 @@ species_data_2008 <- species_data %>%
                      select(ecoregion_id, binomial, 
                             redlist_status, class) %>%
                      distinct(.)
+
+unique(species_data_2008$class)
 
 
 # Load ecoregion map
@@ -238,6 +240,20 @@ ecoregion_country_df <- readRDS(file.path("N:/Quantitative-Ecology/Simone/extinc
                                           "ecoregion_country_data.rds"))
 
 
+# Summarise all species data
+
+sp_only <- species_data_2008 %>%
+           ungroup(.) %>%
+           select(tsn, binomial, redlist_status, class) %>%
+           distinct(.)
+
+table(sp_only$redlist_status)
+
+mammals <- sp_only %>%
+           filter(class == "Mammalia")
+
+table(mammals$redlist_status)
+
 # Australian species comparison ----
 
 ecoregion_subset <- ecoregion_country_df %>%
@@ -252,12 +268,12 @@ aus_species_data_ours <- species_data[species_data$ecoregion_id %in%
 
 aus_species_data_ours <- aus_species_data_ours %>%
                          filter(class != "Reptilia") %>%
-                          group_by(tsn) %>%
-                          mutate(redlist_assessment_year = 
-                                   as.numeric(as.character(redlist_assessment_year))) %>%
-                          filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
-                          select(binomial, tsn, redlist_status, ecoregion_id) %>%
-                          distinct(.)
+                         group_by(tsn) %>%
+                         mutate(redlist_assessment_year = 
+                                  as.numeric(as.character(redlist_assessment_year))) %>%
+                         filter(redlist_assessment_year == max(redlist_assessment_year)) %>%
+                         select(binomial, tsn, redlist_status) %>%
+                         distinct(.)
 
 # source - https://www.environment.gov.au/cgi-bin/sprat/public/sprat.pl
 
@@ -374,6 +390,10 @@ length(unique(spp_on_our_list_only$tsn))
 ### Note - there are quite a few extinct species not on our list, pretty sure
 ### because there are no range maps available for them
 
+gov_ex <- species_comparison %>% filter(aus_redlist_status == "EX")
+
+our_ex <- species_comparison %>% filter(redlist_status == "EX")
+
 # Serengeti species comparison ----
 
 serengeti_species_external <- read.csv(file.path(external_inputs, "serengeti_map_of_life_2.csv"))
@@ -410,8 +430,8 @@ serengeti_synonyms <- serengeti_synonyms %>%
 
 # Check how many species in each data set
 
-length(unique(serengeti_species$tsn))
-length(unique(serengeti_synonyms$tsn))
+length(unique(serengeti_species$tsn)) # our data
+length(unique(serengeti_synonyms$tsn)) # external
 
 serengeti_comparison <- serengeti_species %>%
                         merge(serengeti_synonyms[c("external_species_list", 
@@ -469,11 +489,11 @@ xeric_rl <- xeric_species_data_simple %>%
 
 xeric_rl
 
-14/xeric_tot
+8/xeric_tot
 
 # Proportion threatened
 
-(180+269+14+62+1)/xeric_tot
+(257+8+167+59)/xeric_tot
 
 
 # Look at a biome positively correlated - Mangroves

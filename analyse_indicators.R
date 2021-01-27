@@ -156,6 +156,13 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 # Ecoregion data ----
 
+# Ecoregion data
+
+raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
+                                         "global_ecoregions_2017_ecoregion_values_master.rds")) 
+raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
+                                         "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
+
 # Convert numeric to factors
 
 ecoregions_wide <- raw_ecoregions_wide %>%
@@ -188,60 +195,61 @@ ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq,
 #lpi_breaks <- c(-1, 50, 100, Inf)
 
 ecoregions_wide$lpi.records.factor <- discretize(ecoregions_wide$LPI_records, 
-                                          method = "interval",
-                                          breaks = 3, 
-                                          labels = c("Few populations", 
-                                                     "Some populations",
-                                                     "Many populations"))
+                                          method = "frequency",
+                                          breaks = 4)
+# ,
+#                                           labels = c("level 1", "level 2",
+#                                                      "level 3", "level 4",
+#                                                      "level 5", "level 6"))
 
-rli_breaks <- c(-Inf, 399, Inf)
-ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = rli_breaks, 
-                                          labels = c("Fewer than 400 RLI records", 
-                                                     "More than 400 RLI records"))
+table(ecoregions_wide$lpi.records.factor)
 
+ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, 
+                                          method = "frequency",
+                                          breaks = 4)
+table(ecoregions_wide$rli.records.factor)
 
 ecoregions_wide <- ecoregions_wide %>% 
-  mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
-                                  "Threat related to HFP",
-                                  ifelse(included.in.HFP == 0,
-                                         "Threat external to HFP",
+                   mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
+                          "Threat related to HFP",
+                          ifelse(included.in.HFP == 0,
+                          "Threat external to HFP",
                                          NA)))
 
 ecoregions_wide <- ecoregions_wide %>%
   mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
-         scenario.numeric = as.factor(as.numeric(scenario))) %>%
-  mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
-                           "Few RLI HFP exclusive",
-                           ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
-                                  "Few RLI HFP inclusive",
-                                  ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
-                                         "Moderate RLI HFP exclusive",
-                                         ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
-                                                "Moderate RLI HFP inclusive",
-                                                ifelse(scenario == "Few (< 590) RLI records & NA",
-                                                       "Few RLI HFP NA",
-                                                       NA))))))
+         scenario.numeric = as.factor(as.numeric(scenario))) 
+# %>%
+#   mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
+#                            "Few RLI HFP exclusive",
+#                            ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
+#                                   "Few RLI HFP inclusive",
+#                                   ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
+#                                          "Moderate RLI HFP exclusive",
+#                                          ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
+#                                                 "Moderate RLI HFP inclusive",
+#                                                 ifelse(scenario == "Few (< 590) RLI records & NA",
+#                                                        "Few RLI HFP NA",
+#                                                        NA))))))
 
 
-ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
-                                       breaks = c(-1,0,100), 
-                                       labels = c("no endemics", 
-                                                  "endemics"))
+ecoregions_wide$endemics.factor <- discretize(ecoregions_wide$number.of.endemics, 
+                                       method = "frequency",
+                                       breaks = 4)
 
-ecoregions_wide$High.beta.area <- cut(ecoregions_wide$High.beta.area, 
-                                      breaks = 4, 
-                                      labels = c("low", 
-                                                 "medium",
-                                                 "high",
-                                                 "very high"))
+
+table(ecoregions_wide$endemics.factor)
+
+ecoregions_wide$High.beta.area <- discretize(ecoregions_wide$High.beta.area, 
+                                      method = "interval",
+                                      breaks = 4)
+
+table(ecoregions_wide$High.beta.area)
 
 ecoregions_wide_countries <- ecoregions_wide %>%
   merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
         by.x = "ecoregion_id", by.y = "ECO_ID") %>%
   rename(country = CNTRY_NAME)
-
-
-
 
 rm(raw_ecoregions_long, raw_ecoregions_wide)
 
@@ -261,10 +269,6 @@ raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
 
 raw_indicators_long_all$indicator_year <- str_replace(raw_indicators_long_all$indicator_year, " ", "_")
 
-# Set threshold for LPI ----
-
-# raw_indicators_long_all <- raw_indicators_long_all %>%
-#                            filter(indicator != "LPI")
 
 raw_indicators_long <- raw_indicators_long_all %>%
                        dplyr::select(ecoregion_id, indicator_year,
@@ -276,34 +280,6 @@ raw_indicators_wide <- raw_indicators_long %>%
                              value = raw_indicator_value) 
 
 
-
-# indicators <- unique(raw_indicators_long$indicator_year)
-
-# raw_indicators_wide <- readRDS(file.path(analysis_inputs,
-#                           "global_ecoregions_2017_indicator_values_master_wide.rds"))
-
-# if (!is.na(timepoint)) {
-#   
-#   raw_indicators_long <- raw_indicators_long_all %>%
-#     filter(year == timepoint) %>%
-#     dplyr::select(ecoregion_id, indicator_year,
-#                   raw_indicator_value) %>%
-#     distinct(.)
-#   
-#   raw_indicators_wide <- raw_indicators_long %>%
-#     spread(key = indicator_year, 
-#            value = raw_indicator_value) 
-#   
-#   indicators <- unique(raw_indicators_long$indicator_year)
-#   
-# }
-
-# Ecoregion data
-
-raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
-                         "global_ecoregions_2017_ecoregion_values_master.rds")) 
-raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
-                         "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
 
 # Threat scheme
 

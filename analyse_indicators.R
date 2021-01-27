@@ -29,6 +29,7 @@ library(data.table)
 library(rlist)
 library(e1071)
 library(psych)
+library(arules)
 
 # Plotting
 library(ggplot2)
@@ -153,7 +154,98 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
   
 }
 
-# Read in data ----
+# Ecoregion data ----
+
+# Convert numeric to factors
+
+ecoregions_wide <- raw_ecoregions_wide %>%
+  mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
+                                         0, LPI_records)))
+
+# Get names of numeric variables 
+
+numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
+numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
+
+# ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
+#                                                       labels = c("Few_publications", 
+#                                                                  "Moderate_publications",
+#                                                                  "Many_publications"))
+# 
+# ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
+#                                    labels = c("Small_ecoregions", 
+#                                               "Medium_ecoregions",
+#                                               "Large_ecoregions"))
+
+ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq, 
+                                   method = "frequency",
+                                   breaks = 3, 
+                                   labels = c("Small_ecoregions", 
+                                              "Medium_ecoregions",
+                                              "Large_ecoregions"),
+                                   ordered_result = TRUE)
+
+#lpi_breaks <- c(-1, 50, 100, Inf)
+
+ecoregions_wide$lpi.records.factor <- discretize(ecoregions_wide$LPI_records, 
+                                          method = "interval",
+                                          breaks = 3, 
+                                          labels = c("Few populations", 
+                                                     "Some populations",
+                                                     "Many populations"))
+
+rli_breaks <- c(-Inf, 399, Inf)
+ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = rli_breaks, 
+                                          labels = c("Fewer than 400 RLI records", 
+                                                     "More than 400 RLI records"))
+
+
+ecoregions_wide <- ecoregions_wide %>% 
+  mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
+                                  "Threat related to HFP",
+                                  ifelse(included.in.HFP == 0,
+                                         "Threat external to HFP",
+                                         NA)))
+
+ecoregions_wide <- ecoregions_wide %>%
+  mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
+         scenario.numeric = as.factor(as.numeric(scenario))) %>%
+  mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
+                           "Few RLI HFP exclusive",
+                           ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
+                                  "Few RLI HFP inclusive",
+                                  ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
+                                         "Moderate RLI HFP exclusive",
+                                         ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
+                                                "Moderate RLI HFP inclusive",
+                                                ifelse(scenario == "Few (< 590) RLI records & NA",
+                                                       "Few RLI HFP NA",
+                                                       NA))))))
+
+
+ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
+                                       breaks = c(-1,0,100), 
+                                       labels = c("no endemics", 
+                                                  "endemics"))
+
+ecoregions_wide$High.beta.area <- cut(ecoregions_wide$High.beta.area, 
+                                      breaks = 4, 
+                                      labels = c("low", 
+                                                 "medium",
+                                                 "high",
+                                                 "very high"))
+
+ecoregions_wide_countries <- ecoregions_wide %>%
+  merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
+        by.x = "ecoregion_id", by.y = "ECO_ID") %>%
+  rename(country = CNTRY_NAME)
+
+
+
+
+rm(raw_ecoregions_long, raw_ecoregions_wide)
+
+# Indicator data ----
 
 # Indicator data
 
@@ -169,10 +261,10 @@ raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
 
 raw_indicators_long_all$indicator_year <- str_replace(raw_indicators_long_all$indicator_year, " ", "_")
 
-# TEMPORARY: Remove LPI ----
+# Set threshold for LPI ----
 
-raw_indicators_long_all <- raw_indicators_long_all %>%
-                           filter(indicator != "LPI")
+# raw_indicators_long_all <- raw_indicators_long_all %>%
+#                            filter(indicator != "LPI")
 
 raw_indicators_long <- raw_indicators_long_all %>%
                        dplyr::select(ecoregion_id, indicator_year,
@@ -182,6 +274,8 @@ raw_indicators_long <- raw_indicators_long_all %>%
 raw_indicators_wide <- raw_indicators_long %>%
                        spread(key = indicator_year, 
                              value = raw_indicator_value) 
+
+
 
 # indicators <- unique(raw_indicators_long$indicator_year)
 
@@ -248,86 +342,6 @@ ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3",
 
 
 
-# Ecoregion data cleaning ----
-
-# Convert numeric to factors
-
-ecoregions_wide <- raw_ecoregions_wide %>%
-                   mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
-                                               0, LPI_records)))
-
-# Get names of numeric variables 
-
-numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
-numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
-
-ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
-                            labels = c("Few_publications", 
-                                       "Moderate_publications",
-                                       "Many_publications"))
-
-ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
-                                  labels = c("Small_ecoregions", 
-                                             "Medium_ecoregions",
-                                             "Large_ecoregions"))
-
-lpi_breaks <- c(-1, 50, 150, 400)
-ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, 
-                                          breaks = lpi_breaks, 
-                                   labels = c("Few (< 50) LPI records", 
-                                              "Moderate (between 50 and 100) LPI records",
-                                              "Many (> 100) LPI records"))
-
-rli_breaks <- c(-Inf, 399, Inf)
-ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, breaks = rli_breaks, 
-                                   labels = c("Fewer than 400 RLI records", 
-                                              "More than 400 RLI records"))
-
-
-ecoregions_wide <- ecoregions_wide %>% 
-                   mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
-                                                   "Threat related to HFP",
-                                                   ifelse(included.in.HFP == 0,
-                                                          "Threat external to HFP",
-                                                          NA)))
-
-ecoregions_wide <- ecoregions_wide %>%
-        mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
-               scenario.numeric = as.factor(as.numeric(scenario))) %>%
-        mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
-                                 "Few RLI HFP exclusive",
-                                 ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
-                                 "Few RLI HFP inclusive",
-                                 ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
-                                 "Moderate RLI HFP exclusive",
-                                 ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
-                                 "Moderate RLI HFP inclusive",
-                                 ifelse(scenario == "Few (< 590) RLI records & NA",
-                                 "Few RLI HFP NA",
-                                 NA))))))
-
-
-ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
-                                       breaks = c(-1,0,100), 
-                                   labels = c("no endemics", 
-                                              "endemics"))
-
-ecoregions_wide$High.beta.area <- cut(ecoregions_wide$High.beta.area, 
-                                       breaks = 4, 
-                                       labels = c("low", 
-                                                  "medium",
-                                                  "high",
-                                                  "very high"))
-
-ecoregions_wide_countries <- ecoregions_wide %>%
-                             merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
-                                   by.x = "ecoregion_id", by.y = "ECO_ID") %>%
-                             rename(country = CNTRY_NAME)
-
-
-
-
-rm(raw_ecoregions_long, raw_ecoregions_wide)
 
 # Indicator data cleaning ----
 

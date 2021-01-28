@@ -327,11 +327,110 @@ return(indicator_map)
   }
 }
 
+# Adapted from rlpi package, required to calculate the lpi
+create_infile_multi <- function(pop_data_source, 
+                                index_vector=TRUE, 
+                                name="default_infile", #name needs to be subdir/ecoregion_num
+                                start_col_name="X1950", 
+                                end_col_name="X2017", 
+                                CUT_OFF_YEAR = 1950) {
+  # If no index vector is suppled, it will just use all the pop_data_source data
+  pop_data <- pop_data_source[index_vector, ]
+  
+  # Add weightings t different groups.  Weightings obtained from rlpi github
+  # 'terrestrial infile' example
+  
+  pop_data <- pop_data %>%
+    mutate(weighting = ifelse(pop_data$Class == "Aves" & 
+                                pop_data$T_realm == "Afrotropical", 0.387205957,
+                              ifelse(pop_data$Class == "Mammalia" & 
+                                       pop_data$T_realm == "Afrotropical", 0.197833813,
+                                     ifelse(pop_data$Class == "Amphibia" & 
+                                              pop_data$T_realm == "Afrotropical", 0.41496023,
+                                            ifelse(pop_data$Class == "Reptilia" & 
+                                                     pop_data$T_realm == "Afrotropical", 0.41496023,
+                                                   ifelse(pop_data$Class == "Aves" & 
+                                                            pop_data$T_realm == "Indo-Malayan"|
+                                                            pop_data$T_realm == "Oceania"|
+                                                            pop_data$T_realm == "Australasia" , 0.396527091,
+                                                          ifelse(pop_data$Class == "Mammalia" & 
+                                                                   pop_data$T_realm == "Indo-Malayan"|
+                                                                   pop_data$T_realm == "Oceania"|
+                                                                   pop_data$T_realm == "Australasia" , 0.172106825,
+                                                                 ifelse(pop_data$Class == "Amphibia" & 
+                                                                          pop_data$T_realm == "Indo-Malayan"|
+                                                                          pop_data$T_realm == "Oceania"|
+                                                                          pop_data$T_realm == "Australasia" , 0.431366084,
+                                                                        ifelse(pop_data$Class == "Reptilia" & 
+                                                                                 pop_data$T_realm == "Indo-Malayan"|
+                                                                                 pop_data$T_realm == "Oceania"|
+                                                                                 pop_data$T_realm == "Australasia" , 0.431366084,
+                                                                               ifelse(pop_data$Class == "Aves" & 
+                                                                                        pop_data$T_realm == "Palearctic", 0.433535576,
+                                                                                      ifelse(pop_data$Class == "Mammalia" & 
+                                                                                               pop_data$T_realm == "Palearctic", 0.249862107,
+                                                                                             ifelse(pop_data$Class == "Amphibia" & 
+                                                                                                      pop_data$T_realm == "Palearctic", 0.316602317,
+                                                                                                    ifelse(pop_data$Class == "Reptilia" & 
+                                                                                                             pop_data$T_realm == "Palearctic", 0.316602317,
+                                                                                                           ifelse(pop_data$Class == "Aves" & 
+                                                                                                                    pop_data$T_realm == "Neotropical", 0.387661234,
+                                                                                                                  ifelse(pop_data$Class == "Mammalia" & 
+                                                                                                                           pop_data$T_realm == "Neotropical", 0.127987201,
+                                                                                                                         ifelse(pop_data$Class == "Amphibia" & 
+                                                                                                                                  pop_data$T_realm == "Neotropical", 0.484351565,
+                                                                                                                                ifelse(pop_data$Class == "Reptilia" & 
+                                                                                                                                         pop_data$T_realm == "Neotropical", 0.484351565,
+                                                                                                                                       ifelse(pop_data$Class == "Aves" & 
+                                                                                                                                                pop_data$T_realm == "Nearctic", 0.376366476,
+                                                                                                                                              ifelse(pop_data$Class == "Mammalia" & 
+                                                                                                                                                       pop_data$T_realm == "Nearctic", 0.249869859,
+                                                                                                                                                     ifelse(pop_data$Class == "Amphibia" & 
+                                                                                                                                                              pop_data$T_realm == "Nearctic", 0.373763665,
+                                                                                                                                                            ifelse(pop_data$Class == "Reptilia" & 
+                                                                                                                                                                     pop_data$T_realm == "Nearctic", 0.373763665,NA)))))))))))))))))))))
+  
+  out <- list()
+  pop_list <- split(pop_data, pop_data$Class)
+  
+  for (i in seq_along(pop_list)) {
+    
+    class <- pop_list[[i]]$Class[1]
+    realm <- pop_list[[i]]$T_realm[1]
+    weight <- pop_list[[i]]$weighting[1]
+    
+    p_data <- pop_list[[i]] %>%
+      dplyr::select(-weighting)
+    
+    all_data <- convert_to_rows(p_data, start_col_name, end_col_name)
+    non_null_all_data = all_data[!is.na(all_data$pop), ]
+    clean_data = non_null_all_data[non_null_all_data$year >= CUT_OFF_YEAR, ]
+    filename <- paste(name, class, "pops.txt", sep="_")
+    write.table(clean_data, filename, sep="\t", row.names=FALSE, quote = F)
+    out[[i]] <- data.frame(FileName = filename, Group = 1, Weighting = weight)
+    
+  }
+  
+  in_file_data <- do.call(rbind, out)
+  
+  in_file_data <- in_file_data[complete.cases(in_file_data),]
+  
+  in_name <- paste(name, "pops.txt", sep="_")
+
+  # Write infile
+  write.table(in_file_data, gsub("pops.txt", "infile.txt", in_name), 
+              sep="\t", row.names=FALSE)
+  
+  return(paste(name, "_infile.txt", sep=""))
+}
+
+data <- lpi_values_by_ecoregion[["ecoregion_805"]]
+name <- "ecoregion_805_infile_Results.txt"
 
 get_lpi <- function(data, name) {
   
   y <- str_remove(name, "ecoregion_") 
-  y <- str_remove(y, "_infile_Results.txt")
+  #y <- str_remove(y, "_infile_Results.txt")
   x <- data %>%
     rownames_to_column(var = "year") %>%
     mutate(ecoregion_id = as.numeric(y),
@@ -340,6 +439,8 @@ get_lpi <- function(data, name) {
     select(indicator, year, ecoregion_id, raw_indicator_value) %>%
     mutate(year = as.numeric(year)) %>%
     filter(raw_indicator_value != - 99.0)
+  
+  head(x)
   
   print(paste("retrieved ecoregion", y, sep = " "))
   
@@ -497,6 +598,58 @@ get_anthromes <- function(anthrome, map, timepoint) {
                         ifelse(anthrome@data@values == 61,1,
                                ifelse(anthrome@data@values == 62,1,
                                       ifelse(anthrome@data@values == 43,1,0)))))
+  
+  # Reclassify pixels as disturbed or undisturbed
+  anthrome_mask <- reclassify(anthrome, rcl = df)
+  
+  # Split the pixel values into the ecoregion polygons
+  anthrome_vals <- raster::extract(anthrome_mask, map)
+  
+  # Get the sum of pixel values classified as "1" (undisturbed)
+  undisturbed_sum <- lapply(anthrome_vals, sum) 
+  
+  # Get the total number of pixels in the ecoregion
+  total_cells <- lapply(anthrome_vals, length)
+  
+  # Combine into dataframes
+  undisturbed_sum <- do.call(rbind, undisturbed_sum)
+  total_cells <- do.call(rbind, total_cells)
+  df <- as.data.frame(cbind(undisturbed_sum, total_cells))
+  
+  # Calculate proportion of undisturbed habitat in that ecoregion
+  prop_undisturbed <- mutate(df, prop_undisturbed = undisturbed_sum/total_cells)
+  
+  # Add the ecoregion ID back in
+  
+  ecoregion_id <- dplyr::select(map, ECO_ID)
+  ecoregion_id <- ecoregion_id %>% st_set_geometry(NULL)
+  proportion_undisturbed <- cbind(ecoregion_id, prop_undisturbed)
+  proportion_undisturbed <- proportion_undisturbed %>%
+    mutate(year = timepoint) %>%
+    rename(undisturbed_cells = V1,
+           total_cells = V2)
+  
+  saveRDS(proportion_undisturbed, file.path(indicator_outputs, 
+                                            paste(location,
+                                                  as.character(timepoint),
+                                                  "anthrome.rds",
+                                                  sep = "_")))
+  
+  return(proportion_undisturbed)
+  
+}
+
+
+get_anthromes_2 <- function(anthrome, map, timepoint) {
+  
+  df <- as.data.frame(anthrome@data@values) %>%
+    mutate(new = ifelse(anthrome@data@values == 43,1,
+                 ifelse(anthrome@data@values == 51,1,
+                 ifelse(anthrome@data@values == 52,1,
+                 ifelse(anthrome@data@values == 53,1,
+                 ifelse(anthrome@data@values == 54,1,
+                 ifelse(anthrome@data@values == 61,1,
+                 ifelse(anthrome@data@values == 62,1,0))))))))
   
   # Reclassify pixels as disturbed or undisturbed
   anthrome_mask <- reclassify(anthrome, rcl = df)
@@ -785,7 +938,7 @@ complete_cases <- species_data %>%
 species_data_complete <- species_data[species_data$binomial %in% 
                                      complete_cases$binomial,]
 
-# Calculate variables by ecoregion for complete data
+# * Summarise by ecoregion ----
 
 species_by_ecoregion_complete <- species_data_complete %>%
   distinct(.) %>%
@@ -896,6 +1049,27 @@ saveRDS(extinction_values, file.path(indicator_outputs,
                                            sep = "_")))
 
 }
+
+# Number of species extinct ----
+
+number_extinct <- species_data %>%
+                  distinct(.) %>%
+                  group_by(ecoregion_id, redlist_assessment_year) %>%
+                  mutate(number_extinct_by_year = 
+                         n_distinct(tsn[redlist_status == "EX"|
+                                             redlist_status == "EW"])) %>%
+                        group_by(ecoregion_id) %>%
+                  mutate(raw_indicator_value = max(number_extinct_by_year),
+                         indicator = "number extinct") %>%
+                  select(indicator, redlist_assessment_year,
+                         ecoregion_id, raw_indicator_value) %>%
+                  rename(year = redlist_assessment_year) %>%
+                  distinct(.)
+
+saveRDS(number_extinct, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "number_extinct.rds",
+                                           sep = "_")))
 
 # Proportion of species threatened ----
 
@@ -1714,7 +1888,7 @@ lpi_values <- readRDS(file.path(indicator_outputs,
 } else {
   
 lpi_ecoregion_directory <- file.path(indicator_outputs, 
-                                   "lpi_ecoregion_directory")
+                                   "lpi_ecoregion_directory_thurs")
 
 if( !dir.exists( lpi_ecoregion_directory ) ) {
   
@@ -1741,7 +1915,7 @@ lpi_data <- read.csv(file.path(inputs,
 # Get coordinates
 
 lpi_coordinates <- lpi_data %>%
-                   select(Binomial, Latitude, Longitude) %>%
+                   select(Binomial, ID, Latitude, Longitude) %>%
                    distinct(.) %>%
                    filter(complete.cases(Latitude, Longitude))
 
@@ -1749,24 +1923,78 @@ lpi_coordinates <- lpi_data %>%
 
 lpi_sf <- st_as_sf(lpi_coordinates, coords = c('Longitude',
                                                 'Latitude'),
-                       crs = st_crs(ecoregion_map))
+                   crs = st_crs(ecoregion_map))
 
-# Match coordinates of population to ecoregions
+# Match coordinates of population to ecoregions - SLOW
 
-lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map)
-lpi_inputs_ecoregions <- st_drop_geometry(lpi_species_ecoregions)
+lpi_species_ecoregions <- st_intersection(lpi_sf, ecoregion_map) # Takes about an hour
+lpi_inputs_ecoregions_df <- st_drop_geometry(lpi_species_ecoregions)
 
 # Format the input data
 
 lpi_inputs <- lpi_data %>%
-              merge(lpi_inputs_ecoregions[c("Binomial", "ECO_ID")],
-                    by = "Binomial", all = FALSE) %>% # Drops around 1000 marine spp
-              select(ECO_ID, everything()) 
+              merge(lpi_inputs_ecoregions_df[c("ID", "ECO_ID", "REALM")],
+                    by = "ID", all = TRUE) %>% # Drops around 1000 marine spp
+              select(ECO_ID, everything())  %>%
+              filter(Class == "Aves"| # We don't have weightings for other classes which are all fish but could be in estuaries and lakes
+                     Class == "Mammalia"|
+                     Class == "Amphibia"|
+                     Class == "Reptilia") %>%
+              mutate(REALM = ifelse(REALM == "Antarctica", "Antarctic",
+                             ifelse(REALM == "Afrotropic", "Afrotropical",
+                             ifelse(REALM == "Neotropic", "Neotropical",
+                             ifelse(REALM == "Indomalayan", "Indo-Malayan",
+                             REALM))))) %>%
+              dplyr::select(-T_realm) %>% 
+              rename(T_realm = REALM) %>%
+              filter(!is.na(ECO_ID),
+                     ECO_ID != 0,
+                     ECO_ID != 350,
+                     ECO_ID != 384,
+                     ECO_ID != 389,
+                     ECO_ID != 557) %>% # Not sure why these ecoregions cause loop below to fail
+              filter(T_realm != "Antarctic") 
 
+# These ecoregions were not working, however now I think they are
+ecoregions_not_working <- lpi_inputs %>% filter(ECO_ID == 350,
+                                                ECO_ID == 384,
+                                                ECO_ID == 389,
+                                                ECO_ID == 557)
 
-lpi_inputs <- lpi_inputs %>%
-              filter(System == "Terrestrial")
+head(lpi_inputs)
 
+# Check how many populations begin with 0 in 1970
+
+start_at_zero <- lpi_inputs %>%
+  filter(X1970 == 0)
+
+# # Remove time series with fewer than 10 points
+# 
+# # Change null to NA
+# lpi_inputs[lpi_inputs == "NULL"] <- NA
+# 
+# # Add column that counts length of time series
+# lpi_inputs$ts_length = rowSums(!is.na(lpi_inputs[,31:96]))
+# 
+# # Remove the short time series
+# 
+# lpi_inputs_all <- lpi_inputs
+# 
+# dim(lpi_inputs_all)
+# 
+# lpi_inputs <- lpi_inputs_all %>%
+#               filter(ts_length > 9)
+# 
+# dim(lpi_inputs)
+# 
+# # Return input to original form
+# 
+# lpi_inputs <- lpi_inputs %>%
+#               dplyr::select(- ts_length) 
+# 
+# lpi_inputs[is.na(lpi_inputs)] <- "NULL"
+# 
+# head(lpi_inputs)
 
 # Save input data
 
@@ -1789,21 +2017,40 @@ for (i in seq_along(lpi_inputs_ecoregions)) {
 
 names(lpi_inputs_ecoregions) <- eco_names
 
+# Check the number of populations per ecoregion. 161 have more than 10 populations,
+# 240 have more than 5 populations
+
+pops_ecoregions <- unlist(lapply(lpi_inputs_ecoregions, nrow))
+
+pops_above_min <- pops_ecoregions[pops_ecoregions > 10]
+length(pops_above_min)
+
+# Calculate the LPI for ecoregions that meet the minimum of 10 populations
+
 lpi_infiles_ecoregions <- list()
 lpi_values_by_ecoregion <- list()
 file_name <- vector()
 
 for (i in seq_along(lpi_inputs_ecoregions)) {
-  
+
 single_ecoregion <- lpi_inputs_ecoregions[[i]] %>%
                     select(-ECO_ID) %>%
-                    distinct(.)
+                    distinct(.) 
+
+# pop_number <- length(unique(single_ecoregion$ID))
+# 
+# if (pop_number < 10) {
+#   
+#   eco_id <- lpi_inputs_ecoregions[[i]]$ECO_ID[1]
+#   print(paste(eco_id, "has too few populations to calculate an LPI"))
+#   
+# } else if (pop_number > 9) {
 
 index_vector_ecoregion <- c(1:length(unique(single_ecoregion$ID)))
 
 file_name[i] <- paste("ecoregion", eco_names[i], sep = "_")
 
-lpi_infiles_ecoregions[[i]] <- create_infile(single_ecoregion, 
+lpi_infiles_ecoregions[[i]] <- create_infile_multi(single_ecoregion, 
                                              index_vector = index_vector_ecoregion, 
                                              name = file_name[i])
 
@@ -1817,10 +2064,13 @@ lpi_values_by_ecoregion[[i]] <- ecoregion_lpi
 rm(ecoregion_lpi)
 closeAllConnections()
 gc()
-
+  
+  # }
 }
 
-out <- list.files(lpi_ecoregion_directory)[grepl("Results",list.files(lpi_ecoregion_directory))]
+lpi_values_by_ecoregion <- list.clean(lpi_values_by_ecoregion)
+
+names(lpi_values_by_ecoregion) <- file_name
 
 # Calculate the indicator
 
@@ -1829,7 +2079,7 @@ lpi_values_formatted <- list()
 for (i in seq_along(lpi_values_by_ecoregion)) {
   
   lpi_values_formatted[[i]] <- get_lpi(lpi_values_by_ecoregion[[i]],
-                                       out[[i]])
+                                       file_name[i])
   
 }
 
@@ -1837,16 +2087,16 @@ lpi_values <- do.call(rbind, lpi_values_formatted)
 
 lpi_values_subset <- lpi_values %>%
                      filter(year == 1980|
-                              year == 1990|
-                              year == 2000|
-                              year == 2005|
-                              year == 2010|
-                              year == 2013|
-                              year == 2015) 
+                            year == 1990|
+                            year == 2000|
+                            year == 2005|
+                            year == 2010|
+                            year == 2013|
+                            year == 2015) 
 
 length(unique(lpi_values_subset$ecoregion_id))
 
-lpi_test <- lpi_values %>% filter(ecoregion_id == 291)
+lpi_test <- lpi_values %>% filter(ecoregion_id == 805)
 
 ggplot(lpi_test) +
   geom_line(aes(x = year, y = raw_indicator_value)) 
@@ -2011,7 +2261,7 @@ lpi_inputs <- readRDS(file.path(indicator_outputs,
 
 lpi_input_summary <- lpi_inputs %>%
                      group_by(ECO_ID) %>%
-                     summarise(number_of_records = n_distinct(Binomial),
+                     summarise(number_of_records = n_distinct(ID),
                                 .groups = "drop_last")
 
 lpi_record_values <- lpi_input_summary %>%
@@ -2683,18 +2933,29 @@ anthromes_2000_raster <- readAll(anthromes_2000_raster)
 # Extract the proportion of each ecoregion that is undisturbed in years 1700, 1800, 1900 and 2000
 # SLOW - takes 45 mins to an hour each
 
-system.time(anthromes_1700 <- get_anthromes(anthromes_1700_raster, ecoregion_map, 1700))
-system.time(anthromes_1800 <- get_anthromes(anthromes_1800_raster, ecoregion_map, 1800))
-system.time(anthromes_1900 <- get_anthromes(anthromes_1900_raster, ecoregion_map, 1900))
-system.time(anthromes_2000 <- get_anthromes(anthromes_2000_raster, ecoregion_map, 2000))
+system.time(anthromes_1700_1 <- get_anthromes(anthromes_1700_raster, ecoregion_map, 1700))
+system.time(anthromes_1800_1 <- get_anthromes(anthromes_1800_raster, ecoregion_map, 1800))
+system.time(anthromes_1900_1 <- get_anthromes(anthromes_1900_raster, ecoregion_map, 1900))
+system.time(anthromes_2000_1 <- get_anthromes(anthromes_2000_raster, ecoregion_map, 2000))
 
-# Set the threshold for when an ecoregion is considered 'disturbed'
+
+system.time(anthromes_1700_2 <- get_anthromes_2(anthromes_1700_raster, ecoregion_map, 1700))
+system.time(anthromes_1800_2 <- get_anthromes_2(anthromes_1800_raster, ecoregion_map, 1800))
+system.time(anthromes_1900_2 <- get_anthromes_2(anthromes_1900_raster, ecoregion_map, 1900))
+system.time(anthromes_2000_2 <- get_anthromes_2(anthromes_2000_raster, ecoregion_map, 2000))
+
+# Set the threshold for when an ecoregion is considered 'disturbed' based on 30%
+# loss of area threshold in IUCN RLE (Bland et al 2016)
 
 threshold <- 0.7
 
-# Assign 'disturbed' class to each (should have gone in function)
+# Assign 'disturbed' class to each 
 
-anthromes <- list(anthromes_1700, anthromes_1800, anthromes_1900, anthromes_2000)
+# anthromes <- list(anthromes_1700_1, anthromes_1800_1, 
+#                   anthromes_1900_1, anthromes_2000_1)
+
+anthromes <- list(anthromes_1700_2, anthromes_1800_2, 
+                  anthromes_1900_2, anthromes_2000_2)
 
 anthromes_classified <- list()
 
@@ -2709,29 +2970,29 @@ for ( i in seq_along(anthromes)){
   
   anthrome_classified <- anthrome %>%
                          mutate(status = 
-                                ifelse(prop_undisturbed > 0.6, # Where 1 = undisturbed
+                                ifelse(prop_undisturbed > threshold, # Where 1 = undisturbed
                                 1, 0)) 
   anthromes_classified[[i]] <- anthrome_classified 
 
 }
 
-x <- do.call(rbind, anthromes_classified) 
+anthromes_classified_df <- do.call(rbind, anthromes_classified) 
 
 # Get first year ecoregion was classified as disturbed (proportion of undisturbed 
 # land is less than 60% of the ecoregion)
 
-y <-  x  %>%
-      dplyr::group_by(ECO_ID) %>%
-      arrange(year) %>%
-      filter(status == 0) %>%
-      filter(year == min(year))
+disturbed <-  anthromes_classified_df  %>%
+              dplyr::group_by(ECO_ID) %>%
+              arrange(year) %>%
+              filter(status == 0) %>%
+              filter(year == min(year))
 
-head(y)
-table(y$year)
+head(disturbed)
+table(disturbed$year)
 
 # Get the ecoregions still classified as undisturbed in 2000
 
-undisturbed <- x %>%
+undisturbed <- anthromes_classified_df %>%
                filter(status == 1) %>%
                filter(year == 2000) %>%
                mutate(year = 3000) # Change year of disturbance to some time in 
@@ -2742,23 +3003,26 @@ head(undisturbed)
 
 # Combine
 
-ecoregion_anthromes <- rbind(y, undisturbed)
+ecoregion_anthromes <- rbind(disturbed, undisturbed)
 
 # Check for duplicates
 
 duplicates <- ecoregion_anthromes$ECO_ID[duplicated(ecoregion_anthromes$ECO_ID)]
 
-# Currently none, duplicates seem to occur when an ecoregion switches from one
+# Duplicates seem to occur when an ecoregion switches from one
 # disturbed to undisturbed, but usually the values are very close to the threshold
 
-# Remove from the total data altogether
+duplicated_eco <- ecoregion_anthromes[ecoregion_anthromes$ECO_ID %in% duplicates,]
 
-ecoregion_anthromes <- ecoregion_anthromes[!ecoregion_anthromes$ECO_ID %in% 
-                                       duplicates,] 
+# Select the most recent status
 
-x <- left_join(ecoregion_map, ecoregion_anthromes, by = "ECO_ID")
+ecoregion_anthromes <- ecoregion_anthromes %>%
+                       group_by(ECO_ID) %>%
+                       filter(year == max(year))
 
-plot(x["year"])
+check <- left_join(ecoregion_map, ecoregion_anthromes, by = "ECO_ID")
+
+plot(check["year"])
 
 # Convert into consistent format
 
@@ -2767,13 +3031,23 @@ ecoregion_anthrome_values <- ecoregion_anthromes %>%
                    rename(raw_indicator_value = year, 
                           ecoregion_id = ECO_ID) %>%
                    mutate(year = NA) %>%
-                   select(indicator_columns)
+                   select(indicator_columns) %>%
+                   mutate(raw_indicator_value = 
+                            as.character(raw_indicator_value)) %>%
+                   mutate(raw_indicator_value = ifelse(raw_indicator_value == 3000,
+                                                "undisturbed", ifelse(raw_indicator_value == 2000,
+                                                "1900 - 2000", ifelse(raw_indicator_value == 1900,
+                                                "1800 - 1900", ifelse(raw_indicator_value == 1800,
+                                                "1700 - 1800", ifelse(raw_indicator_value == 1700,
+                                                "pre 1700", NA)))))) %>%
+                   mutate(raw_indicator_value = as.factor(raw_indicator_value))
 
 head(ecoregion_anthrome_values)
+class(ecoregion_anthrome_values$raw_indicator_value)
 
 saveRDS(ecoregion_anthrome_values, file.path(indicator_outputs, 
                                          paste(location, eco_version, 
-                                               "anthrome_values.rds",
+                                               "anthrome_values_2.rds",
                                                sep = "_")))
 }
 
@@ -2793,23 +3067,6 @@ head(ecoregion_beta_values)
 
 # Combine indicator values into a single dataframe ----
 
-ind_list <- list(extinction_values, 
-                 at_risk_values, 
-                 bird_rli_values,
-                 rli_birds_2008_values,
-                 rli_mammals_2008_values,
-                 rli_amphibians_2008_values,
-                 rli_all_2008_values,
-                 # rli_lu_2005_values,
-                 # rli_other_2005_values,
-                 hfp_values,
-                 bhi_plants_values,
-                 lpi_values,
-                 bii_richness_values,
-                 bii_abundance_values)
-
-lapply(ind_list, ncol)
-
 indicator_values <- rbind(extinction_values, 
                           at_risk_values, 
                           bird_rli_values,
@@ -2823,7 +3080,8 @@ indicator_values <- rbind(extinction_values,
                           bhi_plants_values,
                           lpi_values,
                           bii_richness_values,
-                          bii_abundance_values)
+                          bii_abundance_values,
+                          number_extinct)
 
 indicator_values_master <- indicator_values %>%
                            merge(ecoregion_country_df[c("ECO_ID", 
@@ -2985,7 +3243,6 @@ ecoregion_values_wide <- ecoregion_values_wide %>%
                          RLI_records = as.numeric(RLI_records),
                          mean.human.population.density = as.numeric(mean.human.population.density),
                          number.of.endemics = as.numeric(number.of.endemics),
-                         disturbance.year = as.numeric(disturbance.year),
                          High.beta.area = as.numeric(High.beta.area))
 
 summary(ecoregion_values_wide)
@@ -3049,9 +3306,11 @@ indicator_values_map <- indicator_values_master %>%
 indicator_map_data <- left_join(ecoregion_map_data, indicator_values_map,
                                 by = "ecoregion_id")
 
-indicator_map_data <- indicator_map_data %>%
-                      dplyr::select(-country) %>%
-                      distinct(.)
+names(indicator_map_data)
+
+# indicator_map_data <- indicator_map_data %>%
+#                       dplyr::select(-country) %>%
+#                       distinct(.)
 
 # * BII Richness ----
 
@@ -3167,6 +3426,29 @@ tmap_save(extinct, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(extinct_data, extinct)
+
+# * Number extinct ----
+
+num_extinct_data <- indicator_map_data %>%
+  filter(indicator == "number extinct" & year == 2008) 
+
+
+num_extinct <- tm_shape(num_extinct_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "order",
+              pal = "-viridis",
+              title = "Number of\nspecies extinct") +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+num_extinct
+
+tmap_save(num_extinct, file.path(indicator_outputs, paste(location,
+          "number_extinct_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(num_extinct_data, num_extinct)
   
 # * RLI ----
 
@@ -3284,10 +3566,18 @@ rm(hfp_data, hfp)
 
 # * LPI ----
 
-lpi_data <- indicator_map_data %>%
-  filter(indicator == "LPI" & year == 2005)
+lpi_map_data <- indicator_map_data %>%
+  filter(indicator == "LPI" & year == 2005) %>%
+  st_drop_geometry()
 
-lpi <- tm_shape(lpi_data) +
+lpi_map_data <- ecoregion_map[c("ECO_ID", "geometry")] %>%
+            merge(lpi_map_data, by.x = "ECO_ID", by.y = "ecoregion_id" ,
+                  all.x = TRUE) %>%
+            mutate(indicator = "LPI")
+
+head(lpi_map_data)
+
+lpi <- tm_shape(lpi_map_data) +
        tm_polygons(col = "raw_indicator_value",
                     border.col = "black",
                     style = "order",
@@ -3548,6 +3838,55 @@ beta <- tm_shape(beta_data) +
                   legend.outside.position = "right") 
 
 beta
+
+# Create an interactive map ----
+
+indicator_map_data_all <- left_join(ecoregion_map_renamed, 
+                                    correlation_input_data[c("ecoregion_id", "realm",
+                                                             indicators)],
+                                    by = "ecoregion_id") 
+
+ecoregion_subset <- ecoregion_countries %>%
+  filter(CNTRY_NAME == "Australia") %>%
+  unique(.)
+
+
+indicator_map_input_data <- indicator_map_data_all[indicator_map_data_all$ecoregion_id %in% 
+                                                     ecoregion_subset$ECO_ID,] 
+
+# Create a colour palette for proportion of extinctions
+
+indicator_map_input_data <- indicator_map_input_data_sf
+
+ext_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$extinct_2005)
+hfp_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$HFP_2005)
+
+#' TODO: Add real, not scaled indicator values
+#' TODO: Add ecoregion labels?
+#' TODO: Try adding all the indicator values into one label
+
+indicator_map_input_data %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(weight = 1, color = ~ext_pal(extinct_2005),
+              fillOpacity = 0.8, group = "Proportion of species extinct",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste(ecoregion_id, "proportion extinct =", extinct_2005, 
+                             sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+  addPolygons(weight = 1, color = ~hfp_pal(HFP_2005),
+              fillOpacity = 0.8, group = "Human footprint index",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste(ecoregion_id, "HFP =", HFP_2005, sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+  addLayersControl(baseGroups = c("OSM", "Carto", "Esri"), 
+                   overlayGroups = c("Proportion of species extinct", 
+                                     "Human footprint index"))
+
 
 tmap_save(beta, file.path(indicator_outputs, paste(location,
           "proportion_high_beta_map.png", sep = "_")),

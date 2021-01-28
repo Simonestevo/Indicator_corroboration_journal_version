@@ -316,9 +316,6 @@ ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3",
                         "2020-08-10_database_output_files",
                         "ecoregion_country_data.rds"))
 
-
-
-
 # Indicator data cleaning ----
 
 # * Invert ----
@@ -358,30 +355,35 @@ indicators_all <- indicators[!indicators %in% "ecoregion_id"]
 
 # Manage outliers 
 
-pca_input_data <- indicators_wide %>%
-  # filter(LPI_2005 < quantile(LPI_2005,
-  #                              0.99, na.rm = TRUE)) %>%
+indicators_wide <- indicators_wide %>%
+  filter(LPI_2005 < quantile(LPI_2005,
+                               0.99, na.rm = TRUE)) %>%
   # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
   #                              0.99, na.rm = TRUE)) %>%
   filter(HFP_2005 < quantile(HFP_2005, 
                              0.99, na.rm = TRUE))
 
+pca_input_data <- indicators_wide
+
 # Subset to a single timepoint
 
-if (!is.na(timepoint)) {
-  
   indicators_05 <- names(pca_input_data)[str_detect(names(pca_input_data),
                                                  timepoints[[1]])]
   
   indicators_08 <- names(pca_input_data)[str_detect(names(pca_input_data),
                                                  timepoints[[2]])]
   
+  # Remove LPI 2008 record which is the only indicator with timepoints for 05 and 08
+  
+  indicators_08 <- indicators_08[!str_detect(indicators_08,
+                                            "LPI_2008")]
+  
   indicators <- c(indicators_05, indicators_08)
   
   pca_input_data <- pca_input_data %>%
     dplyr::select(all_of(c("ecoregion_id", indicators)))
   
-}
+
 
 # Prepare data
 
@@ -391,8 +393,7 @@ pca_data_1 <- gather(pca_input_data, indicator, indicator_value,
 pca_data_2 <- pca_data_1 %>%
   merge(ecoregions_wide,by = "ecoregion_id") %>%
   dplyr::select(ecoregion_id, realm, headline.threat.type,
-                Biome, island.status, scientific.publications.factor,
-                area.factor,
+                Biome, island.status, High.beta.area,
                 lpi.records.factor,
                 rli.records.factor,
                 scenario,
@@ -1132,6 +1133,11 @@ indicators_wide_centred <- indicators_wide %>%
                            mutate_at(c(2:ncol(indicators_wide)), 
                                      funs(c(scale(.)))) 
 
+# Subset to just the time points we care about
+
+indicators_wide_centred <- indicators_wide_centred %>%
+  dplyr::select(all_of(c("ecoregion_id", indicators)))
+
 summary(indicators_wide_centred)
 
 # ** Centred boxplots ----
@@ -1148,6 +1154,8 @@ boxplots <- ggplot(indicator_boxplot_data) +
 boxplots
 
 boxplot(indicators_wide_centred$HFP_2005)
+
+boxplot(indicators_wide_centred$LPI_2005)
 
 # Manage outliers for the boxplots/correlation data
 

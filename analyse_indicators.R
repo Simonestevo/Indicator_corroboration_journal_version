@@ -20,6 +20,12 @@ rm(list = ls()) # clear memory
 # install.packages("tm", dependencies = TRUE)
 # install.packages("PerformanceAnalytics", dependencies = TRUE)
 
+# PCA and Clustering
+library(factoextra)
+library(FactoMineR)
+library(corrplot)
+library(ape)
+#library(MASS)
 
 # Data handling and table reshaping
 library(tidyverse)
@@ -46,20 +52,6 @@ library(ggcorrplot)
 # Maps
 library(sf)
 library(leaflet)
-
-# PCA and Clustering
-library(factoextra)
-library(FactoMineR)
-library(corrplot)
-library(ape)
-library(MASS)
-
-
-# library(mapview)
-# library(psych) #not loaded
-# library(tm) #notloaded
-# library(PerformanceAnalytics) #not loaded
-# library(grid)
 
 
 # Set input and output locations ----
@@ -156,8 +148,6 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 # Ecoregion data ----
 
-# Ecoregion data
-
 raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
                                          "global_ecoregions_2017_ecoregion_values_master.rds")) 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
@@ -246,10 +236,10 @@ ecoregions_wide$High.beta.area <- discretize(ecoregions_wide$High.beta.area,
 
 table(ecoregions_wide$High.beta.area)
 
-ecoregions_wide_countries <- ecoregions_wide %>%
-  merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
-        by.x = "ecoregion_id", by.y = "ECO_ID") %>%
-  rename(country = CNTRY_NAME)
+# ecoregions_wide_countries <- ecoregions_wide %>%
+#   merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
+#         by.x = "ecoregion_id", by.y = "ECO_ID") %>%
+#   rename(country = CNTRY_NAME)
 
 rm(raw_ecoregions_long, raw_ecoregions_wide)
 
@@ -279,7 +269,7 @@ raw_indicators_wide <- raw_indicators_long %>%
                        spread(key = indicator_year, 
                              value = raw_indicator_value) 
 
-
+dim(raw_indicators_wide)
 
 # Threat scheme
 
@@ -333,12 +323,12 @@ keys <- as.data.frame(negatives_index) %>%
         dplyr::select(keys) %>%
         pull(.)
 
-# PCA ----
-
-# * Prepare PCA input data ----
-
 indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
                                               mini = cols_min, maxi = cols_max))
+
+dim(indicators_wide)
+
+# * Fix column names ----
 
 # Remove the little negative thing at the end of reversed column names, otherwise
 # they become difficult to use with dplyr
@@ -353,19 +343,50 @@ indicators <- names(indicators_wide)
 
 indicators_all <- indicators[!indicators %in% "ecoregion_id"]
 
-# Manage outliers 
+# * Manage outliers ---- 
+
+# A couple of big outliers in LPI values
+hist(indicators_wide$LPI_2005, breaks = 20)
+max(indicators_wide$LPI_2005, na.rm = TRUE)
+
+# Get the 95th percentile
+
+lpi_95 <- quantile(indicators_wide$LPI_2005, 
+                   probs = 0.95, 
+                   na.rm = TRUE)
+lpi_95
+
+# HFP values actually pretty ok
+hist(indicators_wide$HFP_2005, breaks = 20)
+max(indicators_wide$HFP_2005, na.rm = TRUE)
+
+# Just remove LPI outliers, given we know it is a dodgier dataset and volatile
+indicators_wide <- indicators_wide %>%
+                   mutate(LPI_2005 = ifelse(LPI_2005 > lpi_95,
+                                            NA, LPI_2005)) 
+
+dim(indicators_wide)
+
+# Looks much better
+hist(indicators_wide$LPI_2005)
+max(indicators_wide$LPI_2005, na.rm = TRUE)
+
+# * Remove unwanted indicators ----
 
 indicators_wide <- indicators_wide %>%
-  filter(LPI_2005 < quantile(LPI_2005,
-                               0.99, na.rm = TRUE)) %>%
-  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-  #                              0.99, na.rm = TRUE)) %>%
-  filter(HFP_2005 < quantile(HFP_2005, 
-                             0.99, na.rm = TRUE))
+                   dplyr::select(-number_extinct_2008, -number_extinct_2016,
+                                 -AmphRLI_2008, -BirdRLI_2008, -BirdRLI_2016,
+                                 -MammRLI_2008)
+
+# PCA ----
+
+# * Prepare PCA input data ----
 
 pca_input_data <- indicators_wide
 
-# Subset to a single timepoint
+head(pca_input_data)
+
+# * Subset to a single timepoint ----
 
   indicators_05 <- names(pca_input_data)[str_detect(names(pca_input_data),
                                                  timepoints[[1]])]
@@ -380,36 +401,69 @@ pca_input_data <- indicators_wide
   
   indicators <- c(indicators_05, indicators_08)
   
-  pca_input_data <- pca_input_data %>%
-    dplyr::select(all_of(c("ecoregion_id", indicators)))
+  # Subset so we only have indicators from the years we need
   
-
-
+  pca_input_data <- pca_input_data %>%
+                    dplyr::select(all_of(c("ecoregion_id", indicators)))
+  
+  dim(pca_input_data)
+  head(pca_input_data)
+  
 # Prepare data
+  
+# Convert back into long format
+# pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
+#                      "BHI_plants_2005":"threatened_2008", factor_key=TRUE)
+# 
+# head(pca_data_1)
+# length(unique(pca_data_1$ecoregion_id))
 
-pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
-                     "BHI_plants_2005":"threatened_2008", factor_key=TRUE)
+# Add the grouping ecoregion variables back in
 
-pca_data_2 <- pca_data_1 %>%
-  merge(ecoregions_wide,by = "ecoregion_id") %>%
-  dplyr::select(ecoregion_id, realm, headline.threat.type,
-                Biome, island.status, High.beta.area,
-                lpi.records.factor,
-                rli.records.factor,
-                scenario,
-                included.in.HFP,
-                predominant.threat.type,
-                endemics.factor,
-                scenario.numeric,
-                predominant.threat.count,
-                mean.human.population.density,
-                number.of.endemics,
-                everything()) 
+pca_data_3 <- pca_input_data %>%
+        merge(ecoregions_wide[c("ecoregion_id",
+                                "Biome",
+                                "disturbance.year",
+                                "High.beta.area",
+                                "island.status",
+                                "predominant.threat.type",
+                                "realm",
+                                "lpi.records.factor",
+                                "rli.records.factor")],
+              by = "ecoregion_id", all.y = TRUE)
 
-pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
+# pca_data_2 <- pca_data_1 %>%
+#   merge(ecoregions_wide,by = "ecoregion_id") %>%
+#   dplyr::select(ecoregion_id, realm, headline.threat.type,
+#                 Biome, island.status, High.beta.area,
+#                 lpi.records.factor,
+#                 rli.records.factor,
+#                 scenario,
+#                 included.in.HFP,
+#                 predominant.threat.type,
+#                 endemics.factor,
+#                 scenario.numeric,
+#                 predominant.threat.count,
+#                 mean.human.population.density,
+#                 number.of.endemics,
+#                 everything()) 
+# 
+# head(pca_data_2)
 
-pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,16:ncol(pca_data_3)]),]
+# Convert to wide again?
 
+# pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
+
+head(pca_data_3)
+dim(pca_data_3)
+
+# Remove incomplete cases - NOTE - while including LPI, removes 3/4 of the data
+
+pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,2:9]),]
+dim(pca_data_4)
+
+#' TODO: Fix this 
+#' 
 pca_data_5 <- pca_data_4 
 
 # * Indicators only PCA ----
@@ -452,7 +506,7 @@ summary(pl.pca)
 # Plot results - look to see number of PCA axes to retain
 plot(pl.pca, type="lines")
 
-### Shows 3 axes likely sufficient
+### Shows 2 axes likely sufficient
 # Plot points
 text(pl.pca$scores, labels=as.character(row.names(pl.data)), pos=1, cex=0.7)
 
@@ -1156,20 +1210,11 @@ boxplots
 boxplot(indicators_wide_centred$HFP_2005)
 
 boxplot(indicators_wide_centred$LPI_2005)
+boxplot(raw_indicators_wide$extinct_2008)
 
-# Manage outliers for the boxplots/correlation data
+#' TODO: Fix the naming of dataset here
 
-indicators_wide_centred_trunc <- indicators_wide_centred %>%
-  # filter(LPI_2005 < quantile(LPI_2005,
-  #                              0.99, na.rm = TRUE)) %>%
-  # filter(LPI_2015 < quantile(LPI_2015,
-  #                            0.99, na.rm = TRUE)) %>%
-  # filter(`extinct 2005-` < quantile(`extinct 2005-`, 
-  #                              0.99, na.rm = TRUE)) %>%
-  filter(HFP_2005 < quantile(HFP_2005, 
-                             0.99, na.rm = TRUE)) %>%
-  filter(HFP_2013 < quantile(HFP_2013, 
-                             0.99, na.rm = TRUE))
+indicators_wide_centred_trunc <- indicators_wide_centred 
 
 indicator_boxplot_data_2 <- reshape2::melt(indicators_wide_centred_trunc, 
                                            id.vars = 'ecoregion_id')

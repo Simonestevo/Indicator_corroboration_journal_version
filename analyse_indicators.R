@@ -146,6 +146,35 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
   
 }
 
+make_heatmap <- function(data) {
+
+heatmap <- ggplot(data, aes(x = subgroup,
+                            y = combination,
+                            fill = coefficient)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
+       y = "Pairwise indicator comparisons") +
+  guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "grey97"),
+        legend.position = "bottom",
+        axis.title.x = element_text(size=8),
+        axis.title.y = element_text(size=8),
+        axis.text.x = element_text(size= 7),
+        axis.text.y = element_text(size= 7)) +
+  facet_grid(ind_group ~., scales = "free_y") +
+  theme(strip.text.x = element_text(size = 7, hjust = 0))
+
+heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
+
+return(heatmap)
+
+}
+
+
 # Ecoregion data ----
 
 
@@ -1114,7 +1143,7 @@ pca_clusters <- kmeans(pca$x[,1:4], centers = number_clusters, nstart = 100)
 # 
 
 
-# Map clusters ----
+# Map & plot clusters ----
 
 cluster_map_data <- ecoregion_map_renamed %>%
                     merge(data.hcpc2[c("ecoregion_id", "cluster")], 
@@ -1394,6 +1423,8 @@ grouping_variables <- names(correlation_input_data)[!(names(
                           correlation_input_data) %in% 
                                 indicators_all)]
 
+grouping_variables <- grouping_variables[!grouping_variables %in% "ecoregion_id"]
+
 # Get categorical grouping variables only 
 
 groups <- correlation_input_data_all %>%
@@ -1487,9 +1518,13 @@ nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
 nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 
 all_groups <- list()
-all_heatmaps <- list()
+all_independent_heatmaps <- list()
+all_related_heatmaps <- list()
 
 for (i in seq_along(grouping_variables)) {
+
+# Format the names of the subgroups (eg mangroves, tropical forests) 
+# in the grouping variable (eg. Biome)
   
 vargroup <- grouping_variables[i]
 varall <- all_grouping_variables[i]
@@ -1500,12 +1535,14 @@ group_indicators <- correlation_input_data %>%
                     dplyr::select(all_of(x))
 
 all <- group_indicators
-    
+  
 group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
 
 all[, ncol(all)] <- varall
 
 group_indicator_list[[varall]] <- all
+
+# Split the full dataset by subgroup (eg mangroves), each into a separate matrix
 
 group_correlations <- list()
 group_correlations_dataframes <- list()
@@ -1517,6 +1554,7 @@ for (j in seq_along(group_indicator_list)) {
                    dplyr::select(-ecoregion_id, -vargroup) %>%
                    na.omit(.)
    
+   # Remove the years from the column names to make it tidier
    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
    
    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
@@ -1533,6 +1571,8 @@ for (j in seq_along(group_matrices)) {
   
   n <- nrow(subset_matrix)
   
+  # Fix up the column names (don't think this is needed any more?)
+  
   name <- paste(names(group_matrices)[j], "n =", n, sep = " ")
   name <- str_replace(name, "&", "and")
   name <- str_replace(name, "/", "_and_")
@@ -1540,13 +1580,18 @@ for (j in seq_along(group_matrices)) {
   name <- str_replace(name, ">", " more than ")
   name <- gsub("[()]", "", name)
   
+  # Check how many rows, don't calculate correlation if too few ecoregions in group
   if (nrow(subset_matrix) < 3) {
     
     print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
     
   } else {
     
+    # Get the correlation coefficients
+    
     p.mat <- cor_pmat(subset_matrix)
+    
+    # Make a correlation heatmap for the individual sub group
     
     correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
                                    title = name, 
@@ -1556,21 +1601,49 @@ for (j in seq_along(group_matrices)) {
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
     
-    correlation_df <- correlation_plot$data[,1:3] %>%
+    # Get the coefficients, and add some additional grouping variables 
+    # for the different types of combinations (eg independent or related inputs)
+    
+    correlation_df1 <- correlation_plot$data[,1:3] %>%
                       merge(indicator_properties[c("indicator","inputs")], 
                             by.x = "Var1", by.y = "indicator") %>%
                       dplyr::rename(input1 = inputs) %>%
                       merge(indicator_properties[c("indicator","inputs")], 
                             by.x = "Var2", by.y = "indicator") %>%
                       dplyr::rename(input2 = inputs) %>%
-                            mutate(subgroup = names(group_matrices)[j],
+                             mutate(subgroup = names(group_matrices)[j],
                              combination = paste(Var1, "x", Var2, sep = " "),
                              inputs = paste(input1, "x", input2, sep = " ")) %>%
                       mutate(inputs = ifelse(inputs == "land use data x iucn red list",
                                             "iucn red list x land use data", inputs)) %>%
                       dplyr::rename(coefficient = value) %>%
-                      dplyr::select(-Var1, -Var2) %>%
-                      merge(indicator_relationships, by = "combination")
+                      dplyr::select(-Var2) %>%
+                      merge(indicator_relationships, by = "combination") %>%
+                      dplyr::rename(ind_group = Var1) 
+    
+    correlation_df2 <- correlation_plot$data[,1:3] %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var1", by.y = "indicator") %>%
+      dplyr::rename(input1 = inputs) %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var2", by.y = "indicator") %>%
+      dplyr::rename(input2 = inputs) %>%
+      mutate(subgroup = names(group_matrices)[j],
+             combination = paste(Var2, "x", Var1, sep = " "),
+             inputs = paste(input1, "x", input2, sep = " ")) %>%
+      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                             "iucn red list x land use data", inputs)) %>%
+      dplyr::rename(coefficient = value) %>%
+      dplyr::select(-Var1) %>%
+      merge(indicator_relationships, by = "combination") %>%
+      dplyr::rename(ind_group = Var2) 
+    
+    correlation_df <- rbind(correlation_df1, correlation_df2)
+    
+    all_combos <- correlation_df$combination
+    
+    
+    # Create a directory for the plots for this group (eg Biome)
     
     group_directory <- file.path(current_analysis_outputs, paste(vargroup,
                                  "correlation matrices", sep = " "))
@@ -1580,7 +1653,9 @@ for (j in seq_along(group_matrices)) {
       dir.create( group_directory, recursive = TRUE )
       
     }
-
+    
+    # save each sub-group correlation heatmap (eg mangroves plot) in the group directory
+    
     ggsave(file.path(group_directory,
                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
            correlation_plot, device = "png")
@@ -1592,50 +1667,91 @@ for (j in seq_along(group_matrices)) {
 
   }
 
+# Combine all possible subgroups and correlation coefficients for the group
+# into one dataframe
 
 all_groups[[i]] <- group_correlations
 
 correlation_dataframe <- do.call(rbind, group_correlations_dataframes)
 
-heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
-                                             y = combination,
-                                             fill = coefficient)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
-       y = "Pairwise indicator comparisons") +
-  guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
-  theme(panel.grid.major = element_blank(),
-         panel.grid.minor = element_blank(),
-         panel.background = element_rect(fill = "grey97"),
-        legend.position = "bottom",
-        axis.title.x = element_text(size=8),
-        axis.title.y = element_text(size=8),
-        axis.text.x = element_text(size= 7),
-        axis.text.y = element_text(size= 7)) +
-  facet_wrap(~input_relationship) + 
-  theme(strip.text.x = element_text(size = 7, hjust = 0))
+# Make a heatmap that includes correlations for all subgroups in one plot 
+# (eg all biome subgroups (magroves, tropical forests etc) in one plot)
 
-heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
+# heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
+#                                              y = combination,
+#                                              fill = coefficient)) +
+#   geom_tile(color = "white") +
+#   scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
+#        y = "Pairwise indicator comparisons") +
+#   guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
+#   theme(panel.grid.major = element_blank(),
+#          panel.grid.minor = element_blank(),
+#          panel.background = element_rect(fill = "grey97"),
+#         legend.position = "bottom",
+#         axis.title.x = element_text(size=8),
+#         axis.title.y = element_text(size=8),
+#         axis.text.x = element_text(size= 7),
+#         axis.text.y = element_text(size= 7)) +
+#   facet_wrap(~input_relationship) + 
+#   theme(strip.text.x = element_text(size = 7, hjust = 0))
+# 
+# heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
+
+# Split the independent and related combinations
+
+independent <- correlation_dataframe %>%
+               filter(input_relationship == "independent") %>%
+               filter(ind_group == "BHI_plants"|
+                      ind_group == "BIIab"|
+                      ind_group == "BIIri"|
+                      ind_group == "HFP")
+
+independent_heatmap <- make_heatmap(independent)
+
+independent_heatmap
+
+# Save in the group directory
 
 ggsave(file.path(group_directory,
-                 paste(grouping_variables[i], "correlation_heatmap.png", sep = "_")),
-       heatmap, device = "png")
+                 paste(grouping_variables[i], "independent_correlation_heatmap.png", sep = "_")),
+       independent_heatmap, device = "png")
 
-all_heatmaps[[i]] <- heatmap
+all_independent_heatmaps[[i]] <- independent_heatmap
+
+
+related <- correlation_dataframe %>%
+  filter(input_relationship == "related")
+
+related_heatmap <- make_heatmap(related)
+related_heatmap
+
+ggsave(file.path(group_directory,
+                 paste(grouping_variables[i], "independent_correlation_heatmap.png", sep = "_")),
+       related_heatmap, device = "png")
+
+all_related_heatmaps[[i]] <- related_heatmap
+
+
 
 }
 
 names(all_groups) <- grouping_variables
-names(all_heatmaps) <- grouping_variables
+names(all_independent_heatmaps) <- grouping_variables
+names(all_related_heatmaps) <- grouping_variables
 
 i <- 1
-all_heatmaps[[i]]
-
+all_independent_heatmaps[[i]]
 
 i <- i + 1
-all_heatmaps[[i]]
+all_independent_heatmaps[[i]]
+
+i <- 1
+all_related_heatmaps[[i]]
+
+i <- i + 1
+all_related_heatmaps[[i]]
 
 
 # * Plot PCA ----

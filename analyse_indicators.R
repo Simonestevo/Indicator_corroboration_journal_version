@@ -148,16 +148,13 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
 
 # Ecoregion data ----
 
-raw_ecoregions_long <- readRDS(file.path(analysis_inputs,
-                                         "global_ecoregions_2017_ecoregion_values_master.rds")) 
+
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
-                                         "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
+                               "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
 
-# Convert numeric to factors
+# Keep a copy of unaltered ecoregion data
 
-ecoregions_wide <- raw_ecoregions_wide %>%
-  mutate(LPI_records = as.numeric(ifelse(is.na(LPI_records), 
-                                         0, LPI_records)))
+ecoregions_wide <- raw_ecoregions_wide 
 
 # Get names of numeric variables 
 
@@ -230,7 +227,7 @@ ecoregions_wide$endemics.factor <- discretize(ecoregions_wide$number.of.endemics
 
 table(ecoregions_wide$endemics.factor)
 
-ecoregions_wide$High.beta.area <- discretize(ecoregions_wide$High.beta.area, 
+ecoregions_wide$High.beta.area.factor <- discretize(ecoregions_wide$High.beta.area, 
                                       method = "interval",
                                       breaks = 4)
 
@@ -282,7 +279,7 @@ headline_threats <- threat_scheme %>%
 
 headline_threats <- c(headline_threats, "All threats")
 
-# Ecoregion map
+# Ecoregion map ----
 
 if(load_map == TRUE) {
 
@@ -356,24 +353,59 @@ lpi_95 <- quantile(indicators_wide$LPI_2005,
                    na.rm = TRUE)
 lpi_95
 
-# HFP values actually pretty ok
-hist(indicators_wide$HFP_2005, breaks = 20)
-max(indicators_wide$HFP_2005, na.rm = TRUE)
+lpi_mx_eco <- raw_indicators_wide %>%
+  filter(LPI_2005 == max(LPI_2005, na.rm = TRUE)) %>%
+  select(ecoregion_id) %>%
+  pull(.)
+
+# Note, max positive LPI score goes to ecoregion 675 Po Basin, which also gets the third most
+# negative (ie contradictory) score for HFP
+ecoregion_map_renamed %>% filter(ecoregion_id == lpi_mx_eco)
+
 
 # Just remove LPI outliers, given we know it is a dodgier dataset and volatile
-indicators_wide <- indicators_wide %>%
-                   mutate(LPI_2005 = ifelse(LPI_2005 > lpi_95,
-                                            NA, LPI_2005)) 
+indicators_wide_2 <- indicators_wide %>%
+  mutate(LPI_2005 = ifelse(LPI_2005 > lpi_95,
+                           NA, LPI_2005)) 
 
 dim(indicators_wide)
+
+# HFP values - have a couple of exceptionally low values
+
+hist(indicators_wide$HFP_2005, breaks = 20)
+min(indicators_wide$HFP_2005, na.rm = TRUE)
+hfp_mx <- max(raw_indicators_wide$HFP_2005, na.rm = TRUE)
+hfp_mx_eco <- raw_indicators_wide %>%
+              filter(HFP_2005 == max(HFP_2005, na.rm = TRUE)) %>%
+              select(ecoregion_id) %>%
+              pull(.)
+
+# Looking at HFP map, bermuda cells do have very high scores (eg 48), which
+# matches with the ecoregions WWF description of severe degradation, so
+# don't remove outliers
+
+ecoregion_map_renamed %>% filter(ecoregion_id == hfp_mx_eco)
+
+hfp_95 <- quantile(indicators_wide$LPI_2005, 
+                   probs = 0.95, 
+                   na.rm = TRUE)
+hfp_95
+
+
 
 # Looks much better
 hist(indicators_wide$LPI_2005)
 max(indicators_wide$LPI_2005, na.rm = TRUE)
 
+# Extinctions also have some very high values, however these can be verified and are
+# correct, so don't remove
+
+hist(indicators_wide$extinct_2008, breaks = 20)
+min(indicators_wide$extinct_2008, na.rm = TRUE)
+
 # * Remove unwanted indicators ----
 
-indicators_wide <- indicators_wide %>%
+indicators_wide_3 <- indicators_wide_2 %>%
                    dplyr::select(-number_extinct_2008, -number_extinct_2016,
                                  -AmphRLI_2008, -BirdRLI_2008, -BirdRLI_2016,
                                  -MammRLI_2008)
@@ -382,7 +414,7 @@ indicators_wide <- indicators_wide %>%
 
 # * Prepare PCA input data ----
 
-pca_input_data <- indicators_wide
+pca_input_data <- indicators_wide_3
 
 head(pca_input_data)
 
@@ -420,11 +452,11 @@ head(pca_input_data)
 
 # Add the grouping ecoregion variables back in
 
-pca_data_3 <- pca_input_data %>%
+pca_data_1 <- pca_input_data %>%
         merge(ecoregions_wide[c("ecoregion_id",
                                 "Biome",
                                 "disturbance.year",
-                                "High.beta.area",
+                                "High.beta.area.factor",
                                 "island.status",
                                 "predominant.threat.type",
                                 "realm",
@@ -454,17 +486,14 @@ pca_data_3 <- pca_input_data %>%
 
 # pca_data_3 <- spread(pca_data_2,indicator,indicator_value) 
 
-head(pca_data_3)
-dim(pca_data_3)
+head(pca_data_1)
+dim(pca_data_1)
 
 # Remove incomplete cases - NOTE - while including LPI, removes 3/4 of the data
 
-pca_data_4 <- pca_data_3[complete.cases(pca_data_3[,2:9]),]
-dim(pca_data_4)
+pca_data_2 <- pca_data_1[complete.cases(pca_data_1[,2:9]),]
+dim(pca_data_2)
 
-#' TODO: Fix this 
-#' 
-pca_data_5 <- pca_data_4 
 
 # * Indicators only PCA ----
 
@@ -473,24 +502,35 @@ pca_data_5 <- pca_data_4
 indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
 indicators_for_pca <- indicators_for_pca [!str_detect(indicators_for_pca , indicators_to_remove[2])]
 
-indicator_only_pca_data <- pca_data_5[,c("ecoregion_id", indicators_for_pca)]
+indicator_only_pca_data <- pca_data_2[,c("ecoregion_id", indicators_for_pca)]
+
+names(indicator_only_pca_data)
 
 # ** PCA ----
 
+# Tidy up names
+
 pl.data <- indicator_only_pca_data[,indicators_for_pca]
 rownames(pl.data) <- indicator_only_pca_data[,1]
-
-write.csv(pl.data, file.path(current_analysis_outputs, "indicator_only_pca_data.csv"))
-
 dimC <- dim(pl.data)
 
+# Scale the data to a mean of 0 and sd of 1
 pl.data <- scale(pl.data)
+summary(pl.data)
+sd(pl.data$BHI_plants_2005)
 
 names(pl.data) <- colnames(pl.data)
-
 pl.data <- as.data.frame(pl.data)
 
+# Save a copy of the inputs
+write.csv(pl.data, file.path(current_analysis_outputs, "indicator_only_pca_data.csv"))
+
+# Get formula for pca
+
 pc.f <- formula(paste("~", paste(names(pl.data), collapse = "+")))
+
+# Run pca
+
 pl.pca <- princomp(pc.f, cor=TRUE, data=pl.data)
 
 
@@ -549,33 +589,13 @@ scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2,
           ylab =pcylab, zlab = pczlab)
 text3D(pcx, pcy, pcz,  labels = rownames(pl.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
 
-# 3D as connected line
-scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2, 
-          col = gg.col(100), theta = 150, phi = 0, lwd = 4, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
-text3D(pcx, pcy, pcz,  labels = rownames(pl.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+# # 3D as connected line
+# scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2, 
+#           col = gg.col(100), theta = 150, phi = 0, lwd = 4, main = "PCA Scores", xlab = pcxlab,
+#           ylab =pcylab, zlab = pczlab)
+# text3D(pcx, pcy, pcz,  labels = rownames(pl.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
 
-# Plot3D with plotly
-#manual_palette <- c("#551A8B", "#8968CD", "#AB82FF", "#FF8C00", "#CD6600", "#8B4500")
 
-df3D <- data.frame(comp1=pl.pca$scores[,1],
-                   comp2=pl.pca$scores[,2],
-                   comp3=pl.pca$scores[,3])
-fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
-               # Hover text:
-               text = ~rownames(pl.pca$scores))
-fig <- fig %>% add_markers()
-fig <- fig %>% add_text(textposition = "top right")
-fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
-                                   yaxis = list(title = pcylab),
-                                   zaxis = list(title = pczlab)),
-                      annotations = list(
-                        x = 1.13,
-                        y = 1.05,
-                        text = 'PC3 Score',
-                        showarrow = FALSE
-                      ))
-fig
 
 ###Use prcomp() instead - this uses singular value decomposition 
 #pl.data <- read.table('Yr_as_col_new_78_spp_India_data.csv',sep=",",header=T,row.names=1)
@@ -606,6 +626,16 @@ fviz_pca_var(res.pca,
 res.pca4 <- PCA(pl.data, ncp = 3, graph = FALSE)
 res.hcpc <- HCPC(res.pca4, graph = FALSE)
 
+# * Get ecoregion clusters ----
+
+data.hcpc <- setDT(res.hcpc$data.clust, keep.rownames = TRUE)[]
+data.hcpc <- data.hcpc %>%
+             rename(ecoregion_id = rn)
+
+x <- res.hcpc$desc.var
+
+# Vertical dendrogram
+
 fviz_dend(res.hcpc, 
           cex = 0.7,                     # Label size
           palette = "jco",               # Color palette see ?ggpubr::ggpar
@@ -613,6 +643,8 @@ fviz_dend(res.hcpc,
           rect_border = "jco",           # Rectangle color
           labels_track_height = 0.8      # Augment the room for labels
 )
+
+# Factor map
 
 fviz_cluster(res.hcpc,
              repel = TRUE,            # Avoid label overlapping
@@ -660,24 +692,6 @@ ggplot(data = df, aes(x=comp1, y=comp2, group=1)) +
   geom_text(label=rownames(res.pca$x)) + 
   theme(legend.position="none")
 
-#Plotly version
-df3D <- data.frame(comp1=pcx, comp2=pcy, comp3=pcz)
-fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
-               # Hover text:
-               text = ~rownames(res.pca$x))
-fig <- fig %>% add_markers()
-fig <- fig %>% add_text(textposition = "top right")
-fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
-                                   yaxis = list(title = pcylab),
-                                   zaxis = list(title = pczlab)),
-                      annotations = list(
-                        x = 1.13,
-                        y = 1.05,
-                        text = 'PC3 Score',
-                        showarrow = FALSE
-                      ))
-fig
-
 # ** Dendrograms ----
 # Dendrogram flowing down the page
 dd <- dist(scale(pl.data), method = "euclidean")
@@ -693,21 +707,40 @@ par(cex=0.5)   # Customized plot; remove labels
 par(cex=1.0)   # Customized plot; remove labels
 plot(hcd,  xlab = "Height", nodePar = nodePar, horiz = TRUE)
 
+# Unrooted dendrogram ----
+
 # Unrooted - dendrogram on an arc
-plot(as.phylo(hc), type = "unrooted", cex = 0.6, no.margin = TRUE)
+
+tiff(file = file.path(current_analysis_outputs, "unrooted_dendrogram.tiff"), 
+     units = "in", width=10, height=5, res = 300)
+
+colors <- viridis(3)
+clus3 = cutree(hc, k = 3)
+plot(as.phylo(hc), type = "unrooted", 
+     tip.color = colors[clus3], 
+     #edge.color = colors[clus3],
+     cex = 0.6, no.margin = TRUE,
+     lab4ut = "axial")
+
+dev.off()
 
 # Fan
 par(cex=0.8)
 par(cex=1.0)
 plot(as.phylo(hc), type = "fan")
 colors = c("red", "blue", "green", "black", "yellow", "purple", "grey", "brown", "magenta", "cyan", "violetred", "tomato")
-clus = cutree(hc, 12)
+clus = cutree(hc, 3)
 plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 0.7)
 plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 1.0)
 
 # * Indicators and additional variables ----
 
-all_variables_pca_data <- pca_data_5[,c("ecoregion_id", numeric_variables, 
+
+pca_data_3 <- pca_data_2 %>%
+              merge(ecoregions_wide[c("ecoregion_id", numeric_variables)],
+                    by = "ecoregion_id")
+
+all_variables_pca_data <- pca_data_3[,c("ecoregion_id", numeric_variables, 
                                         indicators_for_pca)]
 
 
@@ -791,27 +824,6 @@ scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2,
           ylab =pcylab, zlab = pczlab)
 text3D(pcx, pcy, pcz,  labels = rownames(pl.pca.all$scores), add = TRUE, colkey = FALSE, cex = 0.7)
 
-# Plot3D with plotly
-#manual_palette <- c("#551A8B", "#8968CD", "#AB82FF", "#FF8C00", "#CD6600", "#8B4500")
-
-df3D <- data.frame(comp1=pl.pca.all$scores[,1],
-                   comp2=pl.pca.all$scores[,2],
-                   comp3=pl.pca.all$scores[,3])
-fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
-               # Hover text:
-               text = ~rownames(pl.pca.all$scores))
-fig <- fig %>% add_markers()
-fig <- fig %>% add_text(textposition = "top right")
-fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
-                                   yaxis = list(title = pcylab),
-                                   zaxis = list(title = pczlab)),
-                      annotations = list(
-                        x = 1.13,
-                        y = 1.05,
-                        text = 'PC3 Score',
-                        showarrow = FALSE
-                      ))
-fig
 
 ###Use prcomp() instead - this uses singular value decomposition 
 #pl.data.all <- read.table('Yr_as_col_new_78_spp_India_data.csv',sep=",",header=T,row.names=1)
@@ -949,7 +961,7 @@ plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex 
 tiff(file = file.path(current_analysis_outputs, "pca_screeplot.tiff"), 
      units = "in", width=10, height=5, res = 200)
 
-screeplot(pca, type = "l", npcs = 5)
+screeplot(pl.pca, type = "l", npcs = 5)
 abline(h = 1, col="red", lty=5)
 legend("topright", legend=c("Eigenvalue = 1"),
        col=c("red"), lty=5, cex=0.6)
@@ -959,7 +971,7 @@ dev.off()
 tiff(file = file.path(current_analysis_outputs, "pca_cumulative_variance.tiff"), 
      units = "in", width=10, height=5, res = 200)
 
-cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+cumpro <- cumsum(pl.pca$sdev^2 / sum(pl.pca$sdev^2))
 plot(cumpro[0:5], xlab = "PC #", ylab = "Amount of explained variance")
 
 dev.off()
@@ -969,11 +981,12 @@ dev.off()
 tiff(file = file.path(current_analysis_outputs, "pca_dim_1_2.tiff"), 
      units = "in", width=10, height=5, res = 200)
 
-plot(pca$x[,1],pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)")
+plot(pl.pca$x[,1],pl.pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)")
 
 dev.off()
 
 # PCA cluster analysis ----
+pca <- pl.pca
 
 summary(pca)
 
@@ -2014,6 +2027,30 @@ par(mfrow = c(2, 3))
 # check_model <- cbind(true,model)
 # 
 # check_model
+
+# 3D plotting code ----
+
+# Plot3D with plotly
+#manual_palette <- c("#551A8B", "#8968CD", "#AB82FF", "#FF8C00", "#CD6600", "#8B4500")
+
+# df3D <- data.frame(comp1=pl.pca$scores[,1],
+#                    comp2=pl.pca$scores[,2],
+#                    comp3=pl.pca$scores[,3])
+# fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
+#                # Hover text:
+#                text = ~rownames(pl.pca$scores))
+# fig <- fig %>% add_markers()
+# fig <- fig %>% add_text(textposition = "top right")
+# fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
+#                                    yaxis = list(title = pcylab),
+#                                    zaxis = list(title = pczlab)),
+#                       annotations = list(
+#                         x = 1.13,
+#                         y = 1.05,
+#                         text = 'PC3 Score',
+#                         showarrow = FALSE
+#                       ))
+# fig
 
 # Old analysis code ----
 

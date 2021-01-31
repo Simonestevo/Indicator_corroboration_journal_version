@@ -152,6 +152,7 @@ heatmap <- ggplot(data, aes(x = subgroup,
                             y = combination,
                             fill = coefficient)) +
   geom_tile(color = "white") +
+  geom_text(aes(label=coefficient)) +
   scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
@@ -174,6 +175,32 @@ return(heatmap)
 
 }
 
+lookup_ecoregion <- function(eco_id_number) {
+  
+eco_name <- ecoregion_map_renamed %>% filter(ecoregion_id == eco_id_number) %>%
+            select(ecoregion_id, ECO_NAME) %>%
+            st_drop_geometry()
+
+print(eco_name)
+
+eco_vals <- raw_indicators_wide %>% 
+  filter(ecoregion_id == eco_id_number) %>%
+  select(all_of(indicators)) 
+
+averages <- raw_indicators_wide %>%
+            select(all_of(indicators)) %>%
+            colMeans(na.rm = TRUE)
+
+id_col <- c(paste("eco", eco_id_number, "scores", sep = " "), "global_mean")
+eco_vals <- rbind(eco_vals, averages)
+
+eco_vals <- cbind(id_col, eco_vals)
+
+eco_vals
+
+}
+
+lookup_ecoregion(374)
 
 # Ecoregion data ----
 
@@ -297,6 +324,9 @@ raw_indicators_wide <- raw_indicators_long %>%
 
 dim(raw_indicators_wide)
 
+raw_names <- names(raw_indicators_wide)
+new_raw_names <- str_replace(raw_names, " ", "_")
+names(raw_indicators_wide) <- new_raw_names
 # Threat scheme
 
 threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
@@ -387,6 +417,10 @@ lpi_mx_eco <- raw_indicators_wide %>%
   select(ecoregion_id) %>%
   pull(.)
 
+# Looks much better
+hist(indicators_wide$LPI_2005)
+max(indicators_wide$LPI_2005, na.rm = TRUE)
+
 # Note, max positive LPI score goes to ecoregion 675 Po Basin, which also gets the third most
 # negative (ie contradictory) score for HFP
 ecoregion_map_renamed %>% filter(ecoregion_id == lpi_mx_eco)
@@ -414,17 +448,6 @@ hfp_mx_eco <- raw_indicators_wide %>%
 # don't remove outliers
 
 ecoregion_map_renamed %>% filter(ecoregion_id == hfp_mx_eco)
-
-hfp_95 <- quantile(indicators_wide$LPI_2005, 
-                   probs = 0.95, 
-                   na.rm = TRUE)
-hfp_95
-
-
-
-# Looks much better
-hist(indicators_wide$LPI_2005)
-max(indicators_wide$LPI_2005, na.rm = TRUE)
 
 # Extinctions also have some very high values, however these can be verified and are
 # correct, so don't remove
@@ -511,7 +534,8 @@ dim(pca_data_2)
 # Only conducts the PCA on the main 8 indicators (excludes RLI land use and RLI non-land use)
 
 indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
-indicators_for_pca <- indicators_for_pca [!str_detect(indicators_for_pca , indicators_to_remove[2])]
+indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
+                                                      indicators_to_remove[2])]
 
 indicator_only_pca_data <- pca_data_2[,c("ecoregion_id", indicators_for_pca)]
 
@@ -555,11 +579,15 @@ pl.pca$sd^2
 summary(pl.pca)
 
 # Plot results - look to see number of PCA axes to retain
-plot(pl.pca, type="lines")
+plot(pl.pca, type = "lines")
 
-### Shows 2 axes likely sufficient
+### How many dimensions do we include?
 # Plot points
-text(pl.pca$scores, labels=as.character(row.names(pl.data)), pos=1, cex=0.7)
+text(pl.pca$scores, labels = as.character(row.names(pl.data)), pos=1, cex=0.7)
+
+# Can see ecoregion 374 sticks out
+
+lookup_ecoregion(374)
 
 # Biplot of PCA
 biplot(pl.pca, cex=0.8, col=c(1,8))
@@ -1439,7 +1467,53 @@ correlation_input_data <- correlation_input_data_all %>%
                            grouping_variables)))
 
 names(correlation_input_data)
-  
+
+# Cluster boxplots ----
+
+# Plot data by cluster
+
+# Add numeric ecoregion variables?
+cluster_boxplot_data_wide <- correlation_input_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster", indicators)))
+
+cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
+                                       id.vars = 'ecoregion_id')
+
+cluster_boxplot_data <- cluster_boxplot_data %>%
+                        dplyr::filter(variable != "cluster") %>%
+                        merge(cluster_boxplot_data_wide[c("ecoregion_id",
+                                                          "cluster")],
+                              by = "ecoregion_id")
+
+head(cluster_boxplot_data)
+
+cluster_boxplots <- ggplot(cluster_boxplot_data) +
+                    geom_boxplot(aes(x = variable, y = value)) +
+                    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                    facet_wrap( ~ cluster)
+
+cluster_boxplots
+
+
+boxplot(BHI_plants_2005 ~ cluster, data = correlation_input_data)
+
+# Create barplots for categorical data (figure out a prettier way to do this)
+
+categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
+
+cluster_categorical_data <- correlation_input_data %>%
+                            dplyr::select(all_of(c("ecoregion_id", 
+                                                   categorical_variables)))
+
+cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
+                                       id.vars = 'ecoregion_id')
+
+
+cluster_barplots <- ggplot(cluster_categorical_data) +
+                    geom_barplot(aes(x = variable, y = value)) +
+                    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                    facet_wrap( ~ cluster)
+
 # Scatterplots ----
 
 # Look at how groups are currently classed

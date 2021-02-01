@@ -1072,11 +1072,21 @@ cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
                                    cluster_boxplot_data_wide)
 summary(cluster_boxplot_data_wide)
 
+cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
+                             dplyr::select(-mean.scientific.publications,
+                                           -predominant.threat.count,
+                                           -number.of.endemics) %>%
+                             rename(human_pop_density = mean.human.population.density)
+
 # Melt back into long format
 
 cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
                                        measure.vars = c(indicators, 
-                                                        numeric_variables))
+                                                        "ecoregion.area.km.sq",
+                                                        "High.beta.area",
+                                                        "LPI_records",
+                                                        "human_pop_density",
+                                                        "RLI_records"))
 
 head(cluster_boxplot_data)
 
@@ -1091,8 +1101,9 @@ cluster_boxplots <- ggplot(cluster_boxplot_data) +
                     geom_hline(yintercept = 0) +
                     scale_fill_viridis(discrete=TRUE)+
   theme(
-    legend.position = "bottom",
-    axis.text.x=element_blank(),
+    legend.position = "none",
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10)
   )
 
 cluster_boxplots
@@ -1101,9 +1112,9 @@ ggsave(file.path(current_analysis_outputs, "cluster_boxplots.png"),
        cluster_boxplots, device = "png")
 
 violin_plots <- cluster_boxplot_data %>%
-ggplot(aes(x = variable, y = value,
-           fill = variable,
-           color = variable)) +
+ggplot(aes(x = Indicator, y = `Indicator value`,
+           fill = Indicator,
+           color = Indicator)) +
   geom_violin(width=2.1, size=0.2) +
   scale_fill_viridis(discrete=TRUE) +
   scale_color_viridis(discrete=TRUE) +
@@ -1111,10 +1122,10 @@ ggplot(aes(x = variable, y = value,
   theme(
     legend.position = "none"
   ) + 
-  coord_flip() +
+  #coord_flip() +
   facet_wrap( ~ cluster, nrow = 3) +
   theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6)) +
+        axis.text.x = element_text(size = 6, angle = 45, hjust = 1)) +
   geom_hline(yintercept = 0, color = "red")
 
 violin_plots
@@ -1123,18 +1134,24 @@ violin_plots
 
 categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
-cluster_categorical_data <- correlation_input_data %>%
-                            dplyr::select(all_of(c("ecoregion_id", 
+cluster_barplot_data_wide <- correlation_input_data_all %>%
+                            dplyr::select(all_of(c("ecoregion_id", "cluster",
                                                    categorical_variables)))
+summary(cluster_categorical_data)
 
-cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
-                                       id.vars = 'ecoregion_id')
+cluster_barplot_data <- reshape2::melt(cluster_barplot_data_wide, 
+                                       measure.vars = categorical_variables)
 
+head(cluster_barplot_data)
 
-cluster_barplots <- ggplot(cluster_categorical_data) +
-                    geom_barplot(aes(x = variable, y = value)) +
-                    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+cluster_barplots <- ggplot(cluster_barplot_data, aes(x = variable, 
+                                                     y = value)) +
+                    geom_bar(stat = "identity", position = "stack") +
+                    theme(axis.text.x = element_text(angle = 45, 
+                                                     hjust = 1)) +
                     facet_wrap( ~ cluster)
+
+cluster_barplots
 
 # Scatterplots ----
 
@@ -1147,9 +1164,8 @@ correlation_input_data$ecoregion_id <- as.numeric(correlation_input_data$ecoregi
 
 # Convert characters to factors (should only affect grouping vars)
 
-correlation_input_data[sapply(correlation_input_data, is.character)] <- 
-  lapply(correlation_input_data[sapply(correlation_input_data, is.character)], 
-                                       as.factor)
+correlation_input_data <- correlation_input_data %>% 
+                          mutate(across(where(is.character), as.factor))
 
 # Check it worked correctly
 lapply(correlation_input_data, class)
@@ -1406,12 +1422,12 @@ independent <- correlation_dataframe %>%
 
 independent_heatmap <- make_heatmap(independent)
 
-independent_heatmap
 
 # Save in the group directory
 
 ggsave(file.path(group_directory,
-                 paste(grouping_variables[i], "independent_correlation_heatmap.png", sep = "_")),
+                 paste(grouping_variables[i], 
+                       "independent_correlation_heatmap.png", sep = "_")),
        independent_heatmap, device = "png")
 
 all_independent_heatmaps[[i]] <- independent_heatmap
@@ -1424,15 +1440,16 @@ related_heatmap <- make_heatmap(related)
 related_heatmap
 
 ggsave(file.path(group_directory,
-                 paste(grouping_variables[i], "independent_correlation_heatmap.png", sep = "_")),
+                 paste(grouping_variables[i], "related_correlation_heatmap.png", 
+                       sep = "_")),
        related_heatmap, device = "png")
 
 all_related_heatmaps[[i]] <- related_heatmap
 
-
-
 }
 
+x <- all_groups[[1]]
+y <- all_groups[[2]]
 names(all_groups) <- grouping_variables
 names(all_independent_heatmaps) <- grouping_variables
 names(all_related_heatmaps) <- grouping_variables

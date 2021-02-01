@@ -815,79 +815,6 @@ pca_data_3 <- pca_data_2 %>%
 all_variables_pca_data <- pca_data_3[,c("ecoregion_id", numeric_variables, 
                                         indicators_for_pca)]
 
-
-# Back to my code ----
-
-# look at the eigen values and cumulative variance plot
-
-tiff(file = file.path(current_analysis_outputs, "pca_screeplot.tiff"), 
-     units = "in", width=10, height=5, res = 200)
-
-screeplot(pl.pca, type = "l", npcs = 5)
-abline(h = 1, col="red", lty=5)
-legend("topright", legend=c("Eigenvalue = 1"),
-       col=c("red"), lty=5, cex=0.6)
-
-dev.off()
-
-tiff(file = file.path(current_analysis_outputs, "pca_cumulative_variance.tiff"), 
-     units = "in", width=10, height=5, res = 200)
-
-cumpro <- cumsum(pl.pca$sdev^2 / sum(pl.pca$sdev^2))
-plot(cumpro[0:5], xlab = "PC #", ylab = "Amount of explained variance")
-
-dev.off()
-
-# first two principle components plot (the results seems clustered..)
-
-tiff(file = file.path(current_analysis_outputs, "pca_dim_1_2.tiff"), 
-     units = "in", width=10, height=5, res = 200)
-
-plot(pl.pca$x[,1],pl.pca$x[,2], xlab="PC1 (44.3%)", ylab = "PC2 (19%)")
-
-dev.off()
-
-# PCA cluster analysis ----
-pca <- pl.pca
-
-summary(pca)
-
-# Figure out best number of clusters
-
-wss <- 0
-set.seed(1)
-
-# Look over 1 to 15 possible clusters
-for (i in 1:15) {
-  # Fit the model: km.out
-  km.out <- kmeans(pca$x[,1:4], centers = i, nstart = 20, iter.max = 200)
-  # Save the within cluster sum of squares
-  wss[i] <- km.out$tot.withinss
-}
-
-tiff(file = file.path(current_analysis_outputs, "pca_cluster_model_selection.tiff"), 
-     units = "in", width=10, height=5, res = 200)
-
-# Produce a scree plot
-plot(1:15, wss, type = "b",
-     xlab = "Number of Clusters",
-     ylab = "Within groups sum of squares")
-
-dev.off()
-
-# Looks like there is a clear elbow between 3 and 4 clusters
-
-number_clusters <- 3
-
-pca_clusters <- kmeans(pca$x[,1:4], centers = number_clusters, nstart = 100)
-
-# plot(pca_data_5[, c("BIIri_2005", "threatened_2005")],
-#      col = pca_clusters$cluster,
-#      main = paste("k-means clustering of indicator data with", number_clusters, "clusters"),
-#      xlab = "bii", ylab = "rli")
-# 
-
-
 # Map & plot clusters ----
 
 cluster_map_data <- ecoregion_map_renamed %>%
@@ -920,48 +847,27 @@ ggsave(file.path(current_analysis_outputs,
 # Look at the ecoregions in each cluster
 
 cluster_one_ecoregions <- cluster_map_data %>% 
-                          filter(cluster == 1)
+                          filter(cluster == 1) %>%
+                          st_drop_geometry(.)
 
 cluster_two_ecoregions <- cluster_map_data %>% 
-                          filter(cluster == 2)
+                          filter(cluster == 2) %>%
+                          st_drop_geometry(.)
 
-cluster_two_ecoregions <- cluster_map_data %>% 
-                          filter(cluster == 3)
+cluster_three_ecoregions <- cluster_map_data %>% 
+                          filter(cluster == 3) %>%
+                          st_drop_geometry(.)
 
-
-table(cluster_one_ecoregions$island.status)
-table(cluster_two_ecoregions$island.status)
-table(cluster_three_ecoregions$island.status)
-
-table(cluster_one_ecoregions$included.in.HFP)
-table(cluster_two_ecoregions$included.in.HFP)
-table(cluster_three_ecoregions$included.in.HFP)
-
-table(cluster_one_ecoregions$scenario)
-table(cluster_two_ecoregions$scenario)
-table(cluster_three_ecoregions$scenario)
-
-table(cluster_one_ecoregions$endemics.factor)
-table(cluster_two_ecoregions$endemics.factor)
-table(cluster_three_ecoregions$endemics.factor)
-
-table(cluster_one_ecoregions$rli.records.factor)
-table(cluster_two_ecoregions$rli.records.factor)
-table(cluster_three_ecoregions$rli.records.factor)
-
-table(mean(cluster_one_ecoregions$mean.human.population.density),
-      mean(cluster_two_ecoregions$mean.human.population.density),
-      mean(cluster_three_ecoregions$mean.human.population.density))
-
-plot(x = log10(pca_data_5$mean.human.population.density), y = pca_data_5$BHI_plants_2005)
-
-write.csv(cluster_one_ecoregions, file.path(current_analysis_outputs, "cluster_one_ecoregions.csv"))
-write.csv(cluster_two_ecoregions, file.path(current_analysis_outputs, "cluster_two_ecoregions.csv"))
-write.csv(cluster_three_ecoregions, file.path(current_analysis_outputs, "cluster_three_ecoregions.csv"))
+write.csv(cluster_one_ecoregions, file.path(current_analysis_outputs, 
+                                            "cluster_one_ecoregions.csv"))
+write.csv(cluster_two_ecoregions, file.path(current_analysis_outputs, 
+                                            "cluster_two_ecoregions.csv"))
+write.csv(cluster_three_ecoregions, file.path(current_analysis_outputs,
+                                              "cluster_three_ecoregions.csv"))
 
 # Cluster biplot data
 
-pca_data_6 <-  pca_data_5 %>%
+cluster_biplot_data <-  pca_data_2 %>%
   merge(cluster_map_data, by = "ecoregion_id")
 
 
@@ -974,7 +880,7 @@ pca_cluster_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21,
                                     label = "var",
                                     col.var = "black",
                                     repel = TRUE,
-                                    fill.ind = as.factor(pca_data_6$cluster),
+                                    fill.ind = as.factor(cluster_biplot_data$cluster),
                                     legend.title = "Cluster") +
                                     theme(plot.title = element_blank(),
                                           legend.position = "right") +
@@ -991,33 +897,8 @@ ggsave(file.path(current_analysis_outputs,
 
 rm(cluster_map, cluster_map_data)
 
-# test
-
-# ECO <- east_australia # This ecoregion has a low HFP value (bad outcome)
-# HFP <- raw_indicators_wide %>% filter(ecoregion_id == ECO) %>% select(`HFP 2005`)
-# HFP
-# 
-# # Once inverted, it should have a high ecoregion value to represent the bad outcome
-# HFP_inv <- indicators_wide %>% filter(ecoregion_id == ECO) %>% 
-#   select(`HFP 2005-`)
-# HFP_inv
 
 # Prepare correlation data ----
-
-# * Transform ----
-
-# library(moments)
-# skewness(indicators_wide$RLI_2005, na.rm = TRUE) # negatively skewed a lot (-2.48)
-# skewness(indicators_wide$HFP_2005, na.rm = TRUE) # negatively skewed a bit (-0.89)
-# 
-# x <- indicators_wide$RLI_2005
-# indicators_wide$RLI_2005_log <- 1/(max(x+1) - x) 
-# indicators_wide$HFP_2005_log <- log10(indicators_wide$HFP_2005)
-# 
-# 
-# skewness(indicators_wide$RLI_2005_log, na.rm = TRUE) # negatively skewed a lot (-2.48)
-# hist(indicators_wide$RLI_2005_log)
-# skewness(indicators_wide$HFP_2005_log, na.rm = TRUE)
 
 # * Centre ----
 

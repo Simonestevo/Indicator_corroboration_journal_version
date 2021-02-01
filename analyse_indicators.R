@@ -598,8 +598,13 @@ text(pl.pca$scores, labels = as.character(row.names(pl.data)), pos=1, cex=0.7)
 lookup_ecoregion(374)
 
 # Biplot of PCA - can see LPI gives little contribution
+
+tiff(file = file.path(current_analysis_outputs, "LPI_inclusive_pca_biplot.tiff"), 
+     units = "in", width=10, height=5, res = 300)
+
 biplot(pl.pca, cex=0.8, col=c(1,8))
 
+dev.off()
 
 # * No LPI indicator PCA ----
 
@@ -634,11 +639,11 @@ dimC <- dim(pl2.data)
 # Scale the data to a mean of 0 and sd of 1
 pl2.data <- scale(pl2.data)
 summary(pl2.data)
-sd(pl2.data$BHI_plants_2005)
 
 names(pl2.data) <- colnames(pl2.data)
 pl2.data <- as.data.frame(pl2.data)
 dim(pl2.data)
+sd(pl2.data$BHI_plants_2005)
 
 # Save a copy of the inputs
 write.csv(pl2.data, file.path(current_analysis_outputs, "indicator_only_pca_2_data.csv"))
@@ -651,9 +656,13 @@ pc.f2 <- formula(paste("~", paste(names(pl2.data), collapse = "+")))
 
 pl2.pca <- princomp(pc.f2, cor=TRUE, data=pl2.data)
 
-
 # Print out PCA loadings
-pl2.pca$loadings
+pca_loadings <- pl2.pca$loadings
+
+pca_loadings <- as.table(pca_loadings)
+
+write.csv(pca_loadings, file.path(current_analysis_outputs, 
+                                  "pca_loadings.csv"))
 
 # Print out eigenvalues
 pl2.pca$sd^2
@@ -661,10 +670,18 @@ pl2.pca$sd^2
 # Print PCA summary
 summary(pl2.pca)
 
+# Look at the amount of explained variance
+
+cumpro <- cumsum(pl2.pca$sdev^2 / sum(pl2.pca$sdev^2))
+plot(cumpro[0:5], xlab = "PC #", 
+     ylab = "Amount of explained variance",
+     main = "Cumulative variance plot")
+
 # Plot results - look to see number of PCA axes to retain
 plot(pl2.pca, type="lines")
 
-### Shows 2 or 3 axes likely sufficient
+### Looks like need to consider the first three axes still?
+
 # Plot points
 text(pl2.pca$scores, labels=as.character(row.names(pl2.data)), pos=1, cex=0.7)
 
@@ -690,12 +707,16 @@ pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
 
 View(pl2.pca$scores)
 
+tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"), 
+     units = "in", width=10, height=5, res = 300)
+
 # 3D as points
 scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
           col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
           ylab =pcylab, zlab = pczlab)
 text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
 
+dev.off()
 
 ###Use prcomp() instead - this uses singular value decomposition 
 
@@ -714,6 +735,9 @@ fviz_pca_ind(res.pca2,
 ) +
   labs(title ="PCA", x = "PC1", y = "PC2")
 
+tiff(file = file.path(current_analysis_outputs, "pca_biplot.tiff"), 
+     units = "in", width=10, height=5, res = 300)
+
 # Graph of variables
 fviz_pca_var(res.pca2,
              col.var = "contrib", # Color by contributions to the PC
@@ -721,13 +745,12 @@ fviz_pca_var(res.pca2,
              repel = TRUE     # Avoid text overlapping
 )
 
-
-
+dev.off()
 
 # * Get ecoregion clusters ----
 
 # Compute hierarchical clustering on principal components
-res.pca24 <- PCA(pl2.data, ncp = 3, graph = FALSE)
+res.pca24 <- PCA(pl2.data, ncp = 5, graph = FALSE)
 res.hcpc2 <- HCPC(res.pca24, graph = FALSE)
 
 data.hcpc2 <- as.data.frame(setDT(res.hcpc2$data.clust, keep.rownames = TRUE)[])
@@ -737,8 +760,12 @@ data.hcpc2 <- data.hcpc2 %>%
                             ecoregion_id = rn)
 
 names(data.hcpc2)
+unique(data.hcpc2$cluster)
 
 # Vertical dendrogram
+
+tiff(file = file.path(current_analysis_outputs, "pca_cluster_dendrogram.tiff"), 
+     units = "in", width=10, height=5, res = 300)
 
 fviz_dend(res.hcpc2, 
           cex = 0.7,                     # Label size
@@ -747,6 +774,8 @@ fviz_dend(res.hcpc2,
           rect_border = "jco",           # Rectangle color
           labels_track_height = 0.8      # Augment the room for labels
 )
+
+dev.off()
 
 # Factor map
 
@@ -758,57 +787,6 @@ fviz_cluster(res.hcpc2,
              main = "Factor map"
 )
 
-
-PoV <- res.pca$sdev^2/sum(res.pca$sdev^2)
-fviz_eig(res.pca)
-
-pcx <- res.pca$x[,1]
-pcy <- res.pca$x[,2]
-pcz <- res.pca$x[,3]
-
-pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
-pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
-pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
-
-# 3D as points
-scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
-          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
-text3D(pcx, pcy, pcz,  labels = rownames(res.pca$x), add = TRUE, colkey = FALSE, cex = 0.7)
-
-# 3D as connected line
-scatter3D(pcx, pcy, pcz, bty = "g", type = "b", pch = 20, cex = 2, 
-          col = gg.col(100), theta = 120, phi = 0, lwd = 2, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
-text3D(pcx, pcy, pcz,  labels = rownames(res.pca$x), add = TRUE, colkey = FALSE, cex = 0.7)
-
-# Rainbow version
-df <- data.frame(comp1=pcx, comp2=pcy)
-ggplot(data = df, aes(x=comp1, y=comp2, group=1)) +
-  geom_point(size=5, aes(colour=rownames(res.pca$x))) +
-  geom_path(size = 0.2) +
-  geom_text(label=rownames(res.pca$x)) + 
-  theme(legend.position="none")
-
-ggplot(data = df, aes(x=comp1, y=comp2, group=1)) +
-  geom_point(size=5, aes(colour=rownames(res.pca$x))) +
-  geom_text(label=rownames(res.pca$x)) + 
-  theme(legend.position="none")
-
-# ** Dendrograms ----
-# Dendrogram flowing down the page
-dd <- dist(scale(pl2.data), method = "euclidean")
-hc <- hclust(dd, method = "ward.D2")
-plot(hc, hang = -1, cex = 0.6)   # Put the labels at the same height: hang = -1
-plot(hc, hang = -1, cex = 1.5)   # Put the labels at the same height: hang = -1
-
-# Dendrogram flowing across the page
-# Define nodePar
-hcd <- as.dendrogram(hc)
-nodePar <- list(lab.cex = 0.6, pch = c(NA, 19),  cex = 0.7, col = "blue")
-par(cex=0.5)   # Customized plot; remove labels
-par(cex=1.0)   # Customized plot; remove labels
-plot(hcd,  xlab = "Height", nodePar = nodePar, horiz = TRUE)
 
 # Unrooted dendrogram ----
 

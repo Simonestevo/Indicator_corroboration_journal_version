@@ -290,6 +290,17 @@ table(ecoregions_wide$High.beta.area)
 #         by.x = "ecoregion_id", by.y = "ECO_ID") %>%
 #   rename(country = CNTRY_NAME)
 
+
+# Convert any characters into factors
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(across(where(is.character), as.factor)) 
+
+
+# Get the names of factors
+
+grouping_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
+
 rm(raw_ecoregions_long, raw_ecoregions_wide)
 
 # Indicator data ----
@@ -909,10 +920,6 @@ indicators_wide_centred <- indicators_wide %>%
                            mutate_at(c(2:ncol(indicators_wide)), 
                                      funs(c(scale(.)))) 
 
-# Subset to just the time points we care about
-
-
-
 summary(indicators_wide_centred)
 
 # ** Centred boxplots ----
@@ -923,6 +930,7 @@ summary(indicators_wide_centred)
 indicator_boxplot_data_wide <- indicators_wide_centred %>%
   dplyr::select(all_of(c("ecoregion_id", indicators)))
 
+# Convert back into long format
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                           id.vars = 'ecoregion_id')
 
@@ -932,38 +940,15 @@ boxplots <- ggplot(indicator_boxplot_data) +
 
 boxplots
 
-boxplot(indicators_wide_centred$HFP_2005)
-
-boxplot(indicators_wide_centred$LPI_2005)
-boxplot(raw_indicators_wide$extinct_2008)
-
-indicator_boxplot_data_2 <- reshape2::melt(indicators_wide_centred, 
-                                           id.vars = 'ecoregion_id')
-
-boxplots_2 <- ggplot(indicator_boxplot_data_2) +
-              geom_boxplot(aes(x = variable, y = value)) +
-              theme(axis.text.x = element_text(angle = 45,hjust = 1))
-
-boxplots_2
-
-ggsave(file.path(current_analysis_outputs, "indicator_boxplots_2.png"),
-       boxplots_2, device = "png")
+ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
+       boxplots, device = "png")
 
 rm(raw_indicators_long, raw_indicators_wide)
 
 # Finalise correlation data ----
 
 correlation_input_data_all <- indicators_wide_centred %>%
-  merge(ecoregions_wide[c("ecoregion_id",
-                          "Biome",
-                          "disturbance.year",
-                          "High.beta.area.factor",
-                          "island.status",
-                          "predominant.threat.type",
-                          "realm",
-                          "lpi.records.factor",
-                          "rli.records.factor")],
-        by = "ecoregion_id", all.y = TRUE) %>%
+  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
                           merge(cluster_map_data[c("ecoregion_id", "cluster")],
                                 by = "ecoregion_id") %>%
                           dplyr::select(-geometry)
@@ -1040,25 +1025,24 @@ time_scatterplots[[4]]
 
 # Get the names of grouping variables
 
-correlation_input_data <- correlation_input_data_all %>%
-                          merge(pca_data_6[c("ecoregion_id", 
-                                             "cluster")])
 
-
-grouping_variables <- names(correlation_input_data)[!(names(
-                          correlation_input_data) %in% 
-                                indicators_all)]
-
-grouping_variables <- grouping_variables[!grouping_variables %in% "ecoregion_id"]
+# 
+# grouping_variables <- names(correlation_input_data)[!(names(
+#                           correlation_input_data) %in% 
+#                                 indicators_all)]
+# 
+# grouping_variables <- grouping_variables[!grouping_variables %in% "ecoregion_id"]
 
 # Get categorical grouping variables only 
 
-groups <- correlation_input_data_all %>%
-          dplyr::select(all_of(grouping_variables))
-
-lapply(groups, class)
+# groups <- correlation_input_data_all %>%
+#           dplyr::select(all_of(grouping_variables))
+# 
+# lapply(groups, class)
 
 # Subset to a single timepoint ----
+
+dim(correlation_input_data_all)
 
 correlation_input_data <- correlation_input_data_all %>%
     dplyr::select(all_of(c("ecoregion_id",indicators,
@@ -1070,30 +1054,70 @@ names(correlation_input_data)
 
 # Plot data by cluster
 
-# Add numeric ecoregion variables?
-cluster_boxplot_data_wide <- correlation_input_data %>%
-  dplyr::select(all_of(c("ecoregion_id", "cluster", indicators)))
+library(forcats)
+library(hrbrthemes)
+
+cluster_boxplot_data_wide <- correlation_input_data_all %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster", indicators, numeric_variables)))
+
+summary(cluster_boxplot_data_wide)
+
+# Make sure all the values are scaled
+
+cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
+                                                                numeric_variables)])
+
+cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
+                                                                 "cluster")], 
+                                   cluster_boxplot_data_wide)
+summary(cluster_boxplot_data_wide)
+
+# Melt back into long format
 
 cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
-                                       id.vars = 'ecoregion_id')
-
-cluster_boxplot_data <- cluster_boxplot_data %>%
-                        dplyr::filter(variable != "cluster") %>%
-                        merge(cluster_boxplot_data_wide[c("ecoregion_id",
-                                                          "cluster")],
-                              by = "ecoregion_id")
+                                       measure.vars = c(indicators, 
+                                                        numeric_variables))
 
 head(cluster_boxplot_data)
 
+names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
+                                 "Indicator", "Indicator value")
+
 cluster_boxplots <- ggplot(cluster_boxplot_data) +
-                    geom_boxplot(aes(x = variable, y = value)) +
+                    geom_boxplot(aes(x = Indicator, y = `Indicator value`,
+                                     fill = Indicator)) +
                     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-                    facet_wrap( ~ cluster)
+                    facet_wrap( ~ cluster) +
+                    geom_hline(yintercept = 0) +
+                    scale_fill_viridis(discrete=TRUE)+
+  theme(
+    legend.position = "bottom",
+    axis.text.x=element_blank(),
+  )
 
 cluster_boxplots
 
+ggsave(file.path(current_analysis_outputs, "cluster_boxplots.png"),
+       cluster_boxplots, device = "png")
 
-boxplot(BHI_plants_2005 ~ cluster, data = correlation_input_data)
+violin_plots <- cluster_boxplot_data %>%
+ggplot(aes(x = variable, y = value,
+           fill = variable,
+           color = variable)) +
+  geom_violin(width=2.1, size=0.2) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_ipsum() +
+  theme(
+    legend.position = "none"
+  ) + 
+  coord_flip() +
+  facet_wrap( ~ cluster, nrow = 3) +
+  theme(axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 6)) +
+  geom_hline(yintercept = 0, color = "red")
+
+violin_plots
 
 # Create barplots for categorical data (figure out a prettier way to do this)
 

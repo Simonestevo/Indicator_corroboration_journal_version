@@ -69,7 +69,6 @@ timepoints <- c("2005", "2008")
 load_map <- TRUE
 indicators_to_remove <- c("RLIother", "RLILU")
 
-
 # Set up some ecoregions that we know how they should behave
 
 east_australia <- 168 # Decline over time
@@ -200,10 +199,7 @@ eco_vals
 
 }
 
-lookup_ecoregion(374)
-
 # Ecoregion data ----
-
 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
                                "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
@@ -327,6 +323,24 @@ dim(raw_indicators_wide)
 raw_names <- names(raw_indicators_wide)
 new_raw_names <- str_replace(raw_names, " ", "_")
 names(raw_indicators_wide) <- new_raw_names
+
+# Get single timepoint indicator names
+
+# Get single timepoint indicators
+
+indicators_05 <- names(raw_indicators_wide)[str_detect(names(raw_indicators_wide),
+                                                  timepoints[[1]])]
+
+indicators_08 <- names(raw_indicators_wide)[str_detect(names(raw_indicators_wide),
+                                                  timepoints[[2]])]
+
+# Remove LPI 2008 record which is the only indicator with timepoints for 05 and 08
+
+indicators_08 <- indicators_08[!str_detect(indicators_08,
+                                           "LPI_2008")]
+
+indicators <- c(indicators_05, indicators_08)
+
 # Threat scheme
 
 threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
@@ -447,7 +461,7 @@ hfp_mx_eco <- raw_indicators_wide %>%
 # matches with the ecoregions WWF description of severe degradation, so
 # don't remove outliers
 
-ecoregion_map_renamed %>% filter(ecoregion_id == hfp_mx_eco)
+lookup_ecoregion(hfp_mx_eco)
 
 # Extinctions also have some very high values, however these can be verified and are
 # correct, so don't remove
@@ -497,13 +511,6 @@ head(pca_input_data)
   
 # Prepare data
   
-# Convert back into long format
-# pca_data_1 <- gather(pca_input_data, indicator, indicator_value, 
-#                      "BHI_plants_2005":"threatened_2008", factor_key=TRUE)
-# 
-# head(pca_data_1)
-# length(unique(pca_data_1$ecoregion_id))
-
 # Add the grouping ecoregion variables back in
 
 pca_data_1 <- pca_input_data %>%
@@ -552,10 +559,11 @@ dimC <- dim(pl.data)
 # Scale the data to a mean of 0 and sd of 1
 pl.data <- scale(pl.data)
 summary(pl.data)
-sd(pl.data$BHI_plants_2005)
 
 names(pl.data) <- colnames(pl.data)
 pl.data <- as.data.frame(pl.data)
+
+sd(pl.data$BHI_plants_2005)
 
 # Save a copy of the inputs
 write.csv(pl.data, file.path(current_analysis_outputs, "indicator_only_pca_data.csv"))
@@ -589,58 +597,8 @@ text(pl.pca$scores, labels = as.character(row.names(pl.data)), pos=1, cex=0.7)
 
 lookup_ecoregion(374)
 
-# Biplot of PCA
+# Biplot of PCA - can see LPI gives little contribution
 biplot(pl.pca, cex=0.8, col=c(1,8))
-
-# Alt approach
-
-PoV <- pl.pca$sdev^2/sum(pl.pca$sdev^2)
-fviz_eig(pl.pca)
-
-# Put on row named
-#Rename Col 1
-View(pl.data)
-
-pcx <- pl.pca$scores[,1]
-pcy <- pl.pca$scores[,2]
-pcz <- pl.pca$scores[,3]
-
-pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
-pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
-pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
-
-View(pl.pca$scores)
-
-# 3D as points
-scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
-          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
-text3D(pcx, pcy, pcz,  labels = rownames(pl.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
-
-
-###Use prcomp() instead - this uses singular value decomposition 
-
-res.pca <- prcomp(pl.data, scale = TRUE)
-res.pca$x
-
-# Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
-fviz_eig(res.pca)
-
-#Graph of individuals. Individuals with a similar profile are grouped together.
-fviz_pca_ind(res.pca,
-             col.ind = "contrib", # Color by congtribution
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE,     # Avoid text overlapping
-             #label=SP_as_col$Year
-) +
-  labs(title ="PCA", x = "PC1", y = "PC2")
-
-# Graph of variables
-fviz_pca_var(res.pca,
-             col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
-             repel = TRUE     # Avoid text overlapping
-)
 
 
 # * No LPI indicator PCA ----

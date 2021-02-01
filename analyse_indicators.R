@@ -799,33 +799,6 @@ fviz_cluster(res.hcpc2,
 )
 
 
-# Unrooted dendrogram ----
-
-# Unrooted - dendrogram on an arc
-
-tiff(file = file.path(current_analysis_outputs, "unrooted_dendrogram.tiff"), 
-     units = "in", width=10, height=5, res = 300)
-
-colors <- viridis(3)
-clus3 = cutree(hc, k = 3)
-plot(as.phylo(hc), type = "unrooted", 
-     tip.color = colors[clus3], 
-     #edge.color = colors[clus3],
-     cex = 0.6, no.margin = TRUE,
-     lab4ut = "axial")
-
-dev.off()
-
-# * Indicators and additional variables ----
-
-
-pca_data_3 <- pca_data_2 %>%
-              merge(ecoregions_wide[c("ecoregion_id", numeric_variables)],
-                    by = "ecoregion_id")
-
-all_variables_pca_data <- pca_data_3[,c("ecoregion_id", numeric_variables, 
-                                        indicators_for_pca)]
-
 # Map & plot clusters ----
 
 cluster_map_data <- ecoregion_map_renamed %>%
@@ -1232,6 +1205,7 @@ nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 all_groups <- list()
 all_independent_heatmaps <- list()
 all_related_heatmaps <- list()
+correlation_dataframe_list <- list()
 
 for (i in seq_along(grouping_variables)) {
 
@@ -1313,6 +1287,28 @@ for (j in seq_along(group_matrices)) {
                                    colors = c("#453781FF", "white", "#287D8EFF"),
                                    lab = TRUE)
     
+    group_directory <- file.path(current_analysis_outputs, paste(vargroup,
+                                                                 "correlation matrices", sep = " "))
+    
+    if ( !dir.exists( group_directory ) ) {
+      
+      dir.create( group_directory, recursive = TRUE )
+      
+    }
+    
+    # save each sub-group correlation heatmap (eg mangroves plot) in the group directory
+    
+    ggsave(file.path(group_directory,
+                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
+           correlation_plot, device = "png")
+  }
+  
+  group_correlations[[j]] <- correlation_plot
+  
+}
+
+for (i in seq_along(group_correlations)) {
+  
     # Get the coefficients, and add some additional grouping variables 
     # for the different types of combinations (eg independent or related inputs)
     
@@ -1352,29 +1348,10 @@ for (j in seq_along(group_matrices)) {
     
     correlation_df <- rbind(correlation_df1, correlation_df2)
     
-    all_combos <- correlation_df$combination
-    
-    
-    # Create a directory for the plots for this group (eg Biome)
-    
-    group_directory <- file.path(current_analysis_outputs, paste(vargroup,
-                                 "correlation matrices", sep = " "))
-    
-    if ( !dir.exists( group_directory ) ) {
-      
-      dir.create( group_directory, recursive = TRUE )
-      
-    }
-    
-    # save each sub-group correlation heatmap (eg mangroves plot) in the group directory
-    
-    ggsave(file.path(group_directory,
-                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
-           correlation_plot, device = "png")
-  }
+  all_combos <- correlation_df$combination
   
-  group_correlations[[j]] <- correlation_plot
-  
+  # Create a directory for the plots for this group (eg Biome)
+    
   group_correlations_dataframes[[j]] <- correlation_df
 
   }
@@ -1384,36 +1361,20 @@ for (j in seq_along(group_matrices)) {
 
 all_groups[[i]] <- group_correlations
 
-correlation_dataframe <- do.call(rbind, group_correlations_dataframes)
+correlation_dataframe_list[[i]] <- do.call(rbind, group_correlations_dataframes)
+
+}
+
+names(correlation_dataframe_list) <- grouping_variables
 
 # Make a heatmap that includes correlations for all subgroups in one plot 
 # (eg all biome subgroups (magroves, tropical forests etc) in one plot)
 
-# heatmap <- ggplot(correlation_dataframe, aes(x = subgroup,
-#                                              y = combination,
-#                                              fill = coefficient)) +
-#   geom_tile(color = "white") +
-#   scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
-#        y = "Pairwise indicator comparisons") +
-#   guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
-#   theme(panel.grid.major = element_blank(),
-#          panel.grid.minor = element_blank(),
-#          panel.background = element_rect(fill = "grey97"),
-#         legend.position = "bottom",
-#         axis.title.x = element_text(size=8),
-#         axis.title.y = element_text(size=8),
-#         axis.text.x = element_text(size= 7),
-#         axis.text.y = element_text(size= 7)) +
-#   facet_wrap(~input_relationship) + 
-#   theme(strip.text.x = element_text(size = 7, hjust = 0))
-# 
-# heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
-
+for (i in seq_along(correlation_dataframe_list)) {
+  
 # Split the independent and related combinations
 
-independent <- correlation_dataframe %>%
+independent <- correlation_dataframe_list[[i]] %>%
                filter(input_relationship == "independent") %>%
                filter(ind_group == "BHI_plants"|
                       ind_group == "BIIab"|
@@ -1433,7 +1394,7 @@ ggsave(file.path(group_directory,
 all_independent_heatmaps[[i]] <- independent_heatmap
 
 
-related <- correlation_dataframe %>%
+related <- correlation_dataframe_list[[i]] %>%
   filter(input_relationship == "related")
 
 related_heatmap <- make_heatmap(related)

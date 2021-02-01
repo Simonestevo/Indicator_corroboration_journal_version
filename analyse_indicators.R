@@ -151,7 +151,7 @@ heatmap <- ggplot(data, aes(x = subgroup,
                             y = combination,
                             fill = coefficient)) +
   geom_tile(color = "white") +
-  geom_text(aes(label=coefficient)) +
+  geom_text(aes(label=coefficient), size = 2) +
   scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
@@ -285,11 +285,14 @@ ecoregions_wide$High.beta.area.factor <- discretize(ecoregions_wide$High.beta.ar
 
 table(ecoregions_wide$High.beta.area)
 
-# ecoregions_wide_countries <- ecoregions_wide %>%
-#   merge(ecoregion_countries[c("ECO_ID", "CNTRY_NAME")],
-#         by.x = "ecoregion_id", by.y = "ECO_ID") %>%
-#   rename(country = CNTRY_NAME)
+# Remove any unwanted grouping variables
 
+names(ecoregions_wide)
+
+ecoregions_wide <- ecoregions_wide %>%
+                   dplyr::select(-scenario, -scenario.numeric, 
+                                 -mean.scientific.publications,
+                                 -headline.threat.type)
 
 # Convert any characters into factors
 
@@ -301,7 +304,7 @@ ecoregions_wide <- ecoregions_wide %>%
 
 grouping_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
-rm(raw_ecoregions_long, raw_ecoregions_wide)
+rm(raw_ecoregions_wide)
 
 # Indicator data ----
 
@@ -855,7 +858,7 @@ cluster_biplot_data <-  pca_data_2 %>%
   merge(cluster_map_data, by = "ecoregion_id")
 
 
-pca_cluster_plot <- fviz_pca_biplot(pca, geom.ind = "point", pointshape = 21, 
+pca_cluster_plot <- fviz_pca_biplot(pl2.pca, geom.ind = "point", pointshape = 21, 
                                     pointsize = 2, 
                                     col.ind = "black", 
                                     palette = c("#453781FF","#287D8EFF", "#DCE319FF"),
@@ -1202,10 +1205,16 @@ nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
 nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
 nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 
-all_groups <- list()
-all_independent_heatmaps <- list()
-all_related_heatmaps <- list()
-correlation_dataframe_list <- list()
+# * Individual subgroup plots ----
+
+# Loop through the data and calculate correlation coefficients for each subgroup
+# of every grouping variable
+
+out <- list() # top level, should be same length as grouping variables
+group_matrices <- list() # second level, will be same length as number of sub-groups in one grouping variable
+#group_correlation_plots <- list() # second level, will be same length as number of sub-groups in one grouping variable
+subgroup_list <- list()
+group_directories <- list()
 
 for (i in seq_along(grouping_variables)) {
 
@@ -1215,24 +1224,51 @@ for (i in seq_along(grouping_variables)) {
 vargroup <- grouping_variables[i]
 varall <- all_grouping_variables[i]
 
+print(paste( "Producing correlation plots for", vargroup, "grouping variable", sep = " "))
+
+# Create a directory for your outputs
+
+group_directory <- file.path(current_analysis_outputs, paste(vargroup,
+                             "correlation matrices", sep = " "))
+
+if ( !dir.exists( group_directory ) ) {
+  
+  dir.create( group_directory, recursive = TRUE )
+  
+}
+
+## TEMPORARY
+# Remove LPI because it reduces the amount of data we have by about 3/4
+
+indicators <- indicators[!indicators %in% "LPI_2005"]
+
+# Get names of columns we want to subset
+
 x <- c("ecoregion_id", indicators, vargroup)
+
+# Subset correlation inputs to just the indicators, grouping variable and eco ids
 
 group_indicators <- correlation_input_data %>%
                     dplyr::select(all_of(x))
 
 all <- group_indicators
-  
+
+# Split the full dataset by the grouping variable subgroup values (eg mangroves), 
+# each into a separate matrix
+
 group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
+
+# Add the full dataset to the list too (so we can compare subgroups to global)
 
 all[, ncol(all)] <- varall
 
 group_indicator_list[[varall]] <- all
 
-# Split the full dataset by subgroup (eg mangroves), each into a separate matrix
+subgroups <- names(group_indicator_list)
 
-group_correlations <- list()
-group_correlations_dataframes <- list()
-group_matrices <- list()
+# Now to format the data for each sub-group, ready to calculate correlations
+
+group_correlation_plots <- list()
 
 for (j in seq_along(group_indicator_list)) {
   
@@ -1241,76 +1277,98 @@ for (j in seq_along(group_indicator_list)) {
                    na.omit(.)
    
    # Remove the years from the column names to make it tidier
+   
    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
    
    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
 
    group_matrices[[j]] <- group_matrix
+   
+   n <- nrow(group_matrix)
+   
+   # Create name for plot and output file
+   
+   name <- paste(names(group_indicator_list)[j], "n =", n, sep = " ")
+   name <- str_replace(name, "&", "and")
+   name <- str_replace(name, "/", "_and_")
+   name <- str_replace(name, "<", " less than ")
+   name <- str_replace(name, ">", " more than ")
+   name <- gsub("[()]", "", name)
+   
+   # Check how many rows, don't calculate correlation if too few ecoregions in group
+   if (nrow(group_matrix) < 3) {
+     
+     print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
+     
+   } else {
+     
+     # Get the correlation coefficients
+     
+     p.mat <- cor_pmat(group_matrix)
+     
+     # Make a correlation heatmap for the individual sub group
+     
+     correlation_plot <- ggcorrplot(cor(group_matrix, method = "spearman"),
+                                    title = name, 
+                                    p.mat = p.mat, 
+                                    type = "lower", insig = "blank",
+                                    outline.color = "white",
+                                    colors = c("#453781FF", "white", "#287D8EFF"),
+                                    lab = TRUE)
+     
+     group_correlation_plots[[j]] <- correlation_plot
+     
+     ggsave(file.path(group_directory,
+                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
+            correlation_plot, device = "png")
   
-}
+   }
 
-names(group_matrices) <- names(group_indicator_list)
+subgroup_list[[i]] <- subgroups
 
-for (j in seq_along(group_matrices)) {
-  
-  subset_matrix <- group_matrices[[j]]
-  
-  n <- nrow(subset_matrix)
-  
-  # Fix up the column names (don't think this is needed any more?)
-  
-  name <- paste(names(group_matrices)[j], "n =", n, sep = " ")
-  name <- str_replace(name, "&", "and")
-  name <- str_replace(name, "/", "_and_")
-  name <- str_replace(name, "<", " less than ")
-  name <- str_replace(name, ">", " more than ")
-  name <- gsub("[()]", "", name)
-  
-  # Check how many rows, don't calculate correlation if too few ecoregions in group
-  if (nrow(subset_matrix) < 3) {
-    
-    print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
-    
-  } else {
-    
-    # Get the correlation coefficients
-    
-    p.mat <- cor_pmat(subset_matrix)
-    
-    # Make a correlation heatmap for the individual sub group
-    
-    correlation_plot <- ggcorrplot(cor(subset_matrix, method = "spearman"),
-                                   title = name, 
-                                   p.mat = p.mat, 
-                                   type = "lower", insig = "blank",
-                                   outline.color = "white",
-                                   colors = c("#453781FF", "white", "#287D8EFF"),
-                                   lab = TRUE)
-    
-    group_directory <- file.path(current_analysis_outputs, paste(vargroup,
-                                                                 "correlation matrices", sep = " "))
-    
-    if ( !dir.exists( group_directory ) ) {
-      
-      dir.create( group_directory, recursive = TRUE )
-      
-    }
-    
-    # save each sub-group correlation heatmap (eg mangroves plot) in the group directory
-    
-    ggsave(file.path(group_directory,
-                     paste(name, "indicator_correlation_matrix.png", sep = "_")),
-           correlation_plot, device = "png")
+out[[i]] <- group_correlation_plots
+
+group_directories[[i]] <- group_directory
+
   }
-  
-  group_correlations[[j]] <- correlation_plot
-  
 }
 
-for (i in seq_along(group_correlations)) {
+names(out) <- grouping_variables
+names(subgroup_list) <- grouping_variables
+
+# Check nested lists are correct lengths
+length(out)
+lapply(out, length)
+
+# * Get coefficient dataframes ----
+
+group_correlation_dataframes <- list()
+#subgroup_correlations_dataframes <- list()
+
+for (i in seq_along(out)) {
   
+  # Get the plots for one grouping variable (eg Biomes)
+  
+  group_correlation_plots <- out[[i]]
+  
+  names(group_correlation_plots) <- subgroup_list[[i]]
+  
+  group_correlation_plots <- list.clean(group_correlation_plots)
+  
+  subgroups <- names(group_correlation_plots)
+  
+  subgroup_correlations_dataframes <- list()
+  
+  for (j in seq_along(group_correlation_plots)) {
+    
+    # Get the plot for one sub-group of the grouping variable (eg Mangroves)
+
+    correlation_plot <- group_correlation_plots[[j]]
+    
+    subgroup <- subgroups[j]
+    
     # Get the coefficients, and add some additional grouping variables 
-    # for the different types of combinations (eg independent or related inputs)
+    # for the different types of indicator combinations (eg independent or related inputs)
     
     correlation_df1 <- correlation_plot$data[,1:3] %>%
                       merge(indicator_properties[c("indicator","inputs")], 
@@ -1319,7 +1377,7 @@ for (i in seq_along(group_correlations)) {
                       merge(indicator_properties[c("indicator","inputs")], 
                             by.x = "Var2", by.y = "indicator") %>%
                       dplyr::rename(input2 = inputs) %>%
-                             mutate(subgroup = names(group_matrices)[j],
+                             mutate(subgroup = subgroup,
                              combination = paste(Var1, "x", Var2, sep = " "),
                              inputs = paste(input1, "x", input2, sep = " ")) %>%
                       mutate(inputs = ifelse(inputs == "land use data x iucn red list",
@@ -1330,59 +1388,65 @@ for (i in seq_along(group_correlations)) {
                       dplyr::rename(ind_group = Var1) 
     
     correlation_df2 <- correlation_plot$data[,1:3] %>%
-      merge(indicator_properties[c("indicator","inputs")], 
-            by.x = "Var1", by.y = "indicator") %>%
-      dplyr::rename(input1 = inputs) %>%
-      merge(indicator_properties[c("indicator","inputs")], 
-            by.x = "Var2", by.y = "indicator") %>%
-      dplyr::rename(input2 = inputs) %>%
-      mutate(subgroup = names(group_matrices)[j],
-             combination = paste(Var2, "x", Var1, sep = " "),
-             inputs = paste(input1, "x", input2, sep = " ")) %>%
-      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
-                             "iucn red list x land use data", inputs)) %>%
-      dplyr::rename(coefficient = value) %>%
-      dplyr::select(-Var1) %>%
-      merge(indicator_relationships, by = "combination") %>%
-      dplyr::rename(ind_group = Var2) 
+                        merge(indicator_properties[c("indicator","inputs")], 
+                              by.x = "Var1", by.y = "indicator") %>%
+                        dplyr::rename(input1 = inputs) %>%
+                        merge(indicator_properties[c("indicator","inputs")], 
+                              by.x = "Var2", by.y = "indicator") %>%
+                        dplyr::rename(input2 = inputs) %>%
+                        mutate(subgroup = subgroup,
+                               combination = paste(Var2, "x", Var1, sep = " "),
+                               inputs = paste(input1, "x", input2, sep = " ")) %>%
+                        mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                                               "iucn red list x land use data", inputs)) %>%
+                        dplyr::rename(coefficient = value) %>%
+                        dplyr::select(-Var1) %>%
+                        merge(indicator_relationships, by = "combination") %>%
+                        dplyr::rename(ind_group = Var2)
     
-    correlation_df <- rbind(correlation_df1, correlation_df2)
+  correlation_df <- rbind(correlation_df1, correlation_df2)
+  
+  subgroup_correlations_dataframes[[j]] <- correlation_df
     
   all_combos <- correlation_df$combination
   
-  # Create a directory for the plots for this group (eg Biome)
-    
-  group_correlations_dataframes[[j]] <- correlation_df
-
-  }
+}
 
 # Combine all possible subgroups and correlation coefficients for the group
 # into one dataframe
+  
+subgroup_full_dataframe <- do.call(rbind, subgroup_correlations_dataframes)
 
-all_groups[[i]] <- group_correlations
-
-correlation_dataframe_list[[i]] <- do.call(rbind, group_correlations_dataframes)
+#group_correlation_dataframes[[i]] <- subgroup_correlations_dataframes
+group_correlation_dataframes[[i]] <- subgroup_full_dataframe
 
 }
 
-names(correlation_dataframe_list) <- grouping_variables
+length(group_correlation_dataframes)
+lapply(group_correlation_dataframes, length)
+
+names(group_correlation_dataframes) <- grouping_variables
+
+# * Grouping variable heatmaps ----
 
 # Make a heatmap that includes correlations for all subgroups in one plot 
 # (eg all biome subgroups (magroves, tropical forests etc) in one plot)
 
-for (i in seq_along(correlation_dataframe_list)) {
-  
+for (i in seq_along(group_correlation_dataframes)) {
+
+group_df <- group_correlation_dataframes[[i]]
+group_directory <- group_directories[[i]]
+
 # Split the independent and related combinations
 
-independent <- correlation_dataframe_list[[i]] %>%
-               filter(input_relationship == "independent") %>%
-               filter(ind_group == "BHI_plants"|
+independent <- group_df %>%
+               dplyr::filter(input_relationship == "independent") %>%
+               dplyr::filter(ind_group == "BHI_plants"|
                       ind_group == "BIIab"|
                       ind_group == "BIIri"|
                       ind_group == "HFP")
 
 independent_heatmap <- make_heatmap(independent)
-
 
 # Save in the group directory
 
@@ -1394,7 +1458,7 @@ ggsave(file.path(group_directory,
 all_independent_heatmaps[[i]] <- independent_heatmap
 
 
-related <- correlation_dataframe_list[[i]] %>%
+related <- group_df %>%
   filter(input_relationship == "related")
 
 related_heatmap <- make_heatmap(related)
@@ -1409,9 +1473,9 @@ all_related_heatmaps[[i]] <- related_heatmap
 
 }
 
-x <- all_groups[[1]]
-y <- all_groups[[2]]
-names(all_groups) <- grouping_variables
+x <- correlation_plots[[1]]
+y <- correlation_plots[[2]]
+names(correlation_plots) <- grouping_variables
 names(all_independent_heatmaps) <- grouping_variables
 names(all_related_heatmaps) <- grouping_variables
 

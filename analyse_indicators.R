@@ -805,15 +805,6 @@ plot(as.phylo(hc), type = "unrooted",
 
 dev.off()
 
-# Fan
-par(cex=0.8)
-par(cex=1.0)
-plot(as.phylo(hc), type = "fan")
-colors = c("red", "blue", "green", "black", "yellow", "purple", "grey", "brown", "magenta", "cyan", "violetred", "tomato")
-clus = cutree(hc, 3)
-plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 0.7)
-plot(as.phylo(hc), type = "fan", tip.color = colors[clus],label.offset = 1, cex = 1.0)
-
 # * Indicators and additional variables ----
 
 

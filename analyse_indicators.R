@@ -26,6 +26,7 @@ library(FactoMineR)
 library(corrplot)
 library(ape)
 #library(MASS)
+library(ggpubr)
 
 # Data handling and table reshaping
 library(tidyverse)
@@ -208,11 +209,6 @@ raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
 
 ecoregions_wide <- raw_ecoregions_wide 
 
-# Get names of numeric variables 
-
-numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
-numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
-
 # ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
 #                                                       labels = c("Few_publications", 
 #                                                                  "Moderate_publications",
@@ -305,6 +301,12 @@ ecoregions_wide <- ecoregions_wide %>%
 grouping_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
 rm(raw_ecoregions_wide)
+
+# Get names of numeric variables 
+
+numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
+numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
+
 
 # Indicator data ----
 
@@ -986,7 +988,7 @@ for (i in seq_along(time_correlation_input_list)) {
     #geom_text(label = scatterplot_data$ecoregion_id) + 
     #geom_smooth(method=lm) +
     labs(x= labx,
-         y = laby)
+         y = laby) + stat_cor(method = "spearman")
   
   ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby,"_NL", ".png", sep = "")),
          scatterplot, device = "png")
@@ -1021,7 +1023,7 @@ time_scatterplots[[4]]
 dim(correlation_input_data_all)
 
 correlation_input_data <- correlation_input_data_all %>%
-    dplyr::select(all_of(c("ecoregion_id",indicators,
+    dplyr::select(all_of(c("ecoregion_id","cluster",indicators,
                            grouping_variables)))
 
 names(correlation_input_data)
@@ -1049,8 +1051,7 @@ cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
 summary(cluster_boxplot_data_wide)
 
 cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
-                             dplyr::select(-mean.scientific.publications,
-                                           -predominant.threat.count,
+                             dplyr::select(-predominant.threat.count,
                                            -number.of.endemics) %>%
                              rename(human_pop_density = mean.human.population.density)
 
@@ -1078,8 +1079,8 @@ cluster_boxplots <- ggplot(cluster_boxplot_data) +
                     scale_fill_viridis(discrete=TRUE)+
   theme(
     legend.position = "none",
-    axis.text.y = element_text(size = 10),
-    axis.text.x = element_text(size = 10)
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6)
   )
 
 cluster_boxplots
@@ -1169,13 +1170,13 @@ laby <- names(scatterplot_data)[4]
 names(scatterplot_data) <- c("ecoregion_id", "vargroup", "varx", "vary")
 
 scatterplot <- ggplot(scatterplot_data,aes(x = varx, 
-                                           y = vary, 
-                                           color = vargroup)) +
+                                           y = vary)) +
                geom_point() +
                geom_text(label = correlation_input_data$ecoregion_id) + 
                # geom_smooth(method=lm) +
                labs(x= labx,
-                    y = laby)
+                    y = laby) +
+               stat_cor(method = "spearman")
 
 ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
        scatterplot, device = "png")
@@ -1198,6 +1199,17 @@ weird_ecoregions <- correlation_input_data %>%
 
 # Correlation plots ----
 
+
+
+# * SAMPLE SIZE ISSUE ----
+#' TODO:  https://www.personality-project.org/r/html/r.test.html - do we need
+#' a better way to compare correlations, esp with all different sample size?
+#' https://www.youtube.com/watch?v=8mj_DeHtSU4&ab_channel=RajeshDorbala
+
+# Add clusters to the grouping variables
+grouping_variables <- c("cluster", grouping_variables)
+
+# Tidy up the names for plotting
 all_grouping_variables <- paste("all", grouping_variables, sep = ".")
 nice_grouping_variables <- str_to_title(gsub(".", " ", grouping_variables, fixed=TRUE))
 nice_grouping_variables <- str_replace(nice_grouping_variables, "Hfp", "HFP")
@@ -1211,10 +1223,18 @@ nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 # of every grouping variable
 
 out <- list() # top level, should be same length as grouping variables
+subgroup_matrices <- list() # second level, will be same length as number of sub-groups in one grouping variable
 group_matrices <- list() # second level, will be same length as number of sub-groups in one grouping variable
-#group_correlation_plots <- list() # second level, will be same length as number of sub-groups in one grouping variable
 subgroup_list <- list()
 group_directories <- list()
+
+coefficients <- list()
+group_coefficients <- list()
+subgroup_scplots <- list()
+group_scplots <- list()
+
+i <- 1
+j <- 1
 
 for (i in seq_along(grouping_variables)) {
 
@@ -1282,7 +1302,7 @@ for (j in seq_along(group_indicator_list)) {
    
    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
 
-   group_matrices[[j]] <- group_matrix
+   subgroup_matrices[[j]] <- group_matrix
    
    n <- nrow(group_matrix)
    
@@ -1298,11 +1318,15 @@ for (j in seq_along(group_indicator_list)) {
    # Check how many rows, don't calculate correlation if too few ecoregions in group
    if (nrow(group_matrix) < 3) {
      
-     print(paste("insufficient data for", names(group_matrices)[j], sep = " "))
+     print(paste("insufficient data for", names(subgroup_matrices)[j], sep = " "))
      
    } else {
      
      # Get the correlation coefficients
+     
+     rs <- cor(group_matrix, method = "spearman")
+     
+     coefficients[[j]] <- rs
      
      p.mat <- cor_pmat(group_matrix)
      
@@ -1318,9 +1342,9 @@ for (j in seq_along(group_indicator_list)) {
      
      group_correlation_plots[[j]] <- correlation_plot
      
-     ggsave(file.path(group_directory,
-                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
-            correlation_plot, device = "png")
+     # ggsave(file.path(group_directory,
+     #                  paste(name, "indicator_correlation_matrix.png", sep = "_")),
+     #        correlation_plot, device = "png")
   
    }
 
@@ -1330,11 +1354,16 @@ out[[i]] <- group_correlation_plots
 
 group_directories[[i]] <- group_directory
 
+group_coefficients[[i]] <- coefficients
+
+group_matrices <- subgroup_matrices
+
   }
 }
 
 names(out) <- grouping_variables
 names(subgroup_list) <- grouping_variables
+names(group_matrices) <- grouping_variables
 
 # Check nested lists are correct lengths
 length(out)
@@ -1473,8 +1502,6 @@ all_related_heatmaps[[i]] <- related_heatmap
 
 }
 
-x <- correlation_plots[[1]]
-y <- correlation_plots[[2]]
 names(correlation_plots) <- grouping_variables
 names(all_independent_heatmaps) <- grouping_variables
 names(all_related_heatmaps) <- grouping_variables

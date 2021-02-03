@@ -200,6 +200,68 @@ eco_vals
 
 }
 
+matrix <- cluster_one
+group <- "clusters"
+subgroup <- "cluster one"
+
+# matrix should be indicators as columns, rownames are eco_id
+# group is string for group, subgroup is a string denoting the subgroup (eg mangroves)
+
+make_subgroup_scatterplot <- function(df, group, subgroup) {
+  
+  # Set rownames back to column
+  df <- tibble::rownames_to_column(df)
+  
+  df <- df %>%
+        dplyr::rename(ecoregion_id = rowname)
+  
+  # Get all possible combinations of indicators from the df
+  indicator_combos <- combn(names(df[-1]), 2)
+  
+  # Now loop through the combos
+  
+  subgroup_scatterplots <- list()
+  
+  for (i in seq_along(1: ncol(indicator_combos))) {
+    
+  combo <- as.vector(indicator_combos[,i])
+  combo
+  
+  x_axis <- df[,combo[1]]
+  y_axis <- df[,combo[2]]
+  
+  plot_df <- df %>%
+             dplyr::select(ecoregion_id, combo[1], combo[2])
+  
+  scatterplot <- ggplot(plot_df, aes(x = x_axis, y = y_axis)) +
+    geom_point() +
+    labs(x = combo[1],
+         y = combo[2]) + 
+    stat_cor(method = "spearman") +
+    ggtitle(paste(group, subgroup, sep = " - "))
+  
+  subgroup_scatterplots[[i]] <- scatterplot
+  
+  }
+  
+
+  subgroup_scatterplots
+
+}
+
+x <- list()
+y <- make_subgroup_scatterplot(cluster_one, "clusters", "cluster one")
+y[[2]]
+
+spearman_CI <- function(x, y, alpha = 0.05){
+  
+  rs <- cor(x, y, method = "spearman")
+  ci <- sort(tanh(atanh(rs) + c(-1,1)*sqrt((1+rs^2/2)/(n-3))*qnorm(p = alpha/2)))
+  
+  z <- data.frame(rs = rs, lower_ci = ci[1], upper_ci = ci[2])
+  return(z)
+}
+
 # Ecoregion data ----
 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
@@ -1205,6 +1267,7 @@ weird_ecoregions <- correlation_input_data %>%
 #' TODO:  https://www.personality-project.org/r/html/r.test.html - do we need
 #' a better way to compare correlations, esp with all different sample size?
 #' https://www.youtube.com/watch?v=8mj_DeHtSU4&ab_channel=RajeshDorbala
+#' https://stats.stackexchange.com/questions/18887/how-to-calculate-a-confidence-interval-for-spearmans-rank-correlation
 
 # Add clusters to the grouping variables
 grouping_variables <- c("cluster", grouping_variables)
@@ -1222,19 +1285,19 @@ nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 # Loop through the data and calculate correlation coefficients for each subgroup
 # of every grouping variable
 
-out <- list() # top level, should be same length as grouping variables
-subgroup_matrices <- list() # second level, will be same length as number of sub-groups in one grouping variable
-group_matrices <- list() # second level, will be same length as number of sub-groups in one grouping variable
-subgroup_list <- list()
-group_directories <- list()
-
-coefficients <- list()
-group_coefficients <- list()
-subgroup_scplots <- list()
-group_scplots <- list()
-
 i <- 1
 j <- 1
+
+groups <- list()
+
+group_correlation_plots <- list()
+
+group_directories <- list()
+
+group_coefficients <- list()
+
+group_matrices <- list()
+
 
 for (i in seq_along(grouping_variables)) {
 
@@ -1288,7 +1351,12 @@ subgroups <- names(group_indicator_list)
 
 # Now to format the data for each sub-group, ready to calculate correlations
 
-group_correlation_plots <- list()
+
+subgroup_correlation_plots <- list()
+
+subgroup_coefficients <- list()
+
+subgroup_matrices <- list()
 
 for (j in seq_along(group_indicator_list)) {
   
@@ -1326,7 +1394,7 @@ for (j in seq_along(group_indicator_list)) {
      
      rs <- cor(group_matrix, method = "spearman")
      
-     coefficients[[j]] <- rs
+     subgroup_coefficients[[j]] <- rs
      
      p.mat <- cor_pmat(group_matrix)
      
@@ -1340,7 +1408,7 @@ for (j in seq_along(group_indicator_list)) {
                                     colors = c("#453781FF", "white", "#287D8EFF"),
                                     lab = TRUE)
      
-     group_correlation_plots[[j]] <- correlation_plot
+     subgroup_correlation_plots[[j]] <- correlation_plot
      
      # ggsave(file.path(group_directory,
      #                  paste(name, "indicator_correlation_matrix.png", sep = "_")),
@@ -1348,51 +1416,109 @@ for (j in seq_along(group_indicator_list)) {
   
    }
 
-subgroup_list[[i]] <- subgroups
+groups[[i]] <- subgroups
 
-out[[i]] <- group_correlation_plots
+group_correlation_plots[[i]] <- subgroup_correlation_plots
 
 group_directories[[i]] <- group_directory
 
-group_coefficients[[i]] <- coefficients
+group_coefficients[[i]] <- subgroup_coefficients
 
-group_matrices <- subgroup_matrices
+group_matrices[[i]] <- subgroup_matrices
 
   }
 }
 
-names(out) <- grouping_variables
-names(subgroup_list) <- grouping_variables
+names(group_correlation_plots) <- grouping_variables
+names(groups) <- grouping_variables
 names(group_matrices) <- grouping_variables
+names(group_coefficients) <- grouping_variables
 
 # Check nested lists are correct lengths
-length(out)
-lapply(out, length)
+length(group_correlation_plots)
+lapply(group_correlation_plots, length)
+
+
+# * Get confidence intervals ----
+
+level1 <- list()
+level2 <- list()
+test <- list()
+
+for (i in seq_along(group_matrices)) {
+  
+  group_matrix <- group_matrices[[i]] 
+  
+  subgroups <- subgroup_list[[i]]
+  
+  group_names <- c("cluster", grouping_variables)
+  
+  for (j in seq_along(group_matrix)) {
+    
+    subgroup_matrix <- group_matrix[[j]]
+    
+    indicator_combos <- combn(names(subgroup_matrix), 2)
+    
+    # Now loop through the combos
+    
+    out <- list()
+    
+    for (k in seq_along(1: ncol(indicator_combos))) {
+      
+      combo <- as.vector(indicator_combos[,k])
+      combo
+      
+      col1 <- subgroup_matrix[,combo[1]]
+      col2 <- subgroup_matrix[,combo[2]]
+      
+      n <- nrow(subgroup_matrix)
+      
+      df <- spearman_CI(col1, col2, alpha = 0.05) # single indicator pair coefficient
+      
+      df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
+      
+      df <- df %>%
+            mutate(pair = paste(combo[1], combo[2], sep = "_"))
+      
+      out[[k]] <- df
+      
+    }
+    
+    l2df <- do.call(rbind, out) # list of all subgroup pair coefficients
+    
+    level2[[j]] <- l2df
+  }
+  
+  l1df <- do.call(rbind, level2)
+
+  level1[[i]] <- level2
+  
+}
 
 # * Get coefficient dataframes ----
 
 group_correlation_dataframes <- list()
 #subgroup_correlations_dataframes <- list()
 
-for (i in seq_along(out)) {
+for (i in seq_along(group_correlation_plots)) {
   
   # Get the plots for one grouping variable (eg Biomes)
   
-  group_correlation_plots <- out[[i]]
+  subgroup_plots <- group_correlation_plots[[i]]
   
-  names(group_correlation_plots) <- subgroup_list[[i]]
+  names(subgroup_plots) <- subgroup_list[[i]]
   
-  group_correlation_plots <- list.clean(group_correlation_plots)
+  subgroup_plots <- list.clean(subgroup_plots)
   
-  subgroups <- names(group_correlation_plots)
+  subgroups <- names(subgroup_plots)
   
   subgroup_correlations_dataframes <- list()
   
-  for (j in seq_along(group_correlation_plots)) {
+  for (j in seq_along(subgroup_plots)) {
     
     # Get the plot for one sub-group of the grouping variable (eg Mangroves)
 
-    correlation_plot <- group_correlation_plots[[j]]
+    correlation_plot <- subgroup_plots[[j]]
     
     subgroup <- subgroups[j]
     

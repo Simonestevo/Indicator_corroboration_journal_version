@@ -319,11 +319,9 @@ ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq,
 
 ecoregions_wide$lpi.records.factor <- discretize(ecoregions_wide$LPI_records, 
                                           method = "frequency",
-                                          breaks = 4,
-                                          labels = c("few records",
-                                                     "moderate records",
-                                                     "medium records",
-                                                     "many records"))
+                                          breaks = c(0,19, Inf),
+                                          labels = c("less than 20",
+                                                     "more than 20"))
 # ,
 #                                           labels = c("level 1", "level 2",
 #                                                      "level 3", "level 4",
@@ -1547,6 +1545,8 @@ for (i in seq_along(group_matrices)) {
   
 }
 
+# Turn into one dataframe per grouping variable
+
 x <- list()
 
 for (i in seq_along(level1)) {
@@ -1554,6 +1554,8 @@ for (i in seq_along(level1)) {
   x[[i]] <- do.call(rbind, level1[[i]])
   
 }
+
+# * Make caterpillar plots ----
 
 caterpillar_plots <- list()
 
@@ -1564,16 +1566,27 @@ y <- x[[i]]
 names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
               "upper_ci", "n", "pair")
 
-catplot <-  ggplot(y, aes(rs, subgroup)) +
-            geom_point(aes(col = subgroup)) +
+y <- y %>%
+    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " "))
+
+catplot <-  ggplot(y, aes(rs, subgroup_label)) +
+            geom_point(aes(col = subgroup_label)) +
             geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
-                               col = subgroup)) +
+                               col = subgroup_label)) +
             facet_wrap(~ pair) +
             geom_vline(xintercept = 0, col = "red") +
             ggtitle(new_grouping_variables[[i]]) +
             theme(axis.text.y = element_blank(),
                   strip.text.x = element_text(size = 5),
-                  axis.text.x = element_text(size = 5))
+                  axis.text.x = element_text(size = 5),
+                  legend.position = "bottom",
+                  legend.text = element_text(size = 5),
+                  axis.ticks = element_blank()) +
+            xlab("Spearman's rank correlation coefficient") + 
+            ylab("Ecoregion categories") + 
+            labs(color ='Ecoregion categories') +
+            scale_fill_viridis(discrete=TRUE) +
+            scale_color_viridis(discrete=TRUE)
 
 catplot
 
@@ -1585,6 +1598,8 @@ ggsave(file.path(group_directories[[i]],
 caterpillar_plots[[i]] <- catplot
 
 }
+
+caterpillar_plots[[1]]
 
 # * Make subgroup scatterplots ----
 

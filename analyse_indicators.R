@@ -49,6 +49,7 @@ library(png)
 library(gridExtra)
 library(GGally)
 library(ggcorrplot)
+library(visdat)
 
 # Maps
 library(sf)
@@ -207,13 +208,23 @@ subgroup <- "cluster one"
 # matrix should be indicators as columns, rownames are eco_id
 # group is string for group, subgroup is a string denoting the subgroup (eg mangroves)
 
-make_subgroup_scatterplot <- function(df, group, subgroup) {
+make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
+  
+  
+  subgroup <- str_replace(subgroup, " - ", "_")
+  subgroup <- str_replace(subgroup, " & ", "and")
+  subgroup <- str_replace(subgroup, " , ", "_")
+  subgroup <- str_replace(subgroup, " . ", "_")
+  subgroup <- str_replace(subgroup, " ", "_")
+  subgroup <- str_replace(subgroup, "/", "_")
   
   # Set rownames back to column
   df <- tibble::rownames_to_column(df)
   
   df <- df %>%
         dplyr::rename(ecoregion_id = rowname)
+  
+  ecoregion_id <- as.numeric(df[ , grepl( "ecoregion_id" , names( df ) ) ])
   
   # Get all possible combinations of indicators from the df
   indicator_combos <- combn(names(df[-1]), 2)
@@ -222,36 +233,51 @@ make_subgroup_scatterplot <- function(df, group, subgroup) {
   
   subgroup_scatterplots <- list()
   
-  for (i in seq_along(1: ncol(indicator_combos))) {
-    
+  for (i in seq_along(1:ncol(indicator_combos))) {
+   
+  print(i)
   combo <- as.vector(indicator_combos[,i])
-  combo
   
-  x_axis <- df[,combo[1]]
-  y_axis <- df[,combo[2]]
+  print(combo)
   
-  plot_df <- df %>%
-             dplyr::select(ecoregion_id, combo[1], combo[2])
+  plotname <- paste(combo[1], combo[2], subgroup, sep = "_")
   
+  plotname
+  
+  x_axis <- df[ , grepl( combo[1] , names( df ) ) ]
+  range(x_axis)
+  
+  y_axis <- df[ , grepl( combo[2] , names( df ) ) ]
+  range(y_axis)
+  
+  plot_df <- as.data.frame(cbind(ecoregion_id, x_axis, y_axis))
+
   scatterplot <- ggplot(plot_df, aes(x = x_axis, y = y_axis)) +
     geom_point() +
     labs(x = combo[1],
          y = combo[2]) + 
     stat_cor(method = "spearman") +
-    ggtitle(paste(group, subgroup, sep = " - "))
+    ggtitle(paste(group, subgroup, sep = " - ")) +
+    geom_text(label = plot_df$ecoregion_id, nudge_x = 0.1)
+  
+  ggsave(file.path(group_directory,
+                   paste(plotname,
+                         "scatterplot.png",
+                         sep = "_")),
+         scatterplot,  device = "png")
   
   subgroup_scatterplots[[i]] <- scatterplot
   
   }
-  
 
   subgroup_scatterplots
 
 }
 
-x <- list()
-y <- make_subgroup_scatterplot(cluster_one, "clusters", "cluster one")
-y[[2]]
+# y <- make_subgroup_scatterplot(x, "cluster", "cluster one", test)
+# 
+# y[[18]]
+# y[[1]]
 
 spearman_CI <- function(x, y, alpha = 0.05){
   
@@ -293,7 +319,11 @@ ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq,
 
 ecoregions_wide$lpi.records.factor <- discretize(ecoregions_wide$LPI_records, 
                                           method = "frequency",
-                                          breaks = 4)
+                                          breaks = 4,
+                                          labels = c("few records",
+                                                     "moderate records",
+                                                     "medium records",
+                                                     "many records"))
 # ,
 #                                           labels = c("level 1", "level 2",
 #                                                      "level 3", "level 4",
@@ -303,7 +333,11 @@ table(ecoregions_wide$lpi.records.factor)
 
 ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, 
                                           method = "frequency",
-                                          breaks = 4)
+                                          breaks = 4,
+                                          labels = c("few records",
+                                                     "moderate records",
+                                                     "medium records",
+                                                     "many records"))
 table(ecoregions_wide$rli.records.factor)
 
 ecoregions_wide <- ecoregions_wide %>% 
@@ -332,14 +366,20 @@ ecoregions_wide <- ecoregions_wide %>%
 
 ecoregions_wide$endemics.factor <- discretize(ecoregions_wide$number.of.endemics, 
                                        method = "frequency",
-                                       breaks = 4)
+                                       breaks = 2,
+                                       labels = c("no endemics",
+                                                  "some endemics"))
 
 
 table(ecoregions_wide$endemics.factor)
 
 ecoregions_wide$High.beta.area.factor <- discretize(ecoregions_wide$High.beta.area, 
                                       method = "interval",
-                                      breaks = 4)
+                                      breaks = 4,
+                                      labels = c("very low beta",
+                                                 "low beta",
+                                                 "medium beta",
+                                                 "high beta"))
 
 table(ecoregions_wide$High.beta.area)
 
@@ -946,7 +986,7 @@ ggsave(file.path(current_analysis_outputs,
                        sep = "_")), 
        pca_cluster_plot,  device = "png") 
 
-rm(cluster_map, cluster_map_data)
+rm(cluster_map)
 
 
 # Prepare correlation data ----
@@ -983,7 +1023,7 @@ boxplots
 ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
        boxplots, device = "png")
 
-rm(raw_indicators_long, raw_indicators_wide)
+rm(raw_indicators_wide)
 
 # Finalise correlation data ----
 
@@ -1285,8 +1325,6 @@ nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
 # Loop through the data and calculate correlation coefficients for each subgroup
 # of every grouping variable
 
-i <- 1
-j <- 1
 
 groups <- list()
 
@@ -1449,7 +1487,7 @@ for (i in seq_along(group_matrices)) {
   
   group_matrix <- group_matrices[[i]] 
   
-  subgroups <- subgroup_list[[i]]
+  subgroups <- groups[[i]]
   
   group_names <- c("cluster", grouping_variables)
   
@@ -1493,6 +1531,108 @@ for (i in seq_along(group_matrices)) {
 
   level1[[i]] <- level2
   
+}
+
+x <- list()
+
+for (i in seq_along(level1)) {
+  
+  x[[i]] <- do.call(rbind, level1[[i]])
+  
+}
+
+# * Make subgroup scatterplots ----
+
+scatter_directories <- list()
+
+for (i in 1:length(names(group_matrices))) {
+
+group <- names(group_matrices)[i]
+
+print(group)
+
+scatter_directory <- file.path(current_analysis_outputs, paste(group,
+                      "scatterplots", sep = "_"))
+
+if ( !dir.exists( scatter_directory ) ) {
+  
+  dir.create( scatter_directory, recursive = FALSE )
+  
+}
+
+scatter_directories[[i]] <- scatter_directory
+
+}
+
+group_scatterplots <- list()
+
+for (i in seq_along(group_matrices)){
+  
+  subgroup_matrices <- group_matrices[[i]]
+  
+  scatter_directory <- scatter_directories[[i]]
+  
+  subgroup_scatterplots <- list()
+  
+  for (j in seq_along(subgroup_matrices)) {
+    
+  subgroup <- groups[[i]][j]
+  
+  subgroup
+  
+  subgroup <- str_replace(subgroup, " - ", "_")
+  subgroup <- str_replace(subgroup, " & ", "and")
+  subgroup <- str_replace(subgroup, " , ", "_")
+  subgroup <- str_replace(subgroup, " . ", "_")
+  subgroup <- str_replace(subgroup, " ", "_")
+  
+  subgroup
+  
+  subgroup_scatterplots[[j]] <- make_subgroup_scatterplot(subgroup_matrices[[j]], 
+                                                     names(group_matrices)[i], 
+                                                     subgroup,
+                                                     scatter_directory)
+    
+  }
+
+  group_scatterplots[[i]] <- subgroup_scatterplots
+
+}
+
+out <- list()
+
+for (i in seq_along(1:ncol(indicator_combos)))  {
+  
+  ind1 <- indicator_combos[1,i]
+  ind2 <- indicator_combos[2,i]
+  
+  name <- paste(ind1, ind2, sep = "_")
+  
+  out[[i]] <- name
+  
+}
+
+for(i in seq_along(group_scatterplots)) {
+  
+  subgroup_scatterplots <- group_scatterplots[[i]]
+  
+  for (j in seq_along(subgroup_scatterplots)) {
+    
+    single_sub <- subgroup_scatterplots[[j]]
+  
+    for (k in seq_along(single_sub)) {
+    
+      subgroup <- groups[[i]][j]
+    
+      plotname <- paste(out[[k]], subgroup, sep = "_")
+    
+     plotname <- paste(plotname, ".png", sep = "")
+    
+       ggsave(file.path(scatter_directories[[i]], plotname),
+                     single_sub[[k]], device = "png")
+    
+    }
+  }
 }
 
 # * Get coefficient dataframes ----

@@ -315,27 +315,21 @@ ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq,
                                               "Large_ecoregions"),
                                    ordered_result = TRUE)
 
-#lpi_breaks <- c(-1, 50, 100, Inf)
+# Split the ecoregions by lpi data by fewer than 20 (minimum population sample
+# required for SDMs) and more than 20
 
-ecoregions_wide$lpi.records.factor <- discretize(ecoregions_wide$LPI_records, 
-                                          method = "frequency",
-                                          breaks = c(0,19, Inf),
+ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, 
+                                          breaks = c(-Inf,19, Inf),
                                           labels = c("less than 20",
                                                      "more than 20"))
-# ,
-#                                           labels = c("level 1", "level 2",
-#                                                      "level 3", "level 4",
-#                                                      "level 5", "level 6"))
 
-table(ecoregions_wide$lpi.records.factor)
+# Split ecoregions by RLI species fewer than 400 and more than 400 (based
+# on min sample in Henriques et al 2020)
 
 ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, 
-                                          method = "frequency",
-                                          breaks = 4,
-                                          labels = c("few records",
-                                                     "moderate records",
-                                                     "medium records",
-                                                     "many records"))
+                                          breaks = c(-Inf,400, Inf),
+                                          labels = c("less than 400",
+                                                     "more than 400"))
 table(ecoregions_wide$rli.records.factor)
 
 ecoregions_wide <- ecoregions_wide %>% 

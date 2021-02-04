@@ -201,9 +201,9 @@ eco_vals
 
 }
 
-matrix <- cluster_one
-group <- "clusters"
-subgroup <- "cluster one"
+x <- group_dataframes[[1]][[1]]
+df <- x
+
 
 # matrix should be indicators as columns, rownames are eco_id
 # group is string for group, subgroup is a string denoting the subgroup (eg mangroves)
@@ -219,18 +219,18 @@ make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
   subgroup <- str_replace(subgroup, "/", "_")
   
   # Set rownames back to column
-  df <- tibble::rownames_to_column(df)
+  # df <- tibble::rownames_to_column(df)
+  # 
+  # df <- df %>%
+  #       dplyr::rename(ecoregion_id = rowname)
   
-  df <- df %>%
-        dplyr::rename(ecoregion_id = rowname)
-  
-  ecoregion_id <- as.numeric(df[ , grepl( "ecoregion_id" , names( df ) ) ])
+  ecoregion_id <- as.numeric(df$ecoregion_id)
   
   # Get all possible combinations of indicators from the df
   indicator_combos <- combn(names(df[-1]), 2)
   
   # Now loop through the combos
-  
+  i <- i + 1
   subgroup_scatterplots <- list()
   
   for (i in seq_along(1:ncol(indicator_combos))) {
@@ -274,7 +274,7 @@ make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
 
 }
 
-# y <- make_subgroup_scatterplot(x, "cluster", "cluster one", test)
+# y <- make_subgroup_scatterplot(x, "cluster", "cluster one", scatter_directories[[1]])
 # 
 # y[[18]]
 # y[[1]]
@@ -1415,7 +1415,7 @@ for (j in seq_along(group_indicator_list)) {
    
    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
    
-   names(group_dataframe) <- names(group_matrix)
+   names(group_dataframe) <- c("ecoregion_id",names(group_matrix))
 
    subgroup_matrices[[j]] <- group_matrix
    subgroup_dataframes[[j]] <- group_dataframe
@@ -1493,8 +1493,7 @@ lapply(group_correlation_plots, length)
 # * Get confidence intervals ----
 
 level1 <- list()
-level2 <- list()
-test <- list()
+
 
 for (i in seq_along(group_matrices)) {
   
@@ -1503,6 +1502,8 @@ for (i in seq_along(group_matrices)) {
   subgroups <- groups[[i]]
   
   group_names <- c("cluster", new_grouping_variables)
+  
+  level2 <- list()
   
   for (j in seq_along(group_matrix)) {
     
@@ -1514,7 +1515,7 @@ for (i in seq_along(group_matrices)) {
     
     out <- list()
     
-    for (k in seq_along(1: ncol(indicator_combos))) {
+    for (k in seq_along(1:ncol(indicator_combos))) {
       
       combo <- as.vector(indicator_combos[,k])
       combo
@@ -1554,6 +1555,37 @@ for (i in seq_along(level1)) {
   
 }
 
+caterpillar_plots <- list()
+
+for (i in seq_along(x)) {
+  
+y <- x[[i]]
+
+names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
+              "upper_ci", "n", "pair")
+
+catplot <-  ggplot(y, aes(rs, subgroup)) +
+            geom_point(aes(col = subgroup)) +
+            geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
+                               col = subgroup)) +
+            facet_wrap(~ pair) +
+            geom_vline(xintercept = 0, col = "red") +
+            ggtitle(new_grouping_variables[[i]]) +
+            theme(axis.text.y = element_blank(),
+                  strip.text.x = element_text(size = 5),
+                  axis.text.x = element_text(size = 5))
+
+catplot
+
+ggsave(file.path(group_directories[[i]],
+                 paste(new_grouping_variables[[i]],
+                       "caterpillar_plot.png", sep = "_")),
+       catplot, device = "png")
+
+caterpillar_plots[[i]] <- catplot
+
+}
+
 # * Make subgroup scatterplots ----
 
 # Make directories for the scatterplots (this can probably go in the make plots
@@ -1585,15 +1617,15 @@ scatter_directories[[i]] <- scatter_directory
 
 group_scatterplots <- list()
 
-for (i in seq_along(group_matrices)){
+for (i in seq_along(group_dataframes)){
   
-  subgroup_matrices <- group_matrices[[i]]
+  subgroup_dataframes <- group_dataframes[[i]]
   
   scatter_directory <- scatter_directories[[i]]
   
   subgroup_scatterplots <- list()
   
-  for (j in seq_along(subgroup_matrices)) {
+  for (j in seq_along(subgroup_dataframes)) {
     
   subgroup <- groups[[i]][j]
   
@@ -1607,8 +1639,8 @@ for (i in seq_along(group_matrices)){
   
   subgroup
   
-  subgroup_scatterplots[[j]] <- make_subgroup_scatterplot(subgroup_matrices[[j]], 
-                                                     names(group_matrices)[i], 
+  subgroup_scatterplots[[j]] <- make_subgroup_scatterplot(subgroup_dataframes[[j]], 
+                                                     names(group_dataframes)[i], 
                                                      subgroup,
                                                      scatter_directory)
     
@@ -1621,6 +1653,7 @@ for (i in seq_along(group_matrices)){
 # * Get coefficient dataframes ----
 
 group_correlation_dataframes <- list()
+
 #subgroup_correlations_dataframes <- list()
 
 for (i in seq_along(group_correlation_plots)) {

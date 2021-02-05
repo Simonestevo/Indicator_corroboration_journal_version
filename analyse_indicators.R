@@ -50,6 +50,7 @@ library(gridExtra)
 library(GGally)
 library(ggcorrplot)
 library(visdat)
+library(cowplot)
 
 # Maps
 library(sf)
@@ -297,11 +298,7 @@ raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
 
 ecoregions_wide <- raw_ecoregions_wide 
 
-# ecoregions_wide$scientific.publications.factor <- cut(ecoregions_wide$mean.scientific.publications, breaks = 3, 
-#                                                       labels = c("Few_publications", 
-#                                                                  "Moderate_publications",
-#                                                                  "Many_publications"))
-# 
+ 
 # ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
 #                                    labels = c("Small_ecoregions", 
 #                                               "Medium_ecoregions",
@@ -342,25 +339,11 @@ ecoregions_wide <- ecoregions_wide %>%
 ecoregions_wide <- ecoregions_wide %>%
   mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
          scenario.numeric = as.factor(as.numeric(scenario))) 
-# %>%
-#   mutate(scenario = ifelse(scenario == "Fewer than 400 RLI records & Threat external to HFP",
-#                            "Few RLI HFP exclusive",
-#                            ifelse(scenario == "Fewer than 400 RLI records & Threat related to HFP",
-#                                   "Few RLI HFP inclusive",
-#                                   ifelse(scenario == "More than 400 RLI records & Threat external to HFP",
-#                                          "Moderate RLI HFP exclusive",
-#                                          ifelse(scenario == "More than 400 RLI records & Threat related to HFP",
-#                                                 "Moderate RLI HFP inclusive",
-#                                                 ifelse(scenario == "Few (< 590) RLI records & NA",
-#                                                        "Few RLI HFP NA",
-#                                                        NA))))))
 
-
-ecoregions_wide$endemics.factor <- discretize(ecoregions_wide$number.of.endemics, 
-                                       method = "frequency",
-                                       breaks = 2,
+ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
+                                       breaks = c(-Inf, 0 , Inf),
                                        labels = c("no endemics",
-                                                  "some endemics"))
+                                                  "endemics"))
 
 
 table(ecoregions_wide$endemics.factor)
@@ -1129,7 +1112,8 @@ library(forcats)
 library(hrbrthemes)
 
 cluster_boxplot_data_wide <- correlation_input_data_all %>%
-  dplyr::select(all_of(c("ecoregion_id", "cluster", indicators, numeric_variables)))
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         indicators, numeric_variables)))
 
 summary(cluster_boxplot_data_wide)
 
@@ -1169,7 +1153,8 @@ cluster_boxplots <- ggplot(cluster_boxplot_data) +
                     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
                     facet_wrap( ~ cluster) +
                     geom_hline(yintercept = 0) +
-                    scale_fill_viridis(discrete=TRUE)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) 
   theme(
     legend.position = "none",
     axis.text.y = element_text(size = 6),
@@ -1200,28 +1185,104 @@ ggplot(aes(x = Indicator, y = `Indicator value`,
 
 violin_plots
 
-# Create barplots for categorical data (figure out a prettier way to do this)
+# Cluster barplots ----
 
 categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
 cluster_barplot_data_wide <- correlation_input_data_all %>%
                             dplyr::select(all_of(c("ecoregion_id", "cluster",
-                                                   categorical_variables)))
-summary(cluster_categorical_data)
+                                                   categorical_variables)))  
 
 cluster_barplot_data <- reshape2::melt(cluster_barplot_data_wide, 
                                        measure.vars = categorical_variables)
 
-head(cluster_barplot_data)
+cluster_barplot_data <- cluster_barplot_data %>%
+                        rename(group = variable,
+                               subgroup = value) %>%
+                        group_by(cluster, group, subgroup) %>%
+                        summarise(ecoregion_count = n_distinct(ecoregion_id)) %>%
+                        ungroup()
 
-cluster_barplots <- ggplot(cluster_barplot_data, aes(x = variable, 
-                                                     y = value)) +
-                    geom_bar(stat = "identity", position = "stack") +
-                    theme(axis.text.x = element_text(angle = 45, 
-                                                     hjust = 1)) +
-                    facet_wrap( ~ cluster)
+cluster_barplot_data <- as.data.frame(cluster_barplot_data)
 
-cluster_barplots
+group_cluster_barplot_data <- split(cluster_barplot_data, cluster_barplot_data$group)
+length(group_cluster_barplot_data)
+
+
+barplots <- list()
+
+for ( i in seq_along(group_cluster_barplot_data)) {
+
+barplots[[i]] <- ggplot(group_cluster_barplot_data[[i]]) +
+            geom_col(aes(x = cluster, 
+                         y = ecoregion_count,
+                         fill = subgroup), 
+                     position = "fill") +
+            facet_wrap(~ group)  +
+            theme(strip.text.x = element_text(size = 10),
+                  axis.text.x = element_text(size = 8),
+                  legend.position = "bottom",
+                  legend.text = element_text(size = 8),
+                  axis.ticks = element_blank()) +
+            xlab("Cluster") + 
+            ylab("Ecoregion categories") + 
+            labs(color ='Ecoregion categories') +
+            scale_fill_viridis(discrete=TRUE) +
+            scale_color_viridis(discrete=TRUE) 
+
+}
+
+i <- 0
+
+i <- i +1
+barplots[[10]]
+
+png(paste(current_analysis_outputs,"barplots1.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridone <- plot_grid(barplots[[1]], barplots[[2]], barplots[[3]],
+           align = "v", 
+           nrow = 3,
+           ncol = 1)
+
+gridone
+
+dev.off()
+
+png(paste(current_analysis_outputs,"barplots2.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridtwo <- plot_grid(barplots[[4]], barplots[[5]], barplots[[6]],
+                     align = "v", 
+                     nrow = 3,
+                     ncol = 1)
+
+gridtwo
+
+dev.off()
+
+png(paste(current_analysis_outputs,"barplots3.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridthree <- plot_grid(barplots[[7]], barplots[[8]], barplots[[9]],
+                     align = "v", 
+                     nrow = 3,
+                     ncol = 1)
+
+gridthree
+
+dev.off()
+
+png(paste(current_analysis_outputs,"barplots4.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridfour <- plot_grid(barplots[[10]], barplots[[11]],
+                     align = "v", 
+                     nrow = 2,
+                     ncol = 1)
+
+gridfour
+dev.off()
 
 # Scatterplots ----
 
@@ -1280,14 +1341,7 @@ scatterplots[[i]] <- scatterplot
 
 i <- i + 1
 
-scatterplots[[i]]
-
-# Get the ecoregions with the strangest results (eg really high HFP, low RLI)
-
-# TODO: do this programmatically by taking the difference
-
-weird_ecoregions <- correlation_input_data %>%
-                    filter(ecoregion_id %in% c(325, 400, 637, 20, 632, 548))
+scatterplots[[1]]
 
 
 # Correlation plots ----
@@ -1522,7 +1576,7 @@ for (i in seq_along(group_matrices)) {
       df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
       
       df <- df %>%
-            mutate(pair = paste(combo[1], combo[2], sep = "_"))
+            mutate(pair = paste(combo[1], combo[2], sep = " x "))
       
       out[[k]] <- df
       
@@ -1549,7 +1603,7 @@ for (i in seq_along(level1)) {
   
 }
 
-# * Make caterpillar plots ----
+# * Make LU * BD caterpillar plots ----
 
 caterpillar_plots <- list()
 
@@ -1561,7 +1615,19 @@ names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
               "upper_ci", "n", "pair")
 
 y <- y %>%
-    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " "))
+    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " ")) %>%
+    filter(pair == "BHI_plants x extinct"|
+           pair == "BHI_plants x RLI"|
+           pair == "BHI_plants x threatened"|
+           pair == "BIIab x extinct"|
+           pair == "BIIab x RLI"|
+           pair == "BIIab x threatened"|
+           pair == "BIIri x extinct"|
+           pair == "BIIri x RLI"|
+           pair == "BIIri x threatened"|
+           pair == "HFP x extinct"|
+           pair == "HFP x RLI"|
+           pair == "HFP x threatened")
 
 catplot <-  ggplot(y, aes(rs, subgroup_label)) +
             geom_point(aes(col = subgroup_label)) +
@@ -1580,9 +1646,7 @@ catplot <-  ggplot(y, aes(rs, subgroup_label)) +
             ylab("Ecoregion categories") + 
             labs(color ='Ecoregion categories') +
             scale_fill_viridis(discrete=TRUE) +
-            scale_color_viridis(discrete=TRUE)
-
-catplot
+            scale_color_viridis(discrete=TRUE) 
 
 ggsave(file.path(group_directories[[i]],
                  paste(new_grouping_variables[[i]],
@@ -1593,7 +1657,68 @@ caterpillar_plots[[i]] <- catplot
 
 }
 
-caterpillar_plots[[1]]
+caterpillar_plots[[2]]
+
+names(caterpillar_plots) <- new_grouping_variables
+
+# * Make related indicator caterpillar plots ----
+
+related_caterpillar_plots <- list()
+
+for (i in seq_along(x)) {
+  
+  y <- x[[i]]
+  
+  names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
+                "upper_ci", "n", "pair")
+  
+  y <- y %>%
+    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " ")) %>%
+    filter(pair == "BHI_plants x BIIab"|
+             pair == "BHI_plants x BIIri"|
+             pair == "BHI_plants x HFP"|
+             pair == "BIIab x BIIri"|
+             pair == "BIIab x HFP"|
+             pair == "BIIri x HFP"|
+             pair == "extinct x RLI"|
+             pair == "extinct x threatened"|
+             pair == "RLI x threatened")
+  
+  catplot <-  ggplot(y, aes(rs, subgroup_label)) +
+    geom_point(aes(col = subgroup_label)) +
+    geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
+                       col = subgroup_label)) +
+    facet_wrap(~ pair) +
+    geom_vline(xintercept = 0, col = "red") +
+    ggtitle(new_grouping_variables[[i]]) +
+    theme(axis.text.y = element_blank(),
+          strip.text.x = element_text(size = 5),
+          axis.text.x = element_text(size = 5),
+          legend.position = "bottom",
+          legend.text = element_text(size = 5),
+          axis.ticks = element_blank()) +
+    xlab("Spearman's rank correlation coefficient") + 
+    ylab("Ecoregion categories") + 
+    labs(color ='Ecoregion categories') +
+    scale_fill_viridis(discrete=TRUE) +
+    scale_color_viridis(discrete=TRUE) 
+  
+  ggsave(file.path(group_directories[[i]],
+                   paste(new_grouping_variables[[i]],
+                         "related_caterpillar_plot.png", sep = "_")),
+         catplot, device = "png")
+  
+  related_caterpillar_plots[[i]] <- catplot
+  
+}
+
+related_caterpillar_plots[[1]]
+
+names(related_caterpillar_plots) <- new_grouping_variables
+
+
+
+
 
 # * Make subgroup scatterplots ----
 
@@ -1808,6 +1933,30 @@ all_related_heatmaps[[i]]
 
 i <- i + 1
 all_related_heatmaps[[i]]
+
+# Make an ecoregion map
+
+eco_pal <- colorNumeric("PuBu", domain = cluster_map_data$ecoregion_id)
+hfp_pal <- colorNumeric("PuBu", domain = indicator_map_input_data$HFP_2005)
+
+cluster_map_data %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(weight = 1, 
+              color = ~ eco_pal(ecoregion_id),
+              fillOpacity = 0.8,
+              group = "ecoregions",
+              # add labels that display indicator value and ecoregion id
+              label = ~paste(ecoregion_id, ECO_NAME, 
+                             sep = " "),
+              # highlight polygons on hover
+              highlightOptions = highlightOptions(weight = 5, color = "white",
+                                                  bringToFront = TRUE)) %>%
+
+tmap_save(beta, file.path(indicator_outputs, paste(location,
+                                                   "proportion_high_beta_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
 
 
 # * Plot PCA 

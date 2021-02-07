@@ -1535,11 +1535,97 @@ names(group_dataframes) <- new_grouping_variables
 length(group_correlation_plots)
 lapply(group_correlation_plots, length)
 
+# * Get coefficient dataframes ----
+
+group_correlation_dataframes <- list()
+
+#subgroup_correlations_dataframes <- list()
+
+for (i in seq_along(group_correlation_plots)) {
+  
+  # Get the plots for one grouping variable (eg Biomes)
+  
+  subgroup_plots <- group_correlation_plots[[i]]
+  
+  names(subgroup_plots) <- groups[[i]]
+  
+  subgroup_plots <- list.clean(subgroup_plots)
+  
+  subgroups <- names(subgroup_plots)
+  
+  subgroup_correlations_dataframes <- list()
+  
+  for (j in seq_along(subgroup_plots)) {
+    
+    # Get the plot for one sub-group of the grouping variable (eg Mangroves)
+    
+    correlation_plot <- subgroup_plots[[j]]
+    
+    subgroup <- subgroups[j]
+    
+    # Get the coefficients, and add some additional grouping variables 
+    # for the different types of indicator combinations (eg independent or related inputs)
+    
+    correlation_df1 <- correlation_plot$data[,1:5] %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var1", by.y = "indicator") %>%
+      dplyr::rename(input1 = inputs) %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var2", by.y = "indicator") %>%
+      dplyr::rename(input2 = inputs) %>%
+      mutate(subgroup = subgroup,
+             combination = paste(Var1, "x", Var2, sep = " "),
+             inputs = paste(input1, "x", input2, sep = " ")) %>%
+      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                             "iucn red list x land use data", inputs)) %>%
+      dplyr::rename(coefficient = value) %>%
+      dplyr::select(-Var2) %>%
+      merge(indicator_relationships, by = "combination") %>%
+      dplyr::rename(ind_group = Var1) 
+    
+    correlation_df2 <- correlation_plot$data[,1:5] %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var1", by.y = "indicator") %>%
+      dplyr::rename(input1 = inputs) %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var2", by.y = "indicator") %>%
+      dplyr::rename(input2 = inputs) %>%
+      mutate(subgroup = subgroup,
+             combination = paste(Var2, "x", Var1, sep = " "),
+             inputs = paste(input1, "x", input2, sep = " ")) %>%
+      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                             "iucn red list x land use data", inputs)) %>%
+      dplyr::rename(coefficient = value) %>%
+      dplyr::select(-Var1) %>%
+      merge(indicator_relationships, by = "combination") %>%
+      dplyr::rename(ind_group = Var2)
+    
+    correlation_df <- rbind(correlation_df1, correlation_df2)
+    
+    subgroup_correlations_dataframes[[j]] <- correlation_df
+    
+    all_combos <- correlation_df$combination
+    
+  }
+  
+  # Combine all possible subgroups and correlation coefficients for the group
+  # into one dataframe
+  
+  subgroup_full_dataframe <- do.call(rbind, subgroup_correlations_dataframes)
+  
+  #group_correlation_dataframes[[i]] <- subgroup_correlations_dataframes
+  group_correlation_dataframes[[i]] <- subgroup_full_dataframe
+  
+}
+
+length(group_correlation_dataframes)
+lapply(group_correlation_dataframes, length)
+
+names(group_correlation_dataframes) <- new_grouping_variables
 
 # * Get confidence intervals ----
 
-level1 <- list()
-
+group_confidence_intervals <- list()
 
 for (i in seq_along(group_matrices)) {
   
@@ -1549,7 +1635,7 @@ for (i in seq_along(group_matrices)) {
   
   group_names <- c("cluster", new_grouping_variables)
   
-  level2 <- list()
+  subgroup_confidence_intervals <- list()
   
   for (j in seq_along(group_matrix)) {
     
@@ -1575,6 +1661,9 @@ for (i in seq_along(group_matrices)) {
       
       df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
       
+      names(df) <- c("group", "subgroup", "ind_1", "ind_2", "rs", "lower_ci",
+                     "upper_ci", "n")
+      
       df <- df %>%
             mutate(pair = paste(combo[1], combo[2], sep = " x "))
       
@@ -1584,32 +1673,54 @@ for (i in seq_along(group_matrices)) {
     
     l2df <- do.call(rbind, out) # list of all subgroup pair coefficients
     
-    level2[[j]] <- l2df
+    subgroup_confidence_intervals[[j]] <- l2df
   }
   
-  l1df <- do.call(rbind, level2)
+  l1df <- do.call(rbind, subgroup_confidence_intervals)
 
-  level1[[i]] <- level2
+  group_confidence_intervals[[i]] <- subgroup_confidence_intervals
   
 }
 
 # Turn into one dataframe per grouping variable
 
-x <- list()
+confidence_intervals <- list()
 
-for (i in seq_along(level1)) {
+for (i in seq_along(group_confidence_intervals)) {
   
-  x[[i]] <- do.call(rbind, level1[[i]])
+  confidence_intervals[[i]] <- do.call(rbind, group_confidence_intervals[[i]])
   
 }
+
+# Remove non-significant coefficients ----
+
+x <- confidence_intervals[[1]] %>%
+     mutate(id = paste(pair, subgroup, sep = "_"))
+
+head(x)
+class(x)
+
+pval <- group_correlation_dataframes[[1]] %>%
+        select(combination, coefficient, pvalue, signif, subgroup) %>%
+        distinct(.) %>%
+        mutate(id = paste(combination, subgroup, sep = "_"))
+head(pval)
+class(pval)
+
+test <- x %>%
+        merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
+        dplyr::select(rs, coefficient, pvalue,signif, everything())
+
+head(test)
 
 # * Make LU * BD caterpillar plots ----
 
 caterpillar_plots <- list()
 
-for (i in seq_along(x)) {
+for (i in seq_along(confidence_intervals)) {
   
-y <- x[[i]]
+y <- confidence_intervals[[i]]
+
 
 names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
               "upper_ci", "n", "pair")
@@ -1629,24 +1740,40 @@ y <- y %>%
            pair == "HFP x RLI"|
            pair == "HFP x threatened")
 
-catplot <-  ggplot(y, aes(rs, subgroup_label)) +
-            geom_point(aes(col = subgroup_label)) +
+
+y <- y %>%
+     mutate(id = paste(pair, subgroup, sep = "_"))
+
+pval <- group_correlation_dataframes[[i]] %>%
+        select(combination, coefficient, pvalue, signif, subgroup) %>%
+        distinct(.) %>%
+        mutate(id = paste(combination, subgroup, sep = "_"))
+
+
+plotdata <- y %>%
+  merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
+  dplyr::select(rs, coefficient, pvalue,signif, everything()) %>%
+  filter(signif != 0)
+
+catplot <-  ggplot(plotdata, aes(rs, pair)) +
+            geom_point(aes(col = pair)) +
             geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
-                               col = subgroup_label)) +
-            facet_wrap(~ pair) +
+                               col = pair)) +
+            facet_wrap(~ subgroup_label) +
             geom_vline(xintercept = 0, col = "red") +
             ggtitle(new_grouping_variables[[i]]) +
             theme(axis.text.y = element_blank(),
                   strip.text.x = element_text(size = 5),
                   axis.text.x = element_text(size = 5),
-                  legend.position = "bottom",
+                  legend.position = "none",
                   legend.text = element_text(size = 5),
                   axis.ticks = element_blank()) +
             xlab("Spearman's rank correlation coefficient") + 
             ylab("Ecoregion categories") + 
             labs(color ='Ecoregion categories') +
             scale_fill_viridis(discrete=TRUE) +
-            scale_color_viridis(discrete=TRUE) 
+            scale_color_viridis(discrete=TRUE) + 
+            geom_text(aes(label = pair), size= 2, vjust = 1.5)
 
 ggsave(file.path(group_directories[[i]],
                  paste(new_grouping_variables[[i]],
@@ -1657,7 +1784,8 @@ caterpillar_plots[[i]] <- catplot
 
 }
 
-caterpillar_plots[[2]]
+i <- i +1
+caterpillar_plots[[i]]
 
 names(caterpillar_plots) <- new_grouping_variables
 
@@ -1665,9 +1793,9 @@ names(caterpillar_plots) <- new_grouping_variables
 
 related_caterpillar_plots <- list()
 
-for (i in seq_along(x)) {
+for (i in seq_along(confidence_intervals)) {
   
-  y <- x[[i]]
+  y <- confidence_intervals[[i]]
   
   names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
                 "upper_ci", "n", "pair")
@@ -1684,24 +1812,39 @@ for (i in seq_along(x)) {
              pair == "extinct x threatened"|
              pair == "RLI x threatened")
   
-  catplot <-  ggplot(y, aes(rs, subgroup_label)) +
-    geom_point(aes(col = subgroup_label)) +
+  y <- y %>%
+    mutate(id = paste(pair, subgroup, sep = "_"))
+  
+  pval <- group_correlation_dataframes[[i]] %>%
+    select(combination, coefficient, pvalue, signif, subgroup) %>%
+    distinct(.) %>%
+    mutate(id = paste(combination, subgroup, sep = "_"))
+  
+  
+  plotdata <- y %>%
+    merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
+    dplyr::select(rs, coefficient, pvalue,signif, everything()) %>%
+    filter(signif != 0)
+  
+  catplot <-  ggplot(plotdata, aes(rs, pair)) +
+    geom_point(aes(col = pair)) +
     geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
-                       col = subgroup_label)) +
-    facet_wrap(~ pair) +
+                       col = pair)) +
+    facet_wrap(~ subgroup_label) +
     geom_vline(xintercept = 0, col = "red") +
     ggtitle(new_grouping_variables[[i]]) +
     theme(axis.text.y = element_blank(),
           strip.text.x = element_text(size = 5),
           axis.text.x = element_text(size = 5),
-          legend.position = "bottom",
+          legend.position = "none",
           legend.text = element_text(size = 5),
           axis.ticks = element_blank()) +
     xlab("Spearman's rank correlation coefficient") + 
     ylab("Ecoregion categories") + 
     labs(color ='Ecoregion categories') +
     scale_fill_viridis(discrete=TRUE) +
-    scale_color_viridis(discrete=TRUE) 
+    scale_color_viridis(discrete=TRUE) + 
+    geom_text(aes(label = pair), size= 2, vjust = 1.5)
   
   ggsave(file.path(group_directories[[i]],
                    paste(new_grouping_variables[[i]],
@@ -1712,7 +1855,8 @@ for (i in seq_along(x)) {
   
 }
 
-related_caterpillar_plots[[1]]
+i <- i + 1
+related_caterpillar_plots[[i]]
 
 names(related_caterpillar_plots) <- new_grouping_variables
 
@@ -1784,93 +1928,7 @@ for (i in seq_along(group_dataframes)){
 
 }
 
-# * Get coefficient dataframes ----
 
-group_correlation_dataframes <- list()
-
-#subgroup_correlations_dataframes <- list()
-
-for (i in seq_along(group_correlation_plots)) {
-  
-  # Get the plots for one grouping variable (eg Biomes)
-  
-  subgroup_plots <- group_correlation_plots[[i]]
-  
-  names(subgroup_plots) <- subgroup_list[[i]]
-  
-  subgroup_plots <- list.clean(subgroup_plots)
-  
-  subgroups <- names(subgroup_plots)
-  
-  subgroup_correlations_dataframes <- list()
-  
-  for (j in seq_along(subgroup_plots)) {
-    
-    # Get the plot for one sub-group of the grouping variable (eg Mangroves)
-
-    correlation_plot <- subgroup_plots[[j]]
-    
-    subgroup <- subgroups[j]
-    
-    # Get the coefficients, and add some additional grouping variables 
-    # for the different types of indicator combinations (eg independent or related inputs)
-    
-    correlation_df1 <- correlation_plot$data[,1:3] %>%
-                      merge(indicator_properties[c("indicator","inputs")], 
-                            by.x = "Var1", by.y = "indicator") %>%
-                      dplyr::rename(input1 = inputs) %>%
-                      merge(indicator_properties[c("indicator","inputs")], 
-                            by.x = "Var2", by.y = "indicator") %>%
-                      dplyr::rename(input2 = inputs) %>%
-                             mutate(subgroup = subgroup,
-                             combination = paste(Var1, "x", Var2, sep = " "),
-                             inputs = paste(input1, "x", input2, sep = " ")) %>%
-                      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
-                                            "iucn red list x land use data", inputs)) %>%
-                      dplyr::rename(coefficient = value) %>%
-                      dplyr::select(-Var2) %>%
-                      merge(indicator_relationships, by = "combination") %>%
-                      dplyr::rename(ind_group = Var1) 
-    
-    correlation_df2 <- correlation_plot$data[,1:3] %>%
-                        merge(indicator_properties[c("indicator","inputs")], 
-                              by.x = "Var1", by.y = "indicator") %>%
-                        dplyr::rename(input1 = inputs) %>%
-                        merge(indicator_properties[c("indicator","inputs")], 
-                              by.x = "Var2", by.y = "indicator") %>%
-                        dplyr::rename(input2 = inputs) %>%
-                        mutate(subgroup = subgroup,
-                               combination = paste(Var2, "x", Var1, sep = " "),
-                               inputs = paste(input1, "x", input2, sep = " ")) %>%
-                        mutate(inputs = ifelse(inputs == "land use data x iucn red list",
-                                               "iucn red list x land use data", inputs)) %>%
-                        dplyr::rename(coefficient = value) %>%
-                        dplyr::select(-Var1) %>%
-                        merge(indicator_relationships, by = "combination") %>%
-                        dplyr::rename(ind_group = Var2)
-    
-  correlation_df <- rbind(correlation_df1, correlation_df2)
-  
-  subgroup_correlations_dataframes[[j]] <- correlation_df
-    
-  all_combos <- correlation_df$combination
-  
-}
-
-# Combine all possible subgroups and correlation coefficients for the group
-# into one dataframe
-  
-subgroup_full_dataframe <- do.call(rbind, subgroup_correlations_dataframes)
-
-#group_correlation_dataframes[[i]] <- subgroup_correlations_dataframes
-group_correlation_dataframes[[i]] <- subgroup_full_dataframe
-
-}
-
-length(group_correlation_dataframes)
-lapply(group_correlation_dataframes, length)
-
-names(group_correlation_dataframes) <- new_grouping_variables
 
 # * Grouping variable heatmaps ----
 

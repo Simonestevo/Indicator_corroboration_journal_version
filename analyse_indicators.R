@@ -41,7 +41,7 @@ library(arules)
 # Plotting
 library(ggplot2)
 library(RColorBrewer)
-library(ggbiplot)
+library(ggbiplot) # Won't install
 library(plot3D)
 library(plotly)
 library(viridis)

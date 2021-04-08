@@ -2684,6 +2684,9 @@ islands_missing <- compare_variables(ecoregion_map_renamed, ecoregion_islands)
 
 islands_missing <- islands_missing[[2]]
 
+# Add classifications for missing ecoregions which are all clearly
+# on Antarctica or an island
+
 islands_missing <- islands_missing%>%
         mutate(raw_indicator_value = ifelse(REALM == "Antarctica",
                                      "continent", "island")) %>%
@@ -3193,15 +3196,11 @@ write.csv(indicators_wide, file.path(indicator_outputs,
 
 # Combine ecoregion characteristics ----
 
-beta_missing <- compare_variables(ecoregion_map_renamed, ecoregion_beta_values)
-
-
-
 ecoregion_values_master <- rbind(lpi_record_values,
                     rli_record_values, # Has an extra row for spp without ecoregions (ecoregion_id = NA)
                     ecoregion_area_values,
                     ecoregion_biomes,
-                    ecoregion_islands, # Only 840?
+                    ecoregion_islands, 
                     ecoregion_predominant_threats,
                     ecoregion_pr_threat_count,
                     ecoregion_headline_threats,
@@ -3211,9 +3210,14 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_populations, 
                     ecoregion_endemics, # Has an extra row for spp without ecoregions (ecoregion_id = NA)
                     ecoregion_anthrome_values,
-                    ecoregion_beta_values) %>% # Only 829?
+                    ecoregion_beta_values) %>% # Missing Antarctic ecoregions
                     dplyr::select(ecoregion_id, indicator, year, 
                                   raw_indicator_value)
+
+# Remove rock and ice, and NA ecoregions
+
+ecoregion_values_master <- ecoregion_values_master %>% 
+                           filter(ecoregion_id != 0) 
 
 saveRDS(ecoregion_values_master, file.path(indicator_outputs,
                                            paste(location, eco_version,

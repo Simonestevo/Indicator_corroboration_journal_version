@@ -3217,7 +3217,9 @@ ecoregion_values_master <- rbind(lpi_record_values,
 # Remove rock and ice, and NA ecoregions
 
 ecoregion_values_master <- ecoregion_values_master %>% 
-                           filter(ecoregion_id != 0) 
+                           mutate(raw_indicator_value = 
+                                    ifelse(ecoregion_id == 0, NA,
+                                           raw_indicator_value)) 
 
 saveRDS(ecoregion_values_master, file.path(indicator_outputs,
                                            paste(location, eco_version,

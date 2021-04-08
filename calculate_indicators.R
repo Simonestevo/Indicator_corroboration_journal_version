@@ -669,6 +669,18 @@ lookup_ecoregion <- function(eco_id_number, data) {
   # eco_vals
   
 }
+
+compare_variables <- function(large_data, small_data) {
+  
+  missing_ecoregions_map <- large_data[!large_data$ecoregion_id %in% 
+                                   small_data$ecoregion_id, ]
+  
+  missing_ecoregions <- missing_ecoregions_map %>% 
+                        st_set_geometry(NULL)
+  
+  return(list(missing_ecoregions_map, missing_ecoregions))
+  
+}
 # Get ecoregions and their attributes ----
 
 if (("Ecoregions2017Valid.rds" %in% list.files(file.path(inputs, 
@@ -761,6 +773,9 @@ if (!is.na(country)) {
                                    ecoregion_subset$ECO_ID,] 
   
 }
+
+
+ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
 
 # Check if indicators have already been calculated ----
 # 
@@ -2664,6 +2679,21 @@ ecoregion_islands <- all_classifications %>%
      rename(ecoregion_id = ECO_ID) %>%
      select(all_of(indicator_columns))
 
+
+islands_missing <- compare_variables(ecoregion_map_renamed, ecoregion_islands)
+
+islands_missing <- islands_missing[[2]]
+
+islands_missing <- islands_missing%>%
+        mutate(raw_indicator_value = ifelse(REALM == "Antarctica",
+                                     "continent", "island")) %>%
+        mutate(indicator = "island status",
+               year = NA) %>%
+        select(all_of(indicator_columns))
+
+ecoregion_islands <- rbind(ecoregion_islands,
+                           islands_missing)
+
 saveRDS(ecoregion_islands, file.path(indicator_outputs, 
                                       paste(location, eco_version, 
                                             "island_status.rds",
@@ -3163,11 +3193,15 @@ write.csv(indicators_wide, file.path(indicator_outputs,
 
 # Combine ecoregion characteristics ----
 
+beta_missing <- compare_variables(ecoregion_map_renamed, ecoregion_beta_values)
+
+
+
 ecoregion_values_master <- rbind(lpi_record_values,
-                    rli_record_values,
+                    rli_record_values, # Has an extra row for spp without ecoregions (ecoregion_id = NA)
                     ecoregion_area_values,
                     ecoregion_biomes,
-                    ecoregion_islands,
+                    ecoregion_islands, # Only 840?
                     ecoregion_predominant_threats,
                     ecoregion_pr_threat_count,
                     ecoregion_headline_threats,
@@ -3175,9 +3209,9 @@ ecoregion_values_master <- rbind(lpi_record_values,
                     ecoregion_scientific_capacity,
                     ecoregion_realms, 
                     ecoregion_populations, 
-                    ecoregion_endemics,
+                    ecoregion_endemics, # Has an extra row for spp without ecoregions (ecoregion_id = NA)
                     ecoregion_anthrome_values,
-                    ecoregion_beta_values) %>%
+                    ecoregion_beta_values) %>% # Only 829?
                     dplyr::select(ecoregion_id, indicator, year, 
                                   raw_indicator_value)
 
@@ -3245,7 +3279,6 @@ write.csv(ecoregion_values_wide, file.path(indicator_outputs,
 # Map the ecoregion values to see if they make sense ----
 #' TODO: Update this to ggplot?
 
-ecoregion_map_renamed <- ecoregion_map %>% rename(ecoregion_id = ECO_ID)
 
 ecoregion_values_map <- left_join(ecoregion_map_renamed, 
                                   ecoregion_values_wide,

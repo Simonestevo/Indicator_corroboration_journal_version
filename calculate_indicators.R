@@ -594,55 +594,6 @@ find_synonyms <- function( species ) {
   
 }
 
-get_anthromes <- function(anthrome, map, timepoint) {
-  
-  df <- as.data.frame(anthrome@data@values) %>%
-    mutate(new = ifelse(anthrome@data@values == 53,1,
-                        ifelse(anthrome@data@values == 61,1,
-                               ifelse(anthrome@data@values == 62,1,
-                                      ifelse(anthrome@data@values == 43,1,0)))))
-  
-  # Reclassify pixels as disturbed or undisturbed
-  anthrome_mask <- reclassify(anthrome, rcl = df)
-  
-  # Split the pixel values into the ecoregion polygons
-  anthrome_vals <- raster::extract(anthrome_mask, map)
-  
-  # Get the sum of pixel values classified as "1" (undisturbed)
-  undisturbed_sum <- lapply(anthrome_vals, sum) 
-  
-  # Get the total number of pixels in the ecoregion
-  total_cells <- lapply(anthrome_vals, length)
-  
-  # Combine into dataframes
-  undisturbed_sum <- do.call(rbind, undisturbed_sum)
-  total_cells <- do.call(rbind, total_cells)
-  df <- as.data.frame(cbind(undisturbed_sum, total_cells))
-  
-  # Calculate proportion of undisturbed habitat in that ecoregion
-  prop_undisturbed <- mutate(df, prop_undisturbed = undisturbed_sum/total_cells)
-  
-  # Add the ecoregion ID back in
-  
-  ecoregion_id <- dplyr::select(map, ECO_ID)
-  ecoregion_id <- ecoregion_id %>% st_set_geometry(NULL)
-  proportion_undisturbed <- cbind(ecoregion_id, prop_undisturbed)
-  proportion_undisturbed <- proportion_undisturbed %>%
-    mutate(year = timepoint) %>%
-    rename(undisturbed_cells = V1,
-           total_cells = V2)
-  
-  saveRDS(proportion_undisturbed, file.path(indicator_outputs, 
-                                            paste(location,
-                                                  as.character(timepoint),
-                                                  "anthrome.rds",
-                                                  sep = "_")))
-  
-  return(proportion_undisturbed)
-  
-}
-
-
 get_anthromes_2 <- function(anthrome, map, timepoint) {
   
   df <- as.data.frame(anthrome@data@values) %>%
@@ -2953,12 +2904,12 @@ ecoregion_realms <- ecoregions %>%
 
 # Anthromes ----
 
-if ((paste(location, eco_version, "anthrome_values.rds", sep = "_") %in% 
+if ((paste(location, eco_version, "anthrome_values_2.rds", sep = "_") %in% 
      list.files(indicator_outputs))) {
   
 ecoregion_anthrome_values <- readRDS(file.path(indicator_outputs, 
                                                      paste(location, eco_version, 
-                                                           "anthrome_values.rds",
+                                                           "anthrome_values_2.rds",
                                                            sep = "_")))
   
 } else {
@@ -2976,12 +2927,6 @@ anthromes_2000_raster <- readAll(anthromes_2000_raster)
 # Extract the proportion of each ecoregion that is undisturbed in years 1700, 1800, 1900 and 2000
 # SLOW - takes 45 mins to an hour each
 
-system.time(anthromes_1700_1 <- get_anthromes(anthromes_1700_raster, ecoregion_map, 1700))
-system.time(anthromes_1800_1 <- get_anthromes(anthromes_1800_raster, ecoregion_map, 1800))
-system.time(anthromes_1900_1 <- get_anthromes(anthromes_1900_raster, ecoregion_map, 1900))
-system.time(anthromes_2000_1 <- get_anthromes(anthromes_2000_raster, ecoregion_map, 2000))
-
-
 system.time(anthromes_1700_2 <- get_anthromes_2(anthromes_1700_raster, ecoregion_map, 1700))
 system.time(anthromes_1800_2 <- get_anthromes_2(anthromes_1800_raster, ecoregion_map, 1800))
 system.time(anthromes_1900_2 <- get_anthromes_2(anthromes_1900_raster, ecoregion_map, 1900))
@@ -2993,9 +2938,6 @@ system.time(anthromes_2000_2 <- get_anthromes_2(anthromes_2000_raster, ecoregion
 threshold <- 0.7
 
 # Assign 'disturbed' class to each 
-
-# anthromes <- list(anthromes_1700_1, anthromes_1800_1, 
-#                   anthromes_1900_1, anthromes_2000_1)
 
 anthromes <- list(anthromes_1700_2, anthromes_1800_2, 
                   anthromes_1900_2, anthromes_2000_2)

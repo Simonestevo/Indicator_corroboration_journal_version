@@ -10,12 +10,15 @@
 
 ## 3: Visualisation - maps and plots
 
-#' TODO: IMPORTANT - resolve issues with multiple polygons = same ecoregion.  Either
-#' give separate IDs (might be tricky for those species not assigned via spatial
-#' data), OR remove duplicates before analysis (more likely to work) (can keep for
-#' mapping though)
-#' TODO: Figure out best way to test correlations between different indicators
-#' and years because all years, all indicators is too many.
+# TO DO ----
+
+#' TODO: Switch colour order for number of extinctions map
+#' TODO: Update LPI records in combined ecoregions
+#' TODO: Remove ecoregion 0 from ecoregion master
+#' TODO: Re-do ecoregion maps
+#' TODO: Check why so many species in rock and ice - presumably seabirds?
+#' TODO: Fix mean human pop density map
+#' TODO: Fix endemics map
 
 # Load packages ----
 
@@ -691,6 +694,30 @@ get_anthromes_2 <- function(anthrome, map, timepoint) {
   
 }
 
+lookup_ecoregion <- function(eco_id_number, data) {
+  
+  eco_name <- data %>% filter(ecoregion_id == eco_id_number) %>%
+    select(ecoregion_id, ECO_NAME) %>%
+    st_drop_geometry()
+  
+  print(eco_name)
+  
+  # eco_vals <- data %>% 
+  #   filter(ecoregion_id == eco_id_number) %>%
+  #   select(all_of(indicators)) 
+  # 
+  # averages <- data %>%
+  #   select(all_of(indicators)) %>%
+  #   colMeans(na.rm = TRUE)
+  # 
+  # id_col <- c(paste("eco", eco_id_number, "scores", sep = " "), "global_mean")
+  # eco_vals <- rbind(eco_vals, averages)
+  # 
+  # eco_vals <- cbind(id_col, eco_vals)
+  # 
+  # eco_vals
+  
+}
 # Get ecoregions and their attributes ----
 
 if (("Ecoregions2017Valid.rds" %in% list.files(file.path(inputs, 
@@ -795,9 +822,11 @@ if (!is.na(country)) {
 #                                        paste(location, eco_version,
 #                                              "indicator_values_master.rds",
 #                                            sep = "_")))
-# } else {
-  
-
+# 
+# ecoregion_values_master <- readRDS(file.path(indicator_outputs,
+#                             paste(location, eco_version,
+#                                   "ecoregion_values_master.rds",
+#                                   sep = "_")))
 # Load species data ----
 
 
@@ -2261,15 +2290,29 @@ lpi_inputs <- readRDS(file.path(indicator_outputs,
 
 lpi_input_summary <- lpi_inputs %>%
                      group_by(ECO_ID) %>%
-                     summarise(number_of_records = n_distinct(ID),
+                     summarise(number_of_records = n_distinct(ID), #ID stands for population
                                 .groups = "drop_last")
 
-lpi_record_values <- lpi_input_summary %>%
+lpi_record_values_1 <- lpi_input_summary %>%
                       mutate(indicator = "LPI_records",
                              year = NA) %>%
                       rename(ecoregion_id = ECO_ID,
                              raw_indicator_value = number_of_records) %>%
-                      select(indicator_columns)
+                      select(indicator_columns) 
+
+lpi_missing_ecoregions <- ecoregion_map_renamed %>%
+                          select(ecoregion_id) %>%
+                          st_set_geometry(NULL) %>%
+                          mutate(indicator = 'LPI_records',
+                                 year = NA,
+                                 raw_indicator_value = 0) %>%
+                          select(all_of(indicator_columns))
+
+lpi_missing_ecoregions <- lpi_missing_ecoregions[!lpi_missing_ecoregions$ecoregion_id %in% 
+                                 lpi_record_values_1$ecoregion_id, ]
+
+lpi_record_values <- rbind(lpi_record_values_1, lpi_missing_ecoregions)
+                      
 
 saveRDS(lpi_record_values, file.path(indicator_outputs, 
                                      paste(location, eco_version, 
@@ -3408,8 +3451,6 @@ extinct_data <- indicator_map_data %>%
 #   mutate(raw_indicator_value = ifelse(raw_indicator_value == 0,
 #                                       NA, raw_indicator_value))
 
-
-
 extinct <- tm_shape(extinct_data) +
            tm_polygons(col = "raw_indicator_value",
                         border.col = "black",
@@ -3652,14 +3693,16 @@ rm(realm, realm_data)
 # * Number of RLI records ----
 
 rli_record_data <- eco_variable_map_data %>%
-  filter(indicator == "RLI_records")
+  filter(indicator == "RLI_records") %>%
+  mutate(raw_indicator_value = as.numeric(raw_indicator_value))
 
 rli_record <- tm_shape(rli_record_data) +
   tm_polygons(col = "raw_indicator_value",
-              style = "cont",
+              style = "order",
               border.col = "black",
               pal = "viridis",
-              title = "RLI records") +
+              title = "RLI records",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3737,7 +3780,8 @@ rm(incl_hfp, incl_hfp_data)
 # * Number of endemics ----
 
 endemics_data <- eco_variable_map_data %>%
-  filter(indicator == "number of endemics")
+  filter(indicator == "number of endemics")%>%
+  mutate(raw_indicator_value = as.numeric(raw_indicator_value))
 
 endemics <- tm_shape(endemics_data) +
   tm_polygons(col = "raw_indicator_value",
@@ -3759,7 +3803,8 @@ rm(endemics, endemics_data)
 # * Mean human population density ----
 
 human_pop_data <- eco_variable_map_data %>%
-  filter(indicator == "mean human population density")
+  filter(indicator == "mean human population density")%>%
+  mutate(raw_indicator_value = as.numeric(raw_indicator_value))
 
 human_pop <- tm_shape(human_pop_data) +
   tm_polygons(col = "raw_indicator_value",
@@ -3781,14 +3826,17 @@ rm(human_pop, human_pop_data)
 # * Number of LPI records ----
 
 lpi_records_data <- eco_variable_map_data %>%
-  filter(indicator == "LPI_records")
+  filter(indicator == "LPI_records") %>%
+  mutate(raw_indicator_value = as.numeric(raw_indicator_value))
 
 lpi_records <- tm_shape(lpi_records_data) +
   tm_polygons(col = "raw_indicator_value",
-              style = "cont",
+              style = "fixed",
+              breaks = c(0, 0, 25, 50, 100, 200, 300, 400),
               border.col = "black",
               pal = "viridis",
-              title = "LPI records") +
+              title = "LPI records",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 

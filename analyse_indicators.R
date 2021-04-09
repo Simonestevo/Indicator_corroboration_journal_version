@@ -20,6 +20,18 @@ rm(list = ls()) # clear memory
 # install.packages("tm", dependencies = TRUE)
 # install.packages("PerformanceAnalytics", dependencies = TRUE)
 
+# TODO ----
+
+#' TODO: Update confidence intervals from correlation plots
+#' TODO: Generate lists of ecoregions that are excluded
+#' TODO: Prepare stats summary for indicators and variables (or can use 
+#' boxplots? add jitter?)
+#' TODO: Split input prep from data visualisation
+#' TODO: Remove superfluous steps
+#' TODO: Make another folder called something like MS figures? for stuff that's
+#' definitely going in
+#' TODO: Fix ecoregion lookup function
+
 # PCA and Clustering
 library(factoextra)
 library(FactoMineR)
@@ -462,6 +474,8 @@ rm(ecoregion_map_all, ecoregion_map)
   
 }
 
+ecoregions <- ecoregion_map_renamed %>% 
+              st_drop_geometry()
 # Countries
 
 ecoregion_countries <- readRDS(file.path(parent_outputs, "version_3",
@@ -627,6 +641,23 @@ dim(pca_data_1)
 pca_data_2 <- pca_data_1[complete.cases(pca_data_1[,2:9]),]
 dim(pca_data_2)
 
+pca_with_lpi_excluded_ecoregions <- pca_data_1[!complete.cases(pca_data_1[,2:9]),]
+dim(pca_with_lpi_excluded_ecoregions)
+
+# Check that together the datasets = number of ecoregions (should = TRUE)
+(nrow(pca_with_lpi_excluded_ecoregions) + nrow(pca_data_2)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
+
+head(pca_with_lpi_excluded_ecoregions)
+
+pca_with_lpi_excluded_ecoregions <- pca_with_lpi_excluded_ecoregions %>% 
+                                    select(ecoregion_id) %>%
+                                    merge(ecoregions,
+                                          by = "ecoregion_id")
+
+names(pca_with_lpi_excluded_ecoregions) <- tolower(pca_with_lpi_excluded_ecoregions)
+
+write.csv(pca_with_lpi_excluded_ecoregions, file.path(
+          current_analysis_outputs, "ecoregions_excluded_from_lpi_pca.csv"))
 
 # * Indicators only PCA ----
 

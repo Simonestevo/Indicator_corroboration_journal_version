@@ -12,14 +12,6 @@
 
 # TO DO ----
 
-#' TODO: Switch colour order for number of extinctions map
-#' TODO: Update LPI records in combined ecoregions
-#' TODO: Remove ecoregion 0 from ecoregion master
-#' TODO: Re-do ecoregion maps
-#' TODO: Check why so many species in rock and ice - presumably seabirds?
-#' TODO: Fix mean human pop density map
-#' TODO: Fix endemics map
-
 # Load packages ----
 
 # library(devtools)
@@ -990,6 +982,16 @@ species_by_ecoregion <- species_data %>%
                                 proportion_extinct = number_extinct/number_of_species,
                                 proportion_atrisk = number_atrisk/number_of_species,
                                 proportion_lowrisk = number_lowrisk/number_of_species)
+
+saveRDS(species_by_ecoregion, file.path(indicator_outputs, 
+                                     paste(location, eco_version, 
+                                           "species_by_ecoregion.rds",
+                                           sep = "_")))
+
+write.csv(species_by_ecoregion, file.path(indicator_outputs, 
+                                        paste(location, eco_version, 
+                                              "species_by_ecoregion.csv",
+                                              sep = "_")))
 
 test_ecoregion <- species_by_ecoregion %>% filter(ecoregion_id == 200)
 
@@ -3434,10 +3436,15 @@ extinct_data <- indicator_map_data %>%
 
 extinct <- tm_shape(extinct_data) +
            tm_polygons(col = "raw_indicator_value",
-                        border.col = "black",
-                        style = "log10_pretty",
-                        pal = "-viridis",
-                        title = "Proportion of\nspecies extinct") +
+                       border.col = "black",
+                       style = "fixed",
+                       breaks = c(0,0,0.01, 0.02, 0.03, 0.04, 
+                                  0.05, 0.06, 0.07, 0.08, 0.09, 0.1),
+                       pal = "-viridis",
+                       title = "Proportion of\nspecies extinct",
+                       alpha = 0.8,
+                       lwd = 0.1, 
+                       colorNA = "grey") +
            tm_layout(legend.outside = TRUE,
                      legend.outside.position = "right") 
 
@@ -3628,6 +3635,32 @@ ecoregion_values_map <- ecoregion_values_master %>%
 
 eco_variable_map_data <- left_join(ecoregion_map_data, ecoregion_values_map,
                                 by = "ecoregion_id")
+
+# * Islands ----
+
+island_data <- eco_variable_map_data %>%
+  filter(indicator == "island status")
+
+island <- tm_shape(island_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              pal = "-viridis",
+              title = "Island status",
+              colorNA = "grey",
+              alpha = 0.8,
+              lwd = 0.05) +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right",
+            bg.color = "lightblue1") 
+
+island
+
+tmap_save(island, file.path(indicator_outputs, paste(location,
+                                                    "island_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(island, island_data)
+
 # * Biome ----
 
 biome_data <- eco_variable_map_data %>%
@@ -3637,7 +3670,9 @@ biome <- tm_shape(biome_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
               pal = "viridis",
-              title = "Biome") +
+              title = "Biome",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3659,7 +3694,9 @@ realm <- tm_shape(realm_data) +
               style = "cont",
               border.col = "black",
               pal = "viridis",
-              title = "Realm") +
+              title = "Realm",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3683,6 +3720,7 @@ rli_record <- tm_shape(rli_record_data) +
               border.col = "black",
               pal = "viridis",
               title = "RLI records",
+              colorNA = "grey",
               alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
@@ -3703,8 +3741,10 @@ threat_data <- eco_variable_map_data %>%
 threat <- tm_shape(threat_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
-              pal = "Set3",
-              title = "Predominant threat type") +
+              pal = "viridis",
+              title = "Predominant threat type",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "bottom") 
 
@@ -3724,8 +3764,10 @@ headline_threat_data <- eco_variable_map_data %>%
 headline_threat <- tm_shape(headline_threat_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
-              pal = "Set3",
-              title = "Headline threat type") +
+              pal = "viridis",
+              title = "Headline threat type",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3746,7 +3788,9 @@ incl_hfp <- tm_shape(incl_hfp_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
               pal = "viridis",
-              title = "Included in HFP") +
+              title = "Included in HFP",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3767,9 +3811,12 @@ endemics_data <- eco_variable_map_data %>%
 endemics <- tm_shape(endemics_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
+              style = "fixed",
+              breaks = c(0, 0, 1, 5,10, 15, 20, 25, 30, 80),
               pal = "viridis",
               title = "Number of endemics",
-              style = "order") +
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3789,10 +3836,12 @@ human_pop_data <- eco_variable_map_data %>%
 
 human_pop <- tm_shape(human_pop_data) +
   tm_polygons(col = "raw_indicator_value",
-              style = "cont",
+              style = "log10_pretty",
               border.col = "black",
               pal = "viridis",
-              title = "Mean human population density") +
+              title = "Mean human population density",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3817,6 +3866,7 @@ lpi_records <- tm_shape(lpi_records_data) +
               border.col = "black",
               pal = "viridis",
               title = "LPI records",
+              colorNA = "grey",
               alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
@@ -3838,7 +3888,9 @@ anthrome <- tm_shape(anthrome_data) +
   tm_polygons(col = "raw_indicator_value",
               border.col = "black",
               pal = "viridis",
-              title = "Disturbance year") +
+              title = "Disturbance year",
+              colorNA = "grey",
+              alpha = 0.8) +
   tm_layout(legend.outside = TRUE,
             legend.outside.position = "right") 
 
@@ -3862,7 +3914,9 @@ beta <- tm_shape(beta_data) +
                     border.col = "black",
                     style = "cont",
                     pal = "viridis",
-                    title = "High beta area km^2") +
+                    title = "High beta area km^2",
+                    colorNA = "grey",
+                    alpha = 0.8) +
         tm_layout(legend.outside = TRUE,
                   legend.outside.position = "right") 
 

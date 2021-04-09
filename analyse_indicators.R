@@ -654,7 +654,7 @@ pca_with_lpi_excluded_ecoregions <- pca_with_lpi_excluded_ecoregions %>%
                                     merge(ecoregions,
                                           by = "ecoregion_id")
 
-names(pca_with_lpi_excluded_ecoregions) <- tolower(pca_with_lpi_excluded_ecoregions)
+names(pca_with_lpi_excluded_ecoregions) <- tolower(names(pca_with_lpi_excluded_ecoregions))
 
 write.csv(pca_with_lpi_excluded_ecoregions, file.path(
           current_analysis_outputs, "ecoregions_excluded_from_lpi_pca.csv"))

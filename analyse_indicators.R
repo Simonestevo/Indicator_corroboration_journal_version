@@ -23,7 +23,6 @@ rm(list = ls()) # clear memory
 # TODO ----
 
 #' TODO: Update confidence intervals from correlation plots
-#' TODO: Generate lists of ecoregions that are excluded
 #' TODO: Prepare stats summary for indicators and variables (or can use 
 #' boxplots? add jitter?)
 #' TODO: Split input prep from data visualisation
@@ -192,17 +191,17 @@ return(heatmap)
 lookup_ecoregion <- function(eco_id_number, data) {
   
 eco_name <- ecoregion_map_renamed %>% filter(ecoregion_id == eco_id_number) %>%
-            select(ecoregion_id, ECO_NAME) %>%
+            dplyr::select(ecoregion_id, ECO_NAME) %>%
             st_drop_geometry()
 
 print(eco_name)
 
 eco_vals <- data %>% 
   filter(ecoregion_id == eco_id_number) %>%
-  select(all_of(indicators)) 
+  dplyr::select(all_of(indicators)) 
 
 averages <- data %>%
-            select(all_of(indicators)) %>%
+  dplyr::select(all_of(indicators)) %>%
             colMeans(na.rm = TRUE)
 
 id_col <- c(paste("eco", eco_id_number, "scores", sep = " "), "global_mean")
@@ -292,6 +291,8 @@ make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
 # y[[18]]
 # y[[1]]
 
+# Replace with one of these, see bottom for option
+# to get bootstrapped CIs: https://www.rdocumentation.org/packages/psych/versions/2.1.3/topics/corr.test
 spearman_CI <- function(x, y, alpha = 0.05){
   
   rs <- cor(x, y, method = "spearman")
@@ -310,13 +311,9 @@ raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
 
 ecoregions_wide <- raw_ecoregions_wide 
 
+names(ecoregions_wide) <- tolower(names(ecoregions_wide))
  
-# ecoregions_wide$area.factor <- cut(ecoregions_wide$ecoregion.area.km.sq, breaks = 3, 
-#                                    labels = c("Small_ecoregions", 
-#                                               "Medium_ecoregions",
-#                                               "Large_ecoregions"))
-
-ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq, 
+ecoregions_wide$area_factor <- discretize(ecoregions_wide$ecoregion_area_km_sq, 
                                    method = "frequency",
                                    breaks = 3, 
                                    labels = c("Small_ecoregions", 
@@ -327,7 +324,7 @@ ecoregions_wide$area.factor <- discretize(ecoregions_wide$ecoregion.area.km.sq,
 # Split the ecoregions by lpi data by fewer than 20 (minimum population sample
 # required for SDMs) and more than 20
 
-ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records, 
+ecoregions_wide$lpi_records_factor <- cut(ecoregions_wide$lpi_records, 
                                           breaks = c(-Inf,19, Inf),
                                           labels = c("less than 20",
                                                      "more than 20"))
@@ -335,32 +332,32 @@ ecoregions_wide$lpi.records.factor <- cut(ecoregions_wide$LPI_records,
 # Split ecoregions by RLI species fewer than 400 and more than 400 (based
 # on min sample in Henriques et al 2020)
 
-ecoregions_wide$rli.records.factor <- cut(ecoregions_wide$RLI_records, 
+ecoregions_wide$rli_records_factor <- cut(ecoregions_wide$rli_records, 
                                           breaks = c(-Inf,400, Inf),
                                           labels = c("less than 400",
                                                      "more than 400"))
-table(ecoregions_wide$rli.records.factor)
+table(ecoregions_wide$rli_records_factor)
 
 ecoregions_wide <- ecoregions_wide %>% 
-                   mutate(included.in.HFP = ifelse(included.in.HFP == 1, 
+                   mutate(included_in_hfp = ifelse(included_in_hfp == 1, 
                           "Threat related to HFP",
-                          ifelse(included.in.HFP == 0,
+                          ifelse(included_in_hfp == 0,
                           "Threat external to HFP",
                                          NA)))
 
 ecoregions_wide <- ecoregions_wide %>%
-  mutate(scenario = as.factor(paste(rli.records.factor, included.in.HFP, sep = " & ")),
-         scenario.numeric = as.factor(as.numeric(scenario))) 
+  mutate(scenario = as.factor(paste(rli_records_factor, included_in_hfp, sep = " & ")),
+         scenario_numeric = as.factor(as.numeric(scenario))) 
 
-ecoregions_wide$endemics.factor <- cut(ecoregions_wide$number.of.endemics, 
+ecoregions_wide$endemics_factor <- cut(ecoregions_wide$number_of_endemics, 
                                        breaks = c(-Inf, 0 , Inf),
                                        labels = c("no endemics",
                                                   "endemics"))
 
 
-table(ecoregions_wide$endemics.factor)
+table(ecoregions_wide$endemics_factor)
 
-ecoregions_wide$High.beta.area.factor <- discretize(ecoregions_wide$High.beta.area, 
+ecoregions_wide$high_beta_area_factor <- discretize(ecoregions_wide$high_beta_area, 
                                       method = "interval",
                                       breaks = 4,
                                       labels = c("very low beta",
@@ -368,16 +365,16 @@ ecoregions_wide$High.beta.area.factor <- discretize(ecoregions_wide$High.beta.ar
                                                  "medium beta",
                                                  "high beta"))
 
-table(ecoregions_wide$High.beta.area)
+table(ecoregions_wide$high_beta_area)
 
 # Remove any unwanted grouping variables
 
 names(ecoregions_wide)
 
 ecoregions_wide <- ecoregions_wide %>%
-                   dplyr::select(-scenario, -scenario.numeric, 
-                                 -mean.scientific.publications,
-                                 -headline.threat.type)
+                   dplyr::select(-scenario, -scenario_numeric, 
+                                 -mean_scientific_publications,
+                                 -headline_threat_type)
 
 # Convert any characters into factors
 
@@ -389,12 +386,13 @@ ecoregions_wide <- ecoregions_wide %>%
 
 grouping_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
+grouping_variables
 
 # Get names of numeric variables 
 
 numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
 numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
-
+numeric_variables
 
 # Indicator data ----
 
@@ -534,17 +532,14 @@ lpi_95
 
 lpi_mx_eco <- raw_indicators_wide %>%
   filter(LPI_2005 == max(LPI_2005, na.rm = TRUE)) %>%
-  select(ecoregion_id) %>%
+  dplyr::select(ecoregion_id) %>%
   pull(.)
 
-# Looks much better
-hist(indicators_wide$LPI_2005)
-max(indicators_wide$LPI_2005, na.rm = TRUE)
-
 # Note, max positive LPI score goes to ecoregion 675 Po Basin, which also gets the third most
-# negative (ie contradictory) score for HFP
-ecoregion_map_renamed %>% filter(ecoregion_id == lpi_mx_eco)
+# negative (ie contradictory) score for HFP.  The three highest 
+# values in the LPI had populations of 0 in 1970 and have since been colonised?
 
+ecoregion_map_renamed %>% filter(ecoregion_id == lpi_mx_eco)
 
 # Just remove LPI outliers, given we know it is a dodgier dataset and volatile
 indicators_wide_2 <- indicators_wide %>%
@@ -552,6 +547,8 @@ indicators_wide_2 <- indicators_wide %>%
                            NA, LPI_2005)) 
 
 dim(indicators_wide_2)
+max(indicators_wide_2$LPI_2005, na.rm = TRUE)
+hist(indicators_wide_2$LPI_2005, breaks = 20)
 
 # HFP values - have a couple of exceptionally low values
 
@@ -560,7 +557,7 @@ min(indicators_wide$HFP_2005, na.rm = TRUE)
 hfp_mx <- max(raw_indicators_wide$HFP_2005, na.rm = TRUE)
 hfp_mx_eco <- raw_indicators_wide %>%
               filter(HFP_2005 == max(HFP_2005, na.rm = TRUE)) %>%
-              select(ecoregion_id) %>%
+              dplyr::select(ecoregion_id) %>%
               pull(.)
 
 # Looking at HFP map, bermuda cells do have very high scores (eg 48), which
@@ -577,18 +574,32 @@ min(indicators_wide$extinct_2008, na.rm = TRUE)
 
 # * Remove unwanted indicators ----
 
-indicators_wide_3 <- indicators_wide_2 %>%
+indicators_cleaned <- indicators_wide_2 %>%
                    dplyr::select(-number_extinct_2008, -number_extinct_2016,
                                  -AmphRLI_2008, -BirdRLI_2008, -BirdRLI_2016,
                                  -MammRLI_2008)
 
-dim(indicators_wide_3)
+dim(indicators_cleaned)
+
+## Save the cleaned indicator data
+
+saveRDS(indicators_cleaned,
+        file.path(current_analysis_outputs, "indicators_cleaned.RDS"))
+
+write.csv(indicators_cleaned,
+          file.path(current_analysis_outputs, "indicators_cleaned.csv"))
 
 # PCA ----
 
+# Create a folder for the PCA outputs
+
+pca_outputs <- file.path(current_analysis_outputs, "pca_outputs")
+
+dir.create(pca_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
 # * Prepare PCA input data ----
 
-pca_input_data <- indicators_wide_3
+pca_input_data <- indicators_cleaned
 
 head(pca_input_data)
 
@@ -621,14 +632,14 @@ head(pca_input_data)
 
 pca_data_1 <- pca_input_data %>%
         merge(ecoregions_wide[c("ecoregion_id",
-                                "Biome",
-                                "disturbance.year",
-                                "High.beta.area.factor",
-                                "island.status",
-                                "predominant.threat.type",
+                                "biome",
+                                "disturbance_year",
+                                "high_beta_area_factor",
+                                "island_status",
+                                "predominant_threat_type",
                                 "realm",
-                                "lpi.records.factor",
-                                "rli.records.factor")],
+                                "lpi_records_factor",
+                                "rli_records_factor")],
               by = "ecoregion_id", all.y = TRUE)
 
 dim(pca_data_1)
@@ -641,6 +652,8 @@ dim(pca_data_1)
 pca_data_2 <- pca_data_1[complete.cases(pca_data_1[,2:9]),]
 dim(pca_data_2)
 
+# Make a table of all ecoregions excluded when including LPI
+
 pca_with_lpi_excluded_ecoregions <- pca_data_1[!complete.cases(pca_data_1[,2:9]),]
 dim(pca_with_lpi_excluded_ecoregions)
 
@@ -650,7 +663,7 @@ dim(pca_with_lpi_excluded_ecoregions)
 head(pca_with_lpi_excluded_ecoregions)
 
 pca_with_lpi_excluded_ecoregions <- pca_with_lpi_excluded_ecoregions %>% 
-                                    select(ecoregion_id) %>%
+                                    dplyr::select(ecoregion_id) %>%
                                     merge(ecoregions,
                                           by = "ecoregion_id")
 
@@ -658,76 +671,6 @@ names(pca_with_lpi_excluded_ecoregions) <- tolower(names(pca_with_lpi_excluded_e
 
 write.csv(pca_with_lpi_excluded_ecoregions, file.path(
           current_analysis_outputs, "ecoregions_excluded_from_lpi_pca.csv"))
-
-# * Indicators only PCA ----
-
-# Only conducts the PCA on the main 8 indicators (excludes RLI land use and RLI non-land use)
-
-indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
-indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
-                                                      indicators_to_remove[2])]
-
-indicator_only_pca_data <- pca_data_2[,c("ecoregion_id", indicators_for_pca)]
-
-names(indicator_only_pca_data)
-
-# ** PCA ----
-
-# Tidy up names
-
-pl.data <- indicator_only_pca_data[,indicators_for_pca]
-rownames(pl.data) <- indicator_only_pca_data[,1]
-dimC <- dim(pl.data)
-
-# Scale the data to a mean of 0 and sd of 1
-pl.data <- scale(pl.data)
-summary(pl.data)
-
-names(pl.data) <- colnames(pl.data)
-pl.data <- as.data.frame(pl.data)
-
-sd(pl.data$BHI_plants_2005)
-
-# Save a copy of the inputs
-write.csv(pl.data, file.path(current_analysis_outputs, "indicator_only_pca_data.csv"))
-
-# Get formula for pca
-
-pc.f <- formula(paste("~", paste(names(pl.data), collapse = "+")))
-
-# Run pca
-
-pl.pca <- princomp(pc.f, cor=TRUE, data=pl.data)
-
-
-# Print out PCA loadings
-pl.pca$loadings
-
-# Print out eigenvalues
-pl.pca$sd^2
-
-# Print PCA summary
-summary(pl.pca)
-
-# Plot results - look to see number of PCA axes to retain
-plot(pl.pca, type = "lines")
-
-### How many dimensions do we include?
-# Plot points
-text(pl.pca$scores, labels = as.character(row.names(pl.data)), pos=1, cex=0.7)
-
-# Can see ecoregion 374 sticks out
-
-lookup_ecoregion(374)
-
-# Biplot of PCA - can see LPI gives little contribution
-
-tiff(file = file.path(current_analysis_outputs, "LPI_inclusive_pca_biplot.tiff"), 
-     units = "in", width=10, height=5, res = 300)
-
-biplot(pl.pca, cex=0.8, col=c(1,8))
-
-dev.off()
 
 # * No LPI indicator PCA ----
 
@@ -741,6 +684,24 @@ pca_data_4 <- pca_data_1 %>%
 
 pca_data_5 <- pca_data_4[complete.cases(pca_data_4[,2:8]),]
 dim(pca_data_5)
+
+# Make a table of excluded ecoregions 
+pca_no_lpi_excluded_ecoregions <- pca_data_4[!complete.cases(pca_data_4[,2:9]),]
+dim(pca_no_lpi_excluded_ecoregions)
+
+(nrow(pca_no_lpi_excluded_ecoregions) + nrow(pca_data_5)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
+
+head(pca_no_lpi_excluded_ecoregions)
+
+pca_no_lpi_excluded_ecoregions <- pca_no_lpi_excluded_ecoregions %>% 
+  select(ecoregion_id) %>%
+  merge(ecoregions,
+        by = "ecoregion_id")
+
+names(pca_no_lpi_excluded_ecoregions) <- tolower(names(pca_no_lpi_excluded_ecoregions))
+
+write.csv(pca_no_lpi_excluded_ecoregions, file.path(
+  current_analysis_outputs, "ecoregions_excluded_from_no_lpi_pca.csv"))
 
 # Only conducts the PCA on the main 7 indicators (excludes LPI)
 
@@ -811,6 +772,17 @@ text(pl2.pca$scores, labels=as.character(row.names(pl2.data)), pos=1, cex=0.7)
 # Biplot of PCA
 biplot(pl2.pca, cex=0.8, col=c(1,8))
 
+tiff(file = file.path(current_analysis_outputs, "LPI_exclusive_pca_biplot.tiff"), 
+     units = "in", width=5, height=5, res = 300)
+
+# Graph of variables
+fviz_pca_var(pl2.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+dev.off()
 # Alt approach to plotting
 
 PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
@@ -841,34 +813,34 @@ text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = F
 
 dev.off()
 
-###Use prcomp() instead - this uses singular value decomposition 
-
-res.pca2 <- prcomp(pl2.data, scale = TRUE)
-res.pca2$x
-
-# Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
-fviz_eig(res.pca2)
-
-#Graph of individuals. Individuals with a similar profile are grouped together.
-fviz_pca_ind(res.pca2,
-             col.ind = "contrib", # Color by congtribution
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE,     # Avoid text overlapping
-             #label=SP_as_col$Year
-) +
-  labs(title ="PCA", x = "PC1", y = "PC2")
-
-tiff(file = file.path(current_analysis_outputs, "pca_biplot.tiff"), 
-     units = "in", width=10, height=5, res = 300)
-
-# Graph of variables
-fviz_pca_var(res.pca2,
-             col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
-             repel = TRUE     # Avoid text overlapping
-)
-
-dev.off()
+# ###Use prcomp() instead - this uses singular value decomposition 
+# 
+# res.pca2 <- prcomp(pl2.data, scale = TRUE)
+# res.pca2$x
+# 
+# # Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+# fviz_eig(res.pca2)
+# 
+# #Graph of individuals. Individuals with a similar profile are grouped together.
+# fviz_pca_ind(res.pca2,
+#              col.ind = "contrib", # Color by congtribution
+#              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+#              repel = TRUE,     # Avoid text overlapping
+#              #label=SP_as_col$Year
+# ) +
+#   labs(title ="PCA", x = "PC1", y = "PC2")
+# 
+# tiff(file = file.path(current_analysis_outputs, "pca_biplot.tiff"), 
+#      units = "in", width=10, height=5, res = 300)
+# 
+# # Graph of variables
+# fviz_pca_var(res.pca2,
+#              col.var = "contrib", # Color by contributions to the PC
+#              gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
+#              repel = TRUE     # Avoid text overlapping
+# )
+# 
+# dev.off()
 
 # * Get ecoregion clusters ----
 
@@ -963,7 +935,7 @@ write.csv(cluster_three_ecoregions, file.path(current_analysis_outputs,
 
 # Cluster biplot data
 
-cluster_biplot_data <-  pca_data_2 %>%
+cluster_biplot_data <-  pca_data_5 %>%
   merge(cluster_map_data, by = "ecoregion_id")
 
 
@@ -1019,9 +991,16 @@ indicator_boxplot_data_wide <- indicators_wide_centred %>%
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                           id.vars = 'ecoregion_id')
 
-boxplots <- ggplot(indicator_boxplot_data) +
-            geom_boxplot(aes(x = variable, y = value)) +
-            theme(axis.text.x = element_text(angle= 45,hjust=1))
+boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
+            geom_boxplot() +
+            #geom_point(position = "jitter",alpha = 0.1) +
+            theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+            geom_hline(yintercept = 0) +
+            theme(
+            legend.position = "none",
+            axis.text.y = element_text(size = 6),
+            axis.text.x = element_text(size = 6))+
+            xlab("Indicator") + ylab("Indicator value")
 
 boxplots
 
@@ -1376,8 +1355,6 @@ scatterplots[[1]]
 
 
 # Correlation plots ----
-
-
 
 # * SAMPLE SIZE ISSUE ----
 #' TODO:  https://www.personality-project.org/r/html/r.test.html - do we need
@@ -1959,7 +1936,82 @@ for (i in seq_along(group_dataframes)){
 
 }
 
+# Analysis with LPI ----
 
+# Only conducts the PCA on the main 8 indicators (excludes RLI land use and RLI non-land use)
+
+indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
+indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
+                                                     indicators_to_remove[2])]
+
+indicator_only_pca_data <- pca_data_2[,c("ecoregion_id", indicators_for_pca)]
+
+names(indicator_only_pca_data)
+
+# ** PCA ----
+
+# Tidy up names
+
+pl.data <- indicator_only_pca_data[,indicators_for_pca]
+rownames(pl.data) <- indicator_only_pca_data[,1]
+dimC <- dim(pl.data)
+
+# Scale the data to a mean of 0 and sd of 1
+pl.data <- scale(pl.data)
+summary(pl.data)
+
+names(pl.data) <- colnames(pl.data)
+pl.data <- as.data.frame(pl.data)
+
+sd(pl.data$BHI_plants_2005)
+
+# Save the PCA data
+
+saveRDS(pl.data, file.path(pca_outputs, "lpi_pca_input_data.rds"))
+write.csv(pl.data, file.path(pca_outputs, "lpi_pca_input_data.csv"))
+
+# Get formula for pca
+
+pc.f <- formula(paste("~", paste(names(pl.data), collapse = "+")))
+
+# Run pca
+
+pl.pca <- princomp(pc.f, cor=TRUE, data=pl.data)
+
+
+# Print out PCA loadings
+pl.pca$loadings
+
+# Print out eigenvalues
+pl.pca$sd^2
+
+# Print PCA summary
+summary(pl.pca)
+
+# Plot results - look to see number of PCA axes to retain
+plot(pl.pca, type = "lines")
+
+### How many dimensions do we include?
+# Plot points
+text(pl.pca$scores, labels = as.character(row.names(pl.data)), pos=1, cex=0.7)
+
+# Can see ecoregion 374 sticks out
+
+lookup_ecoregion(374)
+
+# Biplot of PCA - can see LPI gives little contribution
+
+tiff(file = file.path(pca_outputs, "lpi_inclusive_pca_biplot.tiff"), 
+     units = "in", width=5, height=5, res = 300)
+
+# Graph of variables
+fviz_pca_var(pl.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+dev.off()
 
 # * Grouping variable heatmaps ----
 
@@ -2214,7 +2266,7 @@ tmap_save(beta, file.path(indicator_outputs, paste(location,
 #'                                            RLI_2005 +
 #'                                            extinct_2005 +
 #'                                            scenario +
-#'                                            included.in.HFP + realm +
+#'                                            included_in_HFP + realm +
 #'                                            LPI_records + headline.threat.type +
 #'                                            Biome + mean.scientific.publications +
 #'                                            island.status +
@@ -2445,7 +2497,7 @@ tmap_save(beta, file.path(indicator_outputs, paste(location,
 #' 
 #' # Compare k-means to actual groupings
 #' 
-#' x <- table(wisc.km$cluster, pca_data_5$lpi.records.factor)
+#' x <- table(wisc.km$cluster, pca_data_5$lpi_records_factor)
 #' 
 #' true <- colSums(x)
 #' 

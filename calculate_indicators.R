@@ -20,6 +20,7 @@
 
 library(rlpi)
 library(raster)
+library(janitor)
 library(tidyverse)
 library(sf)
 library(grid)
@@ -3081,7 +3082,7 @@ ecoregion_beta_values <- dinerstein_data %>%
                          mutate(indicator = "High beta area",
                                 year = NA) %>%
                          rename(ecoregion_id = Ecoregion.ID) %>%
-                         select(indicator_columns)
+                         dplyr::select(indicator_columns)
 
 head(ecoregion_beta_values)
 
@@ -3274,6 +3275,8 @@ ecoregion_values_wide <- ecoregion_values_wide %>%
 
 summary(ecoregion_values_wide)
 
+names(ecoregion_values_wide) <- gsub("\\.", "_", names(ecoregion_values_wide))
+
 saveRDS(ecoregion_values_wide, file.path(indicator_outputs,
                                          paste(location, eco_version,
                                                "ecoregion_values_master_wide.rds",
@@ -3283,41 +3286,6 @@ write.csv(ecoregion_values_wide, file.path(indicator_outputs,
                                              paste(location, eco_version,
                                                    "ecoregion_values_wide.csv",
                                                    sep = "_")))
-
-# Map the ecoregion values to see if they make sense ----
-#' TODO: Update this to ggplot?
-
-
-ecoregion_values_map <- left_join(ecoregion_map_renamed, 
-                                  ecoregion_values_wide,
-                                  by = "ecoregion_id")
-
-ecoregion_values_map_data <- left_join(ecoregion_map_renamed, 
-                                       ecoregion_values_master,
-                                       by = "ecoregion_id")
-
-plot(ecoregion_values_map["number.of.endemics"])
-plot(ecoregion_values_map["mean.human.population.density"])
-ecoregion_area <- plot(ecoregion_values_map["ecoregion.area.km.2"])
-island_status <- plot(ecoregion_values_map["island.status"])
-lpi_records_map <- plot(ecoregion_values_map["LPI_records"])
-scientific_capacity_map <- plot(ecoregion_values_map["mean.scientific.publications"])
-predominant_threat_map <- plot(ecoregion_values_map["predominant.threat.count"])
-predominant_threat_count_map <- plot(ecoregion_values_map["predominant.threat.type"])
-rli_records_map <- plot(ecoregion_values_map["RLI_records"])
-
-data <- ecoregion_values_map_data %>% filter(indicator == "predominant threat type")
-
-threat_map <-  ggplot(data) +
-  geom_sf(aes(fill = raw_indicator_value), colour = "black", 
-          size = 0.05, show.legend = 'fill') +
-  scale_fill_viridis_c(trans = "reverse",
-                       alpha = .8,
-                       na.value = "grey70") +
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank()) 
 
 # Map the indicators ----
 

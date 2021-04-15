@@ -1874,6 +1874,8 @@ catplot <-  ggplot(plotdata, aes(rs, pair)) +
                                col = pair)) +
             facet_wrap(~ subgroup_label) +
             geom_vline(xintercept = 0, col = "red") +
+            geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
+            geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
             ggtitle(new_grouping_variables[[i]]) +
             theme(axis.text.y = element_blank(),
                   strip.text.x = element_text(size = 5),
@@ -1886,7 +1888,8 @@ catplot <-  ggplot(plotdata, aes(rs, pair)) +
             labs(color ='Ecoregion categories') +
             scale_fill_viridis(discrete=TRUE) +
             scale_color_viridis(discrete=TRUE) + 
-            geom_text(aes(label = pair), size= 2, vjust = 1.5)
+            geom_text(aes(label = pair), size= 2, vjust = 1.5) +
+            xlim(-1, 1)
 
 ggsave(file.path(group_directories[[i]],
                  paste(new_grouping_variables[[i]],
@@ -1896,6 +1899,9 @@ ggsave(file.path(group_directories[[i]],
 caterpillar_plots[[i]] <- catplot
 
 }
+
+i <- 1
+caterpillar_plots[[i]]
 
 i <- i +1
 caterpillar_plots[[i]]
@@ -1945,6 +1951,8 @@ for (i in seq_along(confidence_intervals)) {
                        col = pair)) +
     facet_wrap(~ subgroup_label) +
     geom_vline(xintercept = 0, col = "red") +
+    geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
     ggtitle(new_grouping_variables[[i]]) +
     theme(axis.text.y = element_blank(),
           strip.text.x = element_text(size = 5),
@@ -1957,7 +1965,9 @@ for (i in seq_along(confidence_intervals)) {
     labs(color ='Ecoregion categories') +
     scale_fill_viridis(discrete=TRUE) +
     scale_color_viridis(discrete=TRUE) + 
-    geom_text(aes(label = pair), size= 2, vjust = 1.5)
+    geom_text(aes(label = pair), size= 2, vjust = 1.5) +
+    xlim(-1, 1)
+  
   
   ggsave(file.path(group_directories[[i]],
                    paste(new_grouping_variables[[i]],
@@ -1967,6 +1977,9 @@ for (i in seq_along(confidence_intervals)) {
   related_caterpillar_plots[[i]] <- catplot
   
 }
+
+i <- 1
+related_caterpillar_plots[[i]]
 
 i <- i + 1
 related_caterpillar_plots[[i]]

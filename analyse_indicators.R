@@ -30,6 +30,7 @@ rm(list = ls()) # clear memory
 #' TODO: Make another folder called something like MS figures? for stuff that's
 #' definitely going in
 #' TODO: Fix ecoregion lookup function
+#' TODO: Figure out cluster on princomp pl.pca object
 
 # PCA and Clustering
 library(factoextra)
@@ -62,6 +63,7 @@ library(GGally)
 library(ggcorrplot)
 library(visdat)
 library(cowplot)
+# library(forcats)
 
 # Maps
 library(sf)
@@ -652,27 +654,7 @@ dim(pca_data_1)
 pca_data_2 <- pca_data_1[complete.cases(pca_data_1[,2:9]),]
 dim(pca_data_2)
 
-# Make a table of all ecoregions excluded when including LPI
-
-pca_with_lpi_excluded_ecoregions <- pca_data_1[!complete.cases(pca_data_1[,2:9]),]
-dim(pca_with_lpi_excluded_ecoregions)
-
-# Check that together the datasets = number of ecoregions (should = TRUE)
-(nrow(pca_with_lpi_excluded_ecoregions) + nrow(pca_data_2)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
-
-head(pca_with_lpi_excluded_ecoregions)
-
-pca_with_lpi_excluded_ecoregions <- pca_with_lpi_excluded_ecoregions %>% 
-                                    dplyr::select(ecoregion_id) %>%
-                                    merge(ecoregions,
-                                          by = "ecoregion_id")
-
-names(pca_with_lpi_excluded_ecoregions) <- tolower(names(pca_with_lpi_excluded_ecoregions))
-
-write.csv(pca_with_lpi_excluded_ecoregions, file.path(
-          current_analysis_outputs, "ecoregions_excluded_from_lpi_pca.csv"))
-
-# * No LPI indicator PCA ----
+# * Remove LPI ----
 
 # Repeat PCA but remove LPI because it reduces the data points and has little
 # influence on any of the components
@@ -686,21 +668,21 @@ pca_data_5 <- pca_data_4[complete.cases(pca_data_4[,2:8]),]
 dim(pca_data_5)
 
 # Make a table of excluded ecoregions 
-pca_no_lpi_excluded_ecoregions <- pca_data_4[!complete.cases(pca_data_4[,2:9]),]
-dim(pca_no_lpi_excluded_ecoregions)
+incomplete_ecoregions_no_lpi <- pca_data_4[!complete.cases(pca_data_4[,2:9]),]
+dim(incomplete_ecoregions_no_lpi)
 
-(nrow(pca_no_lpi_excluded_ecoregions) + nrow(pca_data_5)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
+(nrow(incomplete_ecoregions_no_lpi) + nrow(pca_data_5)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
 
-head(pca_no_lpi_excluded_ecoregions)
+head(incomplete_ecoregions_no_lpi)
 
-pca_no_lpi_excluded_ecoregions <- pca_no_lpi_excluded_ecoregions %>% 
+incomplete_ecoregions_no_lpi <- incomplete_ecoregions_no_lpi %>% 
   select(ecoregion_id) %>%
   merge(ecoregions,
         by = "ecoregion_id")
 
-names(pca_no_lpi_excluded_ecoregions) <- tolower(names(pca_no_lpi_excluded_ecoregions))
+names(incomplete_ecoregions_no_lpi) <- tolower(names(incomplete_ecoregions_no_lpi))
 
-write.csv(pca_no_lpi_excluded_ecoregions, file.path(
+write.csv(incomplete_ecoregions_no_lpi, file.path(
   current_analysis_outputs, "ecoregions_excluded_from_no_lpi_pca.csv"))
 
 # Only conducts the PCA on the main 7 indicators (excludes LPI)
@@ -712,7 +694,7 @@ indicator_only_pca_2_data <- pca_data_5[,c("ecoregion_id", indicators_for_pca_2)
 names(indicator_only_pca_2_data)
 dim(indicator_only_pca_2_data)
 
-# ** PCA ----
+# * PCA ----
 
 # Tidy up names
 
@@ -730,7 +712,7 @@ dim(pl2.data)
 sd(pl2.data$BHI_plants_2005)
 
 # Save a copy of the inputs
-write.csv(pl2.data, file.path(current_analysis_outputs, "indicator_only_pca_2_data.csv"))
+write.csv(pl2.data, file.path(pca_outputs, "pca_input_data.csv"))
 
 # Get formula for pca
 
@@ -740,12 +722,16 @@ pc.f2 <- formula(paste("~", paste(names(pl2.data), collapse = "+")))
 
 pl2.pca <- princomp(pc.f2, cor=TRUE, data=pl2.data)
 
+# save pca
+
+saveRDS(pl2.pca, file.path(pca_outputs, "pca.rds"))
+
 # Print out PCA loadings
 pca_loadings <- pl2.pca$loadings
 
 pca_loadings <- as.table(pca_loadings)
 
-write.csv(pca_loadings, file.path(current_analysis_outputs, 
+write.csv(pca_loadings, file.path(pca_outputs, 
                                   "pca_loadings.csv"))
 
 # Print out eigenvalues
@@ -772,46 +758,46 @@ text(pl2.pca$scores, labels=as.character(row.names(pl2.data)), pos=1, cex=0.7)
 # Biplot of PCA
 biplot(pl2.pca, cex=0.8, col=c(1,8))
 
-tiff(file = file.path(current_analysis_outputs, "LPI_exclusive_pca_biplot.tiff"), 
+tiff(file = file.path(pca_outputs, "pca_variable_plot.tiff"), 
      units = "in", width=5, height=5, res = 300)
 
 # Graph of variables
 fviz_pca_var(pl2.pca,
              col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = c("#36648B", "#FFA500", "#8B2500"),
+             gradient.cols = viridis(3),# c("#36648B", "#FFA500", "#8B2500"),
              repel = TRUE     # Avoid text overlapping
 )
 
 dev.off()
-# Alt approach to plotting
-
-PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
-fviz_eig(pl2.pca)
-
-# Put on row named
-#Rename Col 1
-View(pl2.data)
-
-pcx <- pl2.pca$scores[,1]
-pcy <- pl2.pca$scores[,2]
-pcz <- pl2.pca$scores[,3]
-
-pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
-pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
-pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
-
-View(pl2.pca$scores)
-
-tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"), 
-     units = "in", width=10, height=5, res = 300)
-
-# 3D as points
-scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
-          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
-text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
-
-dev.off()
+# # Alt approach to plotting
+# 
+# PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
+# fviz_eig(pl2.pca)
+# 
+# # Put on row named
+# #Rename Col 1
+# View(pl2.data)
+# 
+# pcx <- pl2.pca$scores[,1]
+# pcy <- pl2.pca$scores[,2]
+# pcz <- pl2.pca$scores[,3]
+# 
+# pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
+# pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
+# pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
+# 
+# View(pl2.pca$scores)
+# 
+# tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"), 
+#      units = "in", width=10, height=5, res = 300)
+# 
+# # 3D as points
+# scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
+#           col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
+#           ylab =pcylab, zlab = pczlab)
+# text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+# 
+# dev.off()
 
 # ###Use prcomp() instead - this uses singular value decomposition 
 # 
@@ -842,11 +828,23 @@ dev.off()
 # 
 # dev.off()
 
-# * Get ecoregion clusters ----
+# Clusters ----
+
+# Create a folder for the PCA outputs
+
+cluster_outputs <- file.path(current_analysis_outputs, "cluster_outputs")
+
+dir.create(cluster_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+# * Compute clusters ----
 
 # Compute hierarchical clustering on principal components
 res.pca24 <- PCA(pl2.data, ncp = 5, graph = FALSE)
 res.hcpc2 <- HCPC(res.pca24, graph = FALSE)
+
+saveRDS(res.hcpc2, file.path(cluster_outputs, "cluster.rds"))
+
+# * Make cluster data ----
 
 data.hcpc2 <- as.data.frame(setDT(res.hcpc2$data.clust, keep.rownames = TRUE)[])
 
@@ -857,16 +855,19 @@ data.hcpc2 <- data.hcpc2 %>%
 names(data.hcpc2)
 unique(data.hcpc2$cluster)
 
+saveRDS(data.hcpc2, file.path(cluster_outputs, "cluster_data.rds"))
+write.csv(data.hcpc2, file.path(cluster_outputs, "cluster_data.csv"))
+
 # Vertical dendrogram
 
-tiff(file = file.path(current_analysis_outputs, "pca_cluster_dendrogram.tiff"), 
+tiff(file = file.path(cluster_outputs, "pca_cluster_dendrogram.tiff"), 
      units = "in", width=10, height=5, res = 300)
 
 fviz_dend(res.hcpc2, 
           cex = 0.7,                     # Label size
-          palette = "jco",               # Color palette see ?ggpubr::ggpar
+          palette = viridis(3),               # Color palette see ?ggpubr::ggpar
           rect = TRUE, rect_fill = TRUE, # Add rectangle around groups
-          rect_border = "jco",           # Rectangle color
+          rect_border = viridis(3),           # Rectangle color
           labels_track_height = 0.8      # Augment the room for labels
 )
 
@@ -874,16 +875,16 @@ dev.off()
 
 # Factor map
 
-fviz_cluster(res.hcpc2,
-             repel = TRUE,            # Avoid label overlapping
-             show.clust.cent = TRUE, # Show cluster centers
-             palette = "jco",         # Color palette see ?ggpubr::ggpar
-             ggtheme = theme_bw(),
-             main = "Factor map"
-)
+# fviz_cluster(res.hcpc2,
+#              repel = TRUE,            # Avoid label overlapping
+#              show.clust.cent = TRUE, # Show cluster centers
+#              palette = "jco",         # Color palette see ?ggpubr::ggpar
+#              ggtheme = theme_bw(),
+#              main = "Factor map"
+# )
 
 
-# Map & plot clusters ----
+# * Map clusters ----
 
 cluster_map_data <- ecoregion_map_renamed %>%
                     merge(data.hcpc2[c("ecoregion_id", "cluster")], 
@@ -903,14 +904,11 @@ cluster_map <-  ggplot(cluster_map_data) +
 
 cluster_map
 
-ggsave(file.path(current_analysis_outputs,
-                 paste(location, eco_version,
-                       "cluster_map.png",
-                       sep = "_")), 
+ggsave(file.path(cluster_outputs,
+                 "cluster_map.png"), 
        cluster_map,  device = "png")
 
 # Add clusters to our data
-
 
 # Look at the ecoregions in each cluster
 
@@ -926,17 +924,22 @@ cluster_three_ecoregions <- cluster_map_data %>%
                           filter(cluster == 3) %>%
                           st_drop_geometry(.)
 
-write.csv(cluster_one_ecoregions, file.path(current_analysis_outputs, 
+write.csv(cluster_one_ecoregions, file.path(cluster_outputs, 
                                             "cluster_one_ecoregions.csv"))
-write.csv(cluster_two_ecoregions, file.path(current_analysis_outputs, 
+write.csv(cluster_two_ecoregions, file.path(cluster_outputs, 
                                             "cluster_two_ecoregions.csv"))
-write.csv(cluster_three_ecoregions, file.path(current_analysis_outputs,
+write.csv(cluster_three_ecoregions, file.path(cluster_outputs,
                                               "cluster_three_ecoregions.csv"))
 
 # Cluster biplot data
 
 cluster_biplot_data <-  pca_data_5 %>%
   merge(cluster_map_data, by = "ecoregion_id")
+
+saveRDS(cluster_biplot_data, file.path(cluster_outputs, 
+                                         "cluster_biplot_data.rds"))
+write.csv(cluster_biplot_data, file.path(cluster_outputs, 
+                                            "cluster_biplot_data.csv"))
 
 
 pca_cluster_plot <- fviz_pca_biplot(pl2.pca, geom.ind = "point", pointshape = 21, 
@@ -957,24 +960,196 @@ pca_cluster_plot <- fviz_pca_biplot(pl2.pca, geom.ind = "point", pointshape = 21
 
 pca_cluster_plot
 
-ggsave(file.path(current_analysis_outputs,
-                 paste(location, eco_version,
-                       "cluster_biplot.png",
-                       sep = "_")), 
+ggsave(file.path(cluster_outputs, "cluster_biplot.png"), 
        pca_cluster_plot,  device = "png") 
 
 rm(cluster_map)
 
+# * Cluster boxplots ----
+
+# Plot data by cluster
+
+cluster_boxplot_data_wide <- correlation_input_data_all %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         indicators, numeric_variables)))
+
+summary(cluster_boxplot_data_wide)
+
+# Make sure all the values are scaled
+
+cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
+                                                                numeric_variables)])
+
+cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
+                                                                 "cluster")], 
+                                   cluster_boxplot_data_wide)
+summary(cluster_boxplot_data_wide)
+
+cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
+  dplyr::select(-predominant_threat_count,
+                -number_of_endemics) 
+
+# Melt back into long format
+
+cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
+                                       measure.vars = c(indicators, 
+                                                        "ecoregion_area_km_sq",
+                                                        "high_beta_area",
+                                                        "lpi_records",
+                                                        "mean_human_population_density",
+                                                        "rli_records"))
+
+head(cluster_boxplot_data)
+
+names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
+                                 "Indicator", "Indicator value")
+
+saveRDS(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.rds"))
+write.csv(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.csv"))
+
+cluster_boxplots <- ggplot(cluster_boxplot_data) +
+  geom_boxplot(aes(x = Indicator, y = `Indicator value`,
+                   fill = Indicator)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap( ~ cluster) +
+  geom_hline(yintercept = 0) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+theme(
+  legend.position = "none",
+  axis.text.y = element_text(size = 6),
+  axis.text.x = element_text(size = 6)
+)
+
+cluster_boxplots
+
+ggsave(file.path(cluster_outputs, "cluster_boxplots.png"),
+       cluster_boxplots, device = "png")
+
+# Cluster barplots ----
+
+# Prepare the inputs data
+
+categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
+
+cluster_barplot_data_wide <- correlation_input_data_all %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster",
+                         categorical_variables)))  
+
+cluster_barplot_data <- reshape2::melt(cluster_barplot_data_wide, 
+                                       measure.vars = categorical_variables)
+
+saveRDS(cluster_barplot_data, file.path(cluster_outputs, "cluster_barplot_data.rds"))
+write.csv(cluster_barplot_data, file.path(cluster_outputs, "cluster_barplot_data.csv"))
+
+cluster_barplot_data <- cluster_barplot_data %>%
+  rename(group = variable,
+         subgroup = value) %>%
+  group_by(cluster, group, subgroup) %>%
+  summarise(ecoregion_count = n_distinct(ecoregion_id)) %>%
+  ungroup()
+
+cluster_barplot_data <- as.data.frame(cluster_barplot_data)
+
+group_cluster_barplot_data <- split(cluster_barplot_data, cluster_barplot_data$group)
+length(group_cluster_barplot_data)
+
+# Make the individual barplots for each grouping variable
+
+barplots <- list()
+
+for ( i in seq_along(group_cluster_barplot_data)) {
+  
+  barplots[[i]] <- ggplot(group_cluster_barplot_data[[i]]) +
+    geom_col(aes(x = cluster, 
+                 y = ecoregion_count,
+                 fill = subgroup), 
+             position = "fill") +
+    facet_wrap(~ group)  +
+    theme(strip.text.x = element_text(size = 10),
+          axis.text.x = element_text(size = 8),
+          legend.position = "bottom",
+          legend.text = element_text(size = 8),
+          axis.ticks = element_blank()) +
+    xlab("Cluster") + 
+    ylab("Ecoregion categories") + 
+    labs(color ='Ecoregion categories') +
+    scale_fill_viridis(discrete=TRUE) +
+    scale_color_viridis(discrete=TRUE) 
+  
+}
+
+i <- 0
+
+i <- i +1
+barplots[[10]]
+
+# Create grids of individual barplots
+
+png(paste(cluster_outputs,"barplots1.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridone <- plot_grid(barplots[[1]], barplots[[2]], barplots[[3]],
+                     align = "v", 
+                     nrow = 3,
+                     ncol = 1)
+
+gridone
+
+dev.off()
+
+png(paste(cluster_outputs,"barplots2.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridtwo <- plot_grid(barplots[[4]], barplots[[5]], barplots[[6]],
+                     align = "v", 
+                     nrow = 3,
+                     ncol = 1)
+
+gridtwo
+
+dev.off()
+
+png(paste(cluster_outputs,"barplots3.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridthree <- plot_grid(barplots[[7]], barplots[[8]], barplots[[9]],
+                       align = "v", 
+                       nrow = 3,
+                       ncol = 1)
+
+gridthree
+
+dev.off()
+
+png(paste(cluster_outputs,"barplots4.png", sep = "/"), 
+    units="in", width=9, height=12, res=400)
+
+gridfour <- plot_grid(barplots[[10]], barplots[[11]],
+                      align = "v", 
+                      nrow = 2,
+                      ncol = 1)
+
+gridfour
+dev.off()
+
 
 # Prepare correlation data ----
+
+# Create a folder for the PCA outputs
+
+correlation_outputs <- file.path(current_analysis_outputs, "correlation_outputs")
+
+dir.create(correlation_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
 
 # * Centre ----
 
 #TODO: Do we need to transform any variables? bc probably need to do so before scaling
 # https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 
-indicators_wide_centred <- indicators_wide %>%
-                           mutate_at(c(2:ncol(indicators_wide)), 
+indicators_wide_centred <- indicators_wide_2 %>%
+                           mutate_at(c(2:ncol(indicators_wide_2)), 
                                      funs(c(scale(.)))) 
 
 summary(indicators_wide_centred)
@@ -990,6 +1165,9 @@ indicator_boxplot_data_wide <- indicators_wide_centred %>%
 # Convert back into long format
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                           id.vars = 'ecoregion_id')
+
+saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
+write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
 
 boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
             geom_boxplot() +
@@ -1009,7 +1187,7 @@ ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
 
 rm(raw_indicators_wide)
 
-# Finalise correlation data ----
+# * Finalise correlation data ----
 
 correlation_input_data_all <- indicators_wide_centred %>%
   merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
@@ -1022,9 +1200,12 @@ correlation_input_data_all <- indicators_wide_centred %>%
 summary(correlation_input_data_all)
 
 saveRDS(correlation_input_data_all,
-        file.path(current_analysis_outputs, "correlation_input_data.RDS"))
+        file.path(correlation_outputs, "correlation_input_data_all_timepoints.rds"))
 
-# Time by time scatterplots ----
+write.csv(correlation_input_data_all,
+        file.path(correlation_outputs, "correlation_input_data_all_timepoints.csv"))
+
+# * Time by time scatterplots ----
 
 # Select the correct time point columns
 
@@ -1076,7 +1257,7 @@ for (i in seq_along(time_correlation_input_list)) {
     labs(x= labx,
          y = laby) + stat_cor(method = "spearman")
   
-  ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby,"_NL", ".png", sep = "")),
+  ggsave(file.path(correlation_outputs, paste(labx, "_x_", laby,"_NL", ".png", sep = "")),
          scatterplot, device = "png")
   
   time_scatterplots[[i]] <- scatterplot
@@ -1104,7 +1285,7 @@ time_scatterplots[[4]]
 # 
 # lapply(groups, class)
 
-# Subset to a single timepoint ----
+# * Subset to a single timepoint ----
 
 dim(correlation_input_data_all)
 
@@ -1114,185 +1295,6 @@ correlation_input_data <- correlation_input_data_all %>%
 
 names(correlation_input_data)
 
-# Cluster boxplots ----
-
-# Plot data by cluster
-
-library(forcats)
-library(hrbrthemes)
-
-cluster_boxplot_data_wide <- correlation_input_data_all %>%
-  dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                         indicators, numeric_variables)))
-
-summary(cluster_boxplot_data_wide)
-
-# Make sure all the values are scaled
-
-cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
-                                                                numeric_variables)])
-
-cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
-                                                                 "cluster")], 
-                                   cluster_boxplot_data_wide)
-summary(cluster_boxplot_data_wide)
-
-cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
-                             dplyr::select(-predominant.threat.count,
-                                           -number.of.endemics) %>%
-                             rename(human_pop_density = mean.human.population.density)
-
-# Melt back into long format
-
-cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
-                                       measure.vars = c(indicators, 
-                                                        "ecoregion.area.km.sq",
-                                                        "High.beta.area",
-                                                        "LPI_records",
-                                                        "human_pop_density",
-                                                        "RLI_records"))
-
-head(cluster_boxplot_data)
-
-names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
-                                 "Indicator", "Indicator value")
-
-cluster_boxplots <- ggplot(cluster_boxplot_data) +
-                    geom_boxplot(aes(x = Indicator, y = `Indicator value`,
-                                     fill = Indicator)) +
-                    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-                    facet_wrap( ~ cluster) +
-                    geom_hline(yintercept = 0) +
-  scale_fill_viridis(discrete=TRUE) +
-  scale_color_viridis(discrete=TRUE) 
-  theme(
-    legend.position = "none",
-    axis.text.y = element_text(size = 6),
-    axis.text.x = element_text(size = 6)
-  )
-
-cluster_boxplots
-
-ggsave(file.path(current_analysis_outputs, "cluster_boxplots.png"),
-       cluster_boxplots, device = "png")
-
-violin_plots <- cluster_boxplot_data %>%
-ggplot(aes(x = Indicator, y = `Indicator value`,
-           fill = Indicator,
-           color = Indicator)) +
-  geom_violin(width=2.1, size=0.2) +
-  scale_fill_viridis(discrete=TRUE) +
-  scale_color_viridis(discrete=TRUE) +
-  theme_ipsum() +
-  theme(
-    legend.position = "none"
-  ) + 
-  #coord_flip() +
-  facet_wrap( ~ cluster, nrow = 3) +
-  theme(axis.text.y = element_text(size = 6),
-        axis.text.x = element_text(size = 6, angle = 45, hjust = 1)) +
-  geom_hline(yintercept = 0, color = "red")
-
-violin_plots
-
-# Cluster barplots ----
-
-categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
-
-cluster_barplot_data_wide <- correlation_input_data_all %>%
-                            dplyr::select(all_of(c("ecoregion_id", "cluster",
-                                                   categorical_variables)))  
-
-cluster_barplot_data <- reshape2::melt(cluster_barplot_data_wide, 
-                                       measure.vars = categorical_variables)
-
-cluster_barplot_data <- cluster_barplot_data %>%
-                        rename(group = variable,
-                               subgroup = value) %>%
-                        group_by(cluster, group, subgroup) %>%
-                        summarise(ecoregion_count = n_distinct(ecoregion_id)) %>%
-                        ungroup()
-
-cluster_barplot_data <- as.data.frame(cluster_barplot_data)
-
-group_cluster_barplot_data <- split(cluster_barplot_data, cluster_barplot_data$group)
-length(group_cluster_barplot_data)
-
-
-barplots <- list()
-
-for ( i in seq_along(group_cluster_barplot_data)) {
-
-barplots[[i]] <- ggplot(group_cluster_barplot_data[[i]]) +
-            geom_col(aes(x = cluster, 
-                         y = ecoregion_count,
-                         fill = subgroup), 
-                     position = "fill") +
-            facet_wrap(~ group)  +
-            theme(strip.text.x = element_text(size = 10),
-                  axis.text.x = element_text(size = 8),
-                  legend.position = "bottom",
-                  legend.text = element_text(size = 8),
-                  axis.ticks = element_blank()) +
-            xlab("Cluster") + 
-            ylab("Ecoregion categories") + 
-            labs(color ='Ecoregion categories') +
-            scale_fill_viridis(discrete=TRUE) +
-            scale_color_viridis(discrete=TRUE) 
-
-}
-
-i <- 0
-
-i <- i +1
-barplots[[10]]
-
-png(paste(current_analysis_outputs,"barplots1.png", sep = "/"), 
-    units="in", width=9, height=12, res=400)
-
-gridone <- plot_grid(barplots[[1]], barplots[[2]], barplots[[3]],
-           align = "v", 
-           nrow = 3,
-           ncol = 1)
-
-gridone
-
-dev.off()
-
-png(paste(current_analysis_outputs,"barplots2.png", sep = "/"), 
-    units="in", width=9, height=12, res=400)
-
-gridtwo <- plot_grid(barplots[[4]], barplots[[5]], barplots[[6]],
-                     align = "v", 
-                     nrow = 3,
-                     ncol = 1)
-
-gridtwo
-
-dev.off()
-
-png(paste(current_analysis_outputs,"barplots3.png", sep = "/"), 
-    units="in", width=9, height=12, res=400)
-
-gridthree <- plot_grid(barplots[[7]], barplots[[8]], barplots[[9]],
-                     align = "v", 
-                     nrow = 3,
-                     ncol = 1)
-
-gridthree
-
-dev.off()
-
-png(paste(current_analysis_outputs,"barplots4.png", sep = "/"), 
-    units="in", width=9, height=12, res=400)
-
-gridfour <- plot_grid(barplots[[10]], barplots[[11]],
-                     align = "v", 
-                     nrow = 2,
-                     ncol = 1)
-
-gridfour
-dev.off()
 
 # Scatterplots ----
 
@@ -1307,6 +1309,9 @@ correlation_input_data$ecoregion_id <- as.numeric(correlation_input_data$ecoregi
 
 correlation_input_data <- correlation_input_data %>% 
                           mutate(across(where(is.character), as.factor))
+
+saveRDS(correlation_input_data, file.path(cluster_outputs, "scatterplot_input_data.rds"))
+write.csv(correlation_input_data, file.path(cluster_outputs, "scatterplot_input_data.csv"))
 
 # Check it worked correctly
 lapply(correlation_input_data, class)
@@ -1342,7 +1347,7 @@ scatterplot <- ggplot(scatterplot_data,aes(x = varx,
                     y = laby) +
                stat_cor(method = "spearman")
 
-ggsave(file.path(current_analysis_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
+ggsave(file.path(correlation_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
        scatterplot, device = "png")
 
 scatterplots[[i]] <- scatterplot
@@ -1387,6 +1392,8 @@ group_directories <- list()
 
 group_coefficients <- list()
 
+group_confidence_intervals_boot <- list()
+
 group_matrices <- list()
 
 group_dataframes <- list()
@@ -1404,8 +1411,8 @@ print(paste( "Producing correlation plots for", vargroup, "grouping variable", s
 
 # Create a directory for your outputs
 
-group_directory <- file.path(current_analysis_outputs, paste(vargroup,
-                             "correlation matrices", sep = " "))
+group_directory <- file.path(correlation_outputs, paste(vargroup,
+                             "correlation_plots", sep = " "))
 
 if ( !dir.exists( group_directory ) ) {
   
@@ -1413,7 +1420,7 @@ if ( !dir.exists( group_directory ) ) {
   
 }
 
-## TEMPORARY
+# * REMOVE LPI ----
 # Remove LPI because it reduces the amount of data we have by about 3/4
 
 indicators <- indicators[!indicators %in% "LPI_2005"]
@@ -1449,6 +1456,8 @@ subgroup_correlation_plots <- list()
 
 subgroup_coefficients <- list()
 
+subgroup_confidence_intervals <- list()
+
 subgroup_matrices <- list()
 
 subgroup_dataframes <- list()
@@ -1483,6 +1492,7 @@ for (j in seq_along(group_indicator_list)) {
    name <- str_replace(name, "/", "_and_")
    name <- str_replace(name, "<", " less than ")
    name <- str_replace(name, ">", " more than ")
+   name <- str_replace(name, ",", "")
    name <- gsub("[()]", "", name)
    
    # Check how many rows, don't calculate correlation if too few ecoregions in group
@@ -1495,6 +1505,15 @@ for (j in seq_along(group_indicator_list)) {
      # Get the correlation coefficients
      
      rs <- cor(group_matrix, method = "spearman")
+     
+     rs_ci <- cor.ci(group_matrix, n.iter = 2000, # n iterations taken from Ruscio et al 2008
+                                 method = "spearman", plot = FALSE)
+
+     # saveRDS(rs_ci, file.path(group_directory, paste(name,
+     #                                                 "correlation_outputs.rds",
+     #                                                 sep = " ")))
+
+     subgroup_confidence_intervals[[j]] <- rs_ci
      
      subgroup_coefficients[[j]] <- rs
      
@@ -1513,9 +1532,12 @@ for (j in seq_along(group_indicator_list)) {
      subgroup_correlation_plots[[j]] <- correlation_plot
      
      ggsave(file.path(group_directory,
-                      paste(name, "indicator_correlation_matrix.png", sep = "_")),
+                      paste(name, "heatmap.png", sep = " ")),
             correlation_plot, device = "png")
-  
+     
+     print(paste("correlation complete", name, sep = " "))
+     
+     
    }
 
 groups[[i]] <- subgroups
@@ -1525,6 +1547,8 @@ group_correlation_plots[[i]] <- subgroup_correlation_plots
 group_directories[[i]] <- group_directory
 
 group_coefficients[[i]] <- subgroup_coefficients
+
+group_confidence_intervals_boot[[i]] <- subgroup_confidence_intervals
 
 group_matrices[[i]] <- subgroup_matrices
 
@@ -1537,6 +1561,7 @@ names(group_correlation_plots) <- new_grouping_variables
 names(groups) <- new_grouping_variables
 names(group_matrices) <- new_grouping_variables
 names(group_coefficients) <- new_grouping_variables
+names(group_confidence_intervals_boot) <- new_grouping_variables
 names(group_dataframes) <- new_grouping_variables
 
 # Check nested lists are correct lengths
@@ -1574,6 +1599,8 @@ for (i in seq_along(group_correlation_plots)) {
     # Get the coefficients, and add some additional grouping variables 
     # for the different types of indicator combinations (eg independent or related inputs)
     
+    ## Independent data
+    
     correlation_df1 <- correlation_plot$data[,1:5] %>%
       merge(indicator_properties[c("indicator","inputs")], 
             by.x = "Var1", by.y = "indicator") %>%
@@ -1590,6 +1617,8 @@ for (i in seq_along(group_correlation_plots)) {
       dplyr::select(-Var2) %>%
       merge(indicator_relationships, by = "combination") %>%
       dplyr::rename(ind_group = Var1) 
+    
+    # Related data
     
     correlation_df2 <- correlation_plot$data[,1:5] %>%
       merge(indicator_properties[c("indicator","inputs")], 
@@ -1608,6 +1637,7 @@ for (i in seq_along(group_correlation_plots)) {
       merge(indicator_relationships, by = "combination") %>%
       dplyr::rename(ind_group = Var2)
     
+    # Independent and dependent data combined
     correlation_df <- rbind(correlation_df1, correlation_df2)
     
     subgroup_correlations_dataframes[[j]] <- correlation_df
@@ -1621,6 +1651,13 @@ for (i in seq_along(group_correlation_plots)) {
   
   subgroup_full_dataframe <- do.call(rbind, subgroup_correlations_dataframes)
   
+  write.csv(subgroup_full_dataframe, file.path(group_directories[[i]], 
+                                        paste(names(group_correlation_plots)[[i]],
+                                        "coefficient_data.csv", sep = "_")))
+  saveRDS(subgroup_full_dataframe, file.path(group_directories[[i]], 
+                                        paste(names(group_correlation_plots)[[i]],
+                                           "coefficient_data.rds", sep = "_")))
+  
   #group_correlation_dataframes[[i]] <- subgroup_correlations_dataframes
   group_correlation_dataframes[[i]] <- subgroup_full_dataframe
   
@@ -1633,95 +1670,163 @@ names(group_correlation_dataframes) <- new_grouping_variables
 
 # * Get confidence intervals ----
 
-group_confidence_intervals <- list()
+## Analytic confidence intervals
 
-for (i in seq_along(group_matrices)) {
+# group_confidence_intervals <- list()
+# 
+# for (i in seq_along(group_matrices)) {
+#   
+#   group_matrix <- group_matrices[[i]] 
+#   
+#   subgroups <- groups[[i]]
+#   
+#   group_names <- c("cluster", new_grouping_variables)
+#   
+#   subgroup_confidence_intervals <- list()
+#   
+#   for (j in seq_along(group_matrix)) {
+#     
+#     subgroup_matrix <- group_matrix[[j]]
+#     
+#     indicator_combos <- combn(names(subgroup_matrix), 2)
+#     
+#     # Now loop through the combos
+#     
+#     out <- list()
+#     
+#     for (k in seq_along(1:ncol(indicator_combos))) {
+#       
+#       combo <- as.vector(indicator_combos[,k])
+#       combo
+#       
+#       col1 <- subgroup_matrix[,combo[1]]
+#       col2 <- subgroup_matrix[,combo[2]]
+#       
+#       n <- nrow(subgroup_matrix)
+#       
+#       df <- spearman_CI(col1, col2, alpha = 0.05) # single indicator pair coefficient
+#       
+#       df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
+#       
+#       names(df) <- c("group", "subgroup", "ind_1", "ind_2", "rs", "lower_ci",
+#                      "upper_ci", "n")
+#       
+#       df <- df %>%
+#             mutate(pair = paste(combo[1], combo[2], sep = " x "))
+#       
+#       out[[k]] <- df
+#       
+#     }
+#     
+#     l2df <- do.call(rbind, out) # list of all subgroup pair coefficients
+#     
+#     subgroup_confidence_intervals[[j]] <- l2df
+#   }
+#   
+#   l1df <- do.call(rbind, subgroup_confidence_intervals)
+# 
+#   group_confidence_intervals[[i]] <- subgroup_confidence_intervals
+#   
+# }
+# 
+# # Turn into one data-frame per grouping variable
+# 
+# confidence_intervals <- list()
+# 
+# for (i in seq_along(group_confidence_intervals)) {
+#   
+#   confidence_intervals[[i]] <- do.call(rbind, group_confidence_intervals[[i]])
+#   
+# }
+
+
+## Bootstrapped confidence intervals
+
+group_confidence_intervals_boot <- list.clean(group_confidence_intervals_boot,
+                                              recursive = TRUE)
+
+group_ci_boot <- list()
+
+for (i in seq_along(group_confidence_intervals_boot)) {
   
-  group_matrix <- group_matrices[[i]] 
+
+  subgroup_cis <- group_confidence_intervals_boot[[i]]
   
-  subgroups <- groups[[i]]
+  group_name <- names(group_confidence_intervals_boot)[i]
   
-  group_names <- c("cluster", new_grouping_variables)
+  subgroup_ci_boot <- list()
   
-  subgroup_confidence_intervals <- list()
-  
-  for (j in seq_along(group_matrix)) {
+  for (j in seq_along(subgroup_cis)) {
     
-    subgroup_matrix <- group_matrix[[j]]
+    n <- nrow(group_matrices[[i]][[j]])
     
-    indicator_combos <- combn(names(subgroup_matrix), 2)
+    rho <- as.data.frame(subgroup_cis[[j]][[1]]) %>% 
+            tibble::rownames_to_column() %>% 
+            rename(ind_1 = rowname)
+          
     
-    # Now loop through the combos
+    rho_long <- rho %>% 
+                pivot_longer(c("BHI_plants",
+                               "BIIab",
+                               "BIIri",
+                               "HFP",
+                               "extinct",
+                               "RLI", 
+                               "threatened")) %>% 
+                rename(ind_2 = name,
+                       rs = value) %>% 
+                distinct(.) %>% 
+                mutate(pair = paste(ind_1, "x", ind_2, sep = " ")) %>% 
+                mutate(pair_flip = paste(ind_2, "x", ind_1, sep = " ")) %>% 
+                mutate(group = group_name,
+                       subgroup = groups[[i]][[j]])
     
-    out <- list()
+    pair <- c("BHI_plants x BIIab", "BHI_plants x BIIri", 
+              "BHI_plants x HFP",
+              "BHI_plants x extinct" ,
+              "BHI_plants x RLI", 
+              "BHI_plants x threatened",
+              "BIIab x BIIri", 
+              "BIIab x HFP",
+              "BIIab x extinct",
+              "BIIab x RLI" , 
+              "BIIab x threatened", 
+              "BIIri x HFP","BIIri x extinct", "BIIri x RLI",
+              "BIIri x threatened", "HFP x extinct","HFP x RLI", 
+              "HFP x threatened", "extinct x RLI", "extinct x threatened",   
+              "RLI x threatened")
     
-    for (k in seq_along(1:ncol(indicator_combos))) {
-      
-      combo <- as.vector(indicator_combos[,k])
-      combo
-      
-      col1 <- subgroup_matrix[,combo[1]]
-      col2 <- subgroup_matrix[,combo[2]]
-      
-      n <- nrow(subgroup_matrix)
-      
-      df <- spearman_CI(col1, col2, alpha = 0.05) # single indicator pair coefficient
-      
-      df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
-      
-      names(df) <- c("group", "subgroup", "ind_1", "ind_2", "rs", "lower_ci",
-                     "upper_ci", "n")
-      
-      df <- df %>%
-            mutate(pair = paste(combo[1], combo[2], sep = " x "))
-      
-      out[[k]] <- df
-      
-    }
+    cis <- as.data.frame(subgroup_cis[[j]][[6]]) %>% 
+           tibble::rownames_to_column() %>% 
+           dplyr::select(rowname, lower, upper, p) %>% 
+           rename(lower_ci = lower,
+                  upper_ci = upper,
+                  pair_abbr = rowname) %>% 
+           mutate(correct_pair = pair)
     
-    l2df <- do.call(rbind, out) # list of all subgroup pair coefficients
-    
-    subgroup_confidence_intervals[[j]] <- l2df
+    subgroup_ci_boot[[j]] <- rho_long %>% 
+            merge(cis, by.x = "pair", 
+                  by.y = "correct_pair") %>% 
+            mutate(n = n) %>% 
+            dplyr::select(group, subgroup, ind_1, ind_2, rs, lower_ci, upper_ci,
+                          n, pair)
+
   }
   
-  l1df <- do.call(rbind, subgroup_confidence_intervals)
-
-  group_confidence_intervals[[i]] <- subgroup_confidence_intervals
+  group_ci_boot[[i]] <- subgroup_ci_boot 
   
 }
-
-# Turn into one dataframe per grouping variable
 
 confidence_intervals <- list()
 
 for (i in seq_along(group_confidence_intervals)) {
   
-  confidence_intervals[[i]] <- do.call(rbind, group_confidence_intervals[[i]])
+  confidence_intervals[[i]] <- do.call(rbind, group_ci_boot[[i]])
   
 }
 
-# Remove non-significant coefficients ----
 
-x <- confidence_intervals[[1]] %>%
-     mutate(id = paste(pair, subgroup, sep = "_"))
-
-head(x)
-class(x)
-
-pval <- group_correlation_dataframes[[1]] %>%
-        select(combination, coefficient, pvalue, signif, subgroup) %>%
-        distinct(.) %>%
-        mutate(id = paste(combination, subgroup, sep = "_"))
-head(pval)
-class(pval)
-
-test <- x %>%
-        merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
-        dplyr::select(rs, coefficient, pvalue,signif, everything())
-
-head(test)
-
-# * Make LU * BD caterpillar plots ----
+# * Make independent caterpillar plots ----
 
 caterpillar_plots <- list()
 
@@ -1753,7 +1858,7 @@ y <- y %>%
      mutate(id = paste(pair, subgroup, sep = "_"))
 
 pval <- group_correlation_dataframes[[i]] %>%
-        select(combination, coefficient, pvalue, signif, subgroup) %>%
+        dplyr::select(combination, coefficient, pvalue, signif, subgroup) %>%
         distinct(.) %>%
         mutate(id = paste(combination, subgroup, sep = "_"))
 
@@ -1824,7 +1929,7 @@ for (i in seq_along(confidence_intervals)) {
     mutate(id = paste(pair, subgroup, sep = "_"))
   
   pval <- group_correlation_dataframes[[i]] %>%
-    select(combination, coefficient, pvalue, signif, subgroup) %>%
+    dplyr::select(combination, coefficient, pvalue, signif, subgroup) %>%
     distinct(.) %>%
     mutate(id = paste(combination, subgroup, sep = "_"))
   
@@ -1937,6 +2042,26 @@ for (i in seq_along(group_dataframes)){
 }
 
 # Analysis with LPI ----
+
+# Make a table of all ecoregions excluded when including LPI
+
+incomplete_ecoregions_lpi <- pca_data_1[!complete.cases(pca_data_1[,2:9]),]
+dim(incomplete_ecoregions_lpi)
+
+# Check that together the datasets = number of ecoregions (should = TRUE)
+(nrow(incomplete_ecoregions_lpi) + nrow(pca_data_2)) == nrow(ecoregion_map_renamed) - 1 # exclude rock and ice
+
+head(incomplete_ecoregions_lpi)
+
+incomplete_ecoregions_lpi <- incomplete_ecoregions_lpi %>% 
+  dplyr::select(ecoregion_id) %>%
+  merge(ecoregions,
+        by = "ecoregion_id")
+
+names(incomplete_ecoregions_lpi) <- tolower(names(incomplete_ecoregions_lpi))
+
+write.csv(incomplete_ecoregions_lpi, file.path(
+  current_analysis_outputs, "ecoregions_excluded_from_lpi_pca.csv"))
 
 # Only conducts the PCA on the main 8 indicators (excludes RLI land use and RLI non-land use)
 

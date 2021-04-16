@@ -22,7 +22,6 @@ rm(list = ls()) # clear memory
 
 # TODO ----
 
-#' TODO: Update confidence intervals from correlation plots
 #' TODO: Prepare stats summary for indicators and variables (or can use 
 #' boxplots? add jitter?)
 #' TODO: Split input prep from data visualisation
@@ -31,6 +30,8 @@ rm(list = ls()) # clear memory
 #' definitely going in
 #' TODO: Fix ecoregion lookup function
 #' TODO: Figure out cluster on princomp pl.pca object
+#' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
+#' caterpillar plots
 
 # PCA and Clustering
 library(factoextra)
@@ -1777,7 +1778,7 @@ for (i in seq_along(group_confidence_intervals_boot)) {
 
 confidence_intervals <- list()
 
-for (i in seq_along(group_confidence_intervals)) {
+for (i in seq_along(group_ci_boot)) {
   
   confidence_intervals[[i]] <- do.call(rbind, group_ci_boot[[i]])
   
@@ -1834,8 +1835,6 @@ catplot <-  ggplot(plotdata, aes(rs, pair)) +
             geom_vline(xintercept = 0, col = "red") +
             geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
             geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
-            geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
-            geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
             geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
             geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
             ggtitle(new_grouping_variables[[i]]) +
@@ -1856,7 +1855,7 @@ catplot <-  ggplot(plotdata, aes(rs, pair)) +
 ggsave(file.path(group_directories[[i]],
                  paste(new_grouping_variables[[i]],
                        "caterpillar_plot.png", sep = "_")),
-       catplot, device = "png")
+       catplot, device = "png", width = 17, height = 17, units = "cm")
 
 caterpillar_plots[[i]] <- catplot
 
@@ -1951,6 +1950,16 @@ i <- i + 1
 related_caterpillar_plots[[i]]
 
 names(related_caterpillar_plots) <- new_grouping_variables
+
+# * Correlation table ----
+
+## Make a mega table of all correlations
+
+pairwise_correlations <- do.call(rbind, group_correlation_dataframes) %>% 
+                         tibble::rownames_to_column()
+
+saveRDS(pairwise_correlations, file.path(correlation_outputs, "correlation_dataframe.rds"))
+write.csv(pairwise_correlations, file.path(correlation_outputs, "correlation_dataframe.csv"))
 
 # * Make subgroup scatterplots ----
 

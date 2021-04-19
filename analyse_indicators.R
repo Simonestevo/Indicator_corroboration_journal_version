@@ -592,6 +592,52 @@ saveRDS(indicators_cleaned,
 write.csv(indicators_cleaned,
           file.path(current_analysis_outputs, "indicators_cleaned.csv"))
 
+
+
+# * Centre ----
+
+#TODO: Do we need to transform any variables? bc probably need to do so before scaling
+# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
+
+indicators_wide_centred <- indicators_wide_2 %>%
+  mutate_at(c(2:ncol(indicators_wide_2)), 
+            funs(c(scale(.)))) 
+
+summary(indicators_wide_centred)
+
+# ** Centred boxplots ----
+
+#' IMPORTANT - this boxplot shows with outliers already removed
+
+# Get 2005 only
+indicator_boxplot_data_wide <- indicators_wide_centred %>%
+  dplyr::select(all_of(c("ecoregion_id", indicators)))
+
+# Convert back into long format
+indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
+                                         id.vars = 'ecoregion_id')
+
+saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
+write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
+
+boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
+  geom_boxplot() +
+  #geom_point(position = "jitter",alpha = 0.1) +
+  theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+  geom_hline(yintercept = 0) +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6))+
+  xlab("Indicator") + ylab("Indicator value")
+
+boxplots
+
+ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
+       boxplots, device = "png")
+
+rm(raw_indicators_wide)
+
 # PCA ----
 
 # Create a folder for the PCA outputs
@@ -606,9 +652,9 @@ pca_input_data <- indicators_cleaned
 
 head(pca_input_data)
 
-indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
-indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
-                                                     indicators_to_remove[2])]
+# indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
+# indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
+#                                                      indicators_to_remove[2])]
 
 # * Subset to a single timepoint ----
 
@@ -692,7 +738,9 @@ write.csv(incomplete_ecoregions_no_lpi, file.path(
 
 # Only conducts the PCA on the main 7 indicators (excludes LPI)
 
-indicators_for_pca_2 <- indicators_for_pca[!str_detect(indicators_for_pca,"LPI_2005")]
+#indicators_for_pca_2 <- indicators_for_pca[!str_detect(indicators_for_pca,"LPI_2005")]
+
+indicators_for_pca_2 <- indicators[!str_detect(indicators,"LPI_2005")]
 
 indicator_only_pca_2_data <- pca_data_5[,c("ecoregion_id", indicators_for_pca_2)]
 
@@ -972,9 +1020,17 @@ rm(cluster_map)
 
 # * Cluster boxplots ----
 
+# Finalise data
+
+boxplot_data <- indicators_wide_centred %>%
+  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
+  merge(cluster_map_data[c("ecoregion_id", "cluster")],
+        by = "ecoregion_id") %>%
+  dplyr::select(-geometry)
+
 # Plot data by cluster
 
-cluster_boxplot_data_wide <- correlation_input_data_all %>%
+cluster_boxplot_data_wide <- boxplot_data %>%
   dplyr::select(all_of(c("ecoregion_id", "cluster", 
                          indicators, numeric_variables)))
 
@@ -1147,58 +1203,13 @@ correlation_outputs <- file.path(current_analysis_outputs, "correlation_outputs"
 
 dir.create(correlation_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-
-# * Centre ----
-
-#TODO: Do we need to transform any variables? bc probably need to do so before scaling
-# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
-
-indicators_wide_centred <- indicators_wide_2 %>%
-                           mutate_at(c(2:ncol(indicators_wide_2)), 
-                                     funs(c(scale(.)))) 
-
-summary(indicators_wide_centred)
-
-# ** Centred boxplots ----
-
-#' IMPORTANT - this boxplot shows with outliers already removed
-
-# Get 2005 only
-indicator_boxplot_data_wide <- indicators_wide_centred %>%
-  dplyr::select(all_of(c("ecoregion_id", indicators)))
-
-# Convert back into long format
-indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
-                          id.vars = 'ecoregion_id')
-
-saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
-write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
-
-boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
-            geom_boxplot() +
-            #geom_point(position = "jitter",alpha = 0.1) +
-            theme(axis.text.x = element_text(angle= 45,hjust=1)) +
-            geom_hline(yintercept = 0) +
-            theme(
-            legend.position = "none",
-            axis.text.y = element_text(size = 6),
-            axis.text.x = element_text(size = 6))+
-            xlab("Indicator") + ylab("Indicator value")
-
-boxplots
-
-ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
-       boxplots, device = "png")
-
-rm(raw_indicators_wide)
-
-# * Finalise correlation data ----
+# Finalise data
 
 correlation_input_data_all <- indicators_wide_centred %>%
   merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
-                          merge(cluster_map_data[c("ecoregion_id", "cluster")],
-                                by = "ecoregion_id") %>%
-                          dplyr::select(-geometry)
+  merge(cluster_map_data[c("ecoregion_id", "cluster")],
+        by = "ecoregion_id") %>%
+  dplyr::select(-geometry)
 
 # Check it looks right (should have all timepoints)
 
@@ -1855,7 +1866,7 @@ catplot <-  ggplot(plotdata, aes(rs, pair)) +
 ggsave(file.path(group_directories[[i]],
                  paste(new_grouping_variables[[i]],
                        "caterpillar_plot.png", sep = "_")),
-       catplot, device = "png", width = 17, height = 17, units = "cm")
+       catplot, device = "png", width = 12, height = 17, units = "cm")
 
 caterpillar_plots[[i]] <- catplot
 
@@ -1914,8 +1925,6 @@ for (i in seq_along(confidence_intervals)) {
     geom_vline(xintercept = 0, col = "red") +
     geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
     geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
-    geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
-    geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
     geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
     geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
     ggtitle(new_grouping_variables[[i]]) +
@@ -1937,7 +1946,7 @@ for (i in seq_along(confidence_intervals)) {
   ggsave(file.path(group_directories[[i]],
                    paste(new_grouping_variables[[i]],
                          "related_caterpillar_plot.png", sep = "_")),
-         catplot, device = "png")
+         catplot, device = "png", width = 12, height = 17, units = "cm")
   
   related_caterpillar_plots[[i]] <- catplot
   

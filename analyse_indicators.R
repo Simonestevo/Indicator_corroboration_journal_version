@@ -421,9 +421,17 @@ write.csv(ecoregion_summary_table,
 
 ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
 
-ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(ecoregions_collinear_inputs),]
+ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
+                               ecoregions_collinear_inputs),]
 
-ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, method = "spearman")
+ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
+                                     method = "spearman")
+
+saveRDS(ecoregions_correlation_matrix,
+        file.path(collinearity_outputs, "ecoregion_correlation_matrix.RDS"))
+
+write.csv(ecoregions_correlation_matrix,
+          file.path(collinearity_outputs, "ecoregion_correlation_matrix.csv"))
 
 ## Categorical variables
 
@@ -434,19 +442,64 @@ ecoregions_wide_complete<- ecoregions_wide_complete %>%
     mutate(area_factor = factor(ecoregions_wide_complete$area_factor, 
                                                ordered = FALSE))
 
+# Subset to only categorical variables
+
+ecoregions_chisq_inputs <- ecoregions_wide[,grouping_variables]
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs[complete.cases(
+                           ecoregions_chisq_inputs),]
+
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as.factor)
+
+lapply(ecoregions_chisq_inputs, class)
+
+ecoregions_chisq_inputs <- as.matrix(ecoregions_chisq_inputs)
+
+# https://statsandr.com/blog/chi-square-test-of-independence-in-r/
+
+table(ecoregions_chisq_inputs$biome, ecoregions_chisq_inputs$rli_records_factor)
+test <- chisq.test(ecoregions_chisq_inputs$biome, ecoregions_chisq_inputs$rli_records_factor)
+c(test$statistic, test$p.value)
+
+table(ecoregions_chisq_inputs$high_beta_area_factor, 
+      ecoregions_chisq_inputs$predominant_threat_type)
+
+test2 <- chisq.test(ecoregions_chisq_inputs$high_beta_area_factor, 
+                    ecoregions_chisq_inputs$predominant_threat_type, 
+                    correct = FALSE)
+test2
+
+# https://stackoverflow.com/questions/60679649/apply-chi-squared-test-in-r-on-more-than-5-variables-and-find-the-p-values
+CHIS <- lapply(ecoregions_chisq_inputs[,-1], 
+               function(x) chisq.test(ecoregions_chisq_inputs[,1], x))
+
+library(data.table)
+library(broom)
+x <- rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+
 # Get all the column names except ecoregion ID,so we can convert to long format
-ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(ecoregions_wide_complete), "ecoregion_id")]
+ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(
+                       ecoregions_wide_complete), "ecoregion_id")]
 
 # Convert it to wide format so we can plot
+
 ecoregions_long <- ecoregions_wide_complete %>% 
                    pivot_longer(all_of(grouping_variables)) %>% 
                    rename(group = name,
                           subgroup = value)
 
 # Split data by grouping variables
-ecoregions_list <- split(ecoregions_long, ecoregions_long$group)
 
+ecoregions_list <- split(ecoregions_long, 
+                         ecoregions_long$group)
+
+# Create empty lists to catch output
+
+# by categorical grouping variable
 ecoregion_groups <- list()
+
+# by numeric grouping variable
 group_numerics <- list()
 
 for ( i in seq_along(ecoregions_list)) {
@@ -462,7 +515,8 @@ for(j in seq_along(numeric_variables)) {
 # Plot each numeric variable on the y axis, against boxplots of the different
 # factor levels on the x axis
   
-  plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", sep = "_")
+  plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", 
+                    sep = "_")
   
   group_numerics[[j]] <- ggplot(data,aes_string(x = "subgroup", 
                                                 y = numeric_variables[[j]])) +
@@ -474,7 +528,7 @@ for(j in seq_along(numeric_variables)) {
                             legend.position = "none",
                             axis.text.y = element_text(size = 6),
                             axis.text.x = element_text(size = 6))+
-                          xlab(group) + ylab(numeric_variables[[j]]) 
+                          xlab(group_name) + ylab(numeric_variables[[j]]) 
 
   ggsave(file.path(collinearity_outputs, plotname),
          group_numerics[[j]],

@@ -1964,8 +1964,22 @@ names(related_caterpillar_plots) <- new_grouping_variables
 
 ## Make a mega table of all correlations
 
-pairwise_correlations <- do.call(rbind, group_correlation_dataframes) %>% 
+pairwise_correlations_cf <- do.call(rbind, group_correlation_dataframes) %>% 
                          tibble::rownames_to_column()
+
+pairwise_correlations_ci <- do.call(rbind, confidence_intervals) %>% 
+  tibble::rownames_to_column()
+
+pairwise_correlations <- pairwise_correlations_cf %>% 
+        merge(pairwise_correlations_ci[c("group", "rs", "lower_ci",
+                                         "upper_ci","pair", "subgroup")],
+              by.x = c("combination","subgroup"),
+              by.y = c("pair", "subgroup")) %>% 
+        dplyr::select(group, subgroup, combination, coefficient, rs,
+                      lower_ci, upper_ci, pvalue, signif, input_relationship) %>% 
+        mutate(signif_2 = ifelse((pvalue > 0.05 | lower_ci < 0 & upper_ci > 0),
+                                 0, 1))
+        
 
 saveRDS(pairwise_correlations, file.path(correlation_outputs, "correlation_dataframe.rds"))
 write.csv(pairwise_correlations, file.path(correlation_outputs, "correlation_dataframe.csv"))
@@ -2041,6 +2055,7 @@ for (i in seq_along(group_dataframes)){
 # ANALYSIS WITH LPI ----
 
 # Only conducts the PCA on the main 8 indicators (excludes RLI land use and RLI non-land use)
+indicators <- c(indicators_05, indicators_08)
 
 indicators_for_pca <- indicators[!str_detect(indicators, indicators_to_remove[1])]
 indicators_for_pca <- indicators_for_pca[!str_detect(indicators_for_pca , 
@@ -2076,8 +2091,6 @@ indicators_08 <- names(pca_input_data)[str_detect(names(pca_input_data),
 
 indicators_08 <- indicators_08[!str_detect(indicators_08,
                                            "LPI_2008")]
-
-indicators <- c(indicators_05, indicators_08)
 
 # Subset so we only have indicators from the years we need
 
@@ -2533,10 +2546,11 @@ for ( i in seq_along(group_cluster_barplot_data)) {
   
 }
 
-i <- 0
+i <- 1
+barplots[[i]]
 
 i <- i +1
-barplots[[10]]
+barplots[[i]]
 
 # Create grids of individual barplots
 
@@ -2592,7 +2606,7 @@ dev.off()
 
 # Create a folder for the PCA outputs
 
-lpi_correlation_outputs <- file.path(current_analysis_outputs, "lpi_lpi_correlation_outputs")
+lpi_correlation_outputs <- file.path(current_analysis_outputs, "lpi_correlation_outputs")
 
 dir.create(lpi_correlation_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
@@ -2617,8 +2631,8 @@ indicator_boxplot_data_wide <- indicators_wide_centred %>%
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                                          id.vars = 'ecoregion_id')
 
-saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
-write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
+saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "lpi_indicator_boxplot_data.rds"))
+write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "lpi_indicator_boxplot_data.csv"))
 
 boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
   geom_boxplot() +
@@ -2635,8 +2649,6 @@ boxplots
 
 ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
        boxplots, device = "png")
-
-rm(raw_indicators_wide)
 
 # * Finalise correlation data ----
 
@@ -2737,8 +2749,8 @@ for (i in seq_along(indicator_list)) {
          y = laby) +
     stat_cor(method = "spearman")
   
-  ggsave(file.path(lpi_correlation_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
-         scatterplot, device = "png")
+  # ggsave(file.path(lpi_correlation_outputs, paste(labx, "_x_", laby, ".png", sep = "")),
+  #        scatterplot, device = "png")
   
   scatterplots[[i]] <- scatterplot
   
@@ -2746,7 +2758,7 @@ for (i in seq_along(indicator_list)) {
 
 i <- i + 1
 
-scatterplots[[1]]
+scatterplots[[i]]
 
 
 # Correlation plots ----
@@ -3050,77 +3062,6 @@ lapply(group_correlation_dataframes, length)
 names(group_correlation_dataframes) <- new_grouping_variables
 
 # * Get confidence intervals ----
-
-## Analytic confidence intervals
-
-# group_confidence_intervals <- list()
-# 
-# for (i in seq_along(group_matrices)) {
-#   
-#   group_matrix <- group_matrices[[i]] 
-#   
-#   subgroups <- groups[[i]]
-#   
-#   group_names <- c("cluster", new_grouping_variables)
-#   
-#   subgroup_confidence_intervals <- list()
-#   
-#   for (j in seq_along(group_matrix)) {
-#     
-#     subgroup_matrix <- group_matrix[[j]]
-#     
-#     indicator_combos <- combn(names(subgroup_matrix), 2)
-#     
-#     # Now loop through the combos
-#     
-#     out <- list()
-#     
-#     for (k in seq_along(1:ncol(indicator_combos))) {
-#       
-#       combo <- as.vector(indicator_combos[,k])
-#       combo
-#       
-#       col1 <- subgroup_matrix[,combo[1]]
-#       col2 <- subgroup_matrix[,combo[2]]
-#       
-#       n <- nrow(subgroup_matrix)
-#       
-#       df <- spearman_CI(col1, col2, alpha = 0.05) # single indicator pair coefficient
-#       
-#       df <- cbind(group_names[i],subgroups[j], combo[1], combo[2], df, n)
-#       
-#       names(df) <- c("group", "subgroup", "ind_1", "ind_2", "rs", "lower_ci",
-#                      "upper_ci", "n")
-#       
-#       df <- df %>%
-#             mutate(pair = paste(combo[1], combo[2], sep = " x "))
-#       
-#       out[[k]] <- df
-#       
-#     }
-#     
-#     l2df <- do.call(rbind, out) # list of all subgroup pair coefficients
-#     
-#     subgroup_confidence_intervals[[j]] <- l2df
-#   }
-#   
-#   l1df <- do.call(rbind, subgroup_confidence_intervals)
-# 
-#   group_confidence_intervals[[i]] <- subgroup_confidence_intervals
-#   
-# }
-# 
-# # Turn into one data-frame per grouping variable
-# 
-# confidence_intervals <- list()
-# 
-# for (i in seq_along(group_confidence_intervals)) {
-#   
-#   confidence_intervals[[i]] <- do.call(rbind, group_confidence_intervals[[i]])
-#   
-# }
-
-
 ## Bootstrapped confidence intervals
 
 group_confidence_intervals_boot <- list.clean(group_confidence_intervals_boot,
@@ -3141,16 +3082,19 @@ for (i in seq_along(group_confidence_intervals_boot)) {
     
     n <- nrow(group_matrices[[i]][[j]])
     
+    # Get correlation matrix of all indicator combinations, for this subgroup
     rho <- as.data.frame(subgroup_cis[[j]][[1]]) %>% 
       tibble::rownames_to_column() %>% 
       rename(ind_1 = rowname)
     
-    
+    # Convert it to long format where each row is an indicator combination 
+    # 28 pairs,(64 in total)
     rho_long <- rho %>% 
       pivot_longer(c("BHI_plants",
                      "BIIab",
                      "BIIri",
                      "HFP",
+                     "LPI",
                      "extinct",
                      "RLI", 
                      "threatened")) %>% 
@@ -3160,22 +3104,42 @@ for (i in seq_along(group_confidence_intervals_boot)) {
       mutate(pair = paste(ind_1, "x", ind_2, sep = " ")) %>% 
       mutate(pair_flip = paste(ind_2, "x", ind_1, sep = " ")) %>% 
       mutate(group = group_name,
-             subgroup = groups[[i]][[j]])
+             subgroup = groups[[i]][[j]]) %>% 
+      distinct(.)
     
-    pair <- c("BHI_plants x BIIab", "BHI_plants x BIIri", 
+    # to get pairs
+    pairs <- unique(indicator_relationships$combination)
+    pairs <- pairs[!grepl('RLILU', pairs)]
+    pairs <- pairs[!grepl('RLIother', pairs)]
+    
+    pair <- c("BHI_plants x BIIab", 
+              "BHI_plants x BIIri", 
               "BHI_plants x HFP",
               "BHI_plants x extinct" ,
               "BHI_plants x RLI", 
               "BHI_plants x threatened",
+              "BHI_plants x LPI",
               "BIIab x BIIri", 
               "BIIab x HFP",
               "BIIab x extinct",
               "BIIab x RLI" , 
-              "BIIab x threatened", 
-              "BIIri x HFP","BIIri x extinct", "BIIri x RLI",
-              "BIIri x threatened", "HFP x extinct","HFP x RLI", 
-              "HFP x threatened", "extinct x RLI", "extinct x threatened",   
-              "RLI x threatened")
+              "BIIab x threatened",
+              "BIIab x LPI",
+              "BIIri x HFP",
+              "BIIri x extinct", 
+              "BIIri x RLI",
+              "BIIri x threatened", 
+              "BIIri x LPI",
+              "HFP x extinct",
+              "HFP x RLI", 
+              "HFP x threatened",
+              "HFP x LPI",
+              "extinct x RLI", 
+              "extinct x threatened", 
+              "extinct x LPI",
+              "RLI x threatened",
+              "RLI x LPI"
+)
     
     cis <- as.data.frame(subgroup_cis[[j]][[6]]) %>% 
       tibble::rownames_to_column() %>% 
@@ -3200,7 +3164,7 @@ for (i in seq_along(group_confidence_intervals_boot)) {
 
 confidence_intervals <- list()
 
-for (i in seq_along(group_confidence_intervals)) {
+for (i in seq_along(group_ci_boot)) {
   
   confidence_intervals[[i]] <- do.call(rbind, group_ci_boot[[i]])
   
@@ -3224,15 +3188,19 @@ for (i in seq_along(confidence_intervals)) {
     filter(pair == "BHI_plants x extinct"|
              pair == "BHI_plants x RLI"|
              pair == "BHI_plants x threatened"|
+             pair == "BHI_plants x LPI"|
              pair == "BIIab x extinct"|
              pair == "BIIab x RLI"|
              pair == "BIIab x threatened"|
+             pair == "BIIab x LPI"|
              pair == "BIIri x extinct"|
              pair == "BIIri x RLI"|
              pair == "BIIri x threatened"|
+             pair == "BIIri x LPI"|
              pair == "HFP x extinct"|
              pair == "HFP x RLI"|
-             pair == "HFP x threatened")
+             pair == "HFP x threatened"|
+             pair == "HFP x LPI")
   
   
   y <- y %>%
@@ -3255,8 +3223,10 @@ for (i in seq_along(confidence_intervals)) {
                        col = pair)) +
     facet_wrap(~ subgroup_label) +
     geom_vline(xintercept = 0, col = "red") +
-    geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
-    geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
     ggtitle(new_grouping_variables[[i]]) +
     theme(axis.text.y = element_blank(),
           strip.text.x = element_text(size = 5),
@@ -3275,7 +3245,7 @@ for (i in seq_along(confidence_intervals)) {
   ggsave(file.path(group_directories[[i]],
                    paste(new_grouping_variables[[i]],
                          "caterpillar_plot.png", sep = "_")),
-         catplot, device = "png")
+         catplot, device = "png", width = 12, height = 17, units = "cm")
   
   caterpillar_plots[[i]] <- catplot
   
@@ -3332,8 +3302,10 @@ for (i in seq_along(confidence_intervals)) {
                        col = pair)) +
     facet_wrap(~ subgroup_label) +
     geom_vline(xintercept = 0, col = "red") +
-    geom_vline(xintercept = 0.5, col = "black", linetype = "dotted") +
-    geom_vline(xintercept = -0.5, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
     ggtitle(new_grouping_variables[[i]]) +
     theme(axis.text.y = element_blank(),
           strip.text.x = element_text(size = 5),
@@ -3353,7 +3325,7 @@ for (i in seq_along(confidence_intervals)) {
   ggsave(file.path(group_directories[[i]],
                    paste(new_grouping_variables[[i]],
                          "related_caterpillar_plot.png", sep = "_")),
-         catplot, device = "png")
+         catplot, device = "png", width = 12, height = 17, units = "cm")
   
   related_caterpillar_plots[[i]] <- catplot
   

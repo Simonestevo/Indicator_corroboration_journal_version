@@ -397,6 +397,104 @@ numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
 numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
 numeric_variables
 
+# * Check for collinearity ----
+
+# Create a folder for the PCA outputs
+
+collinearity_outputs <- file.path(current_analysis_outputs, "collinearity_outputs")
+
+dir.create(collinearity_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+
+# Summary table
+
+ecoregion_summary_table <- summary(ecoregions_wide)
+ecoregion_summary_table
+
+saveRDS(ecoregion_summary_table,
+        file.path(current_analysis_outputs, "ecoregion_summary_table.RDS"))
+
+write.csv(ecoregion_summary_table,
+          file.path(current_analysis_outputs, "ecoregion_summary_table.csv"))
+
+## Numeric correlation test
+
+ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
+
+ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(ecoregions_collinear_inputs),]
+
+ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, method = "spearman")
+
+## Categorical variables
+
+# Remove incomplete rows
+ecoregions_wide_complete <- ecoregions_wide[complete.cases(ecoregions_wide),]
+
+ecoregions_wide_complete<- ecoregions_wide_complete %>% 
+    mutate(area_factor = factor(ecoregions_wide_complete$area_factor, 
+                                               ordered = FALSE))
+
+# Get all the column names except ecoregion ID,so we can convert to long format
+ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(ecoregions_wide_complete), "ecoregion_id")]
+
+# Convert it to wide format so we can plot
+ecoregions_long <- ecoregions_wide_complete %>% 
+                   pivot_longer(all_of(grouping_variables)) %>% 
+                   rename(group = name,
+                          subgroup = value)
+
+# Split data by grouping variables
+ecoregions_list <- split(ecoregions_long, ecoregions_long$group)
+
+ecoregion_groups <- list()
+group_numerics <- list()
+
+for ( i in seq_along(ecoregions_list)) {
+
+# Get the data for a single grouping variable
+  
+data <- ecoregions_list[[i]]
+
+group_name <- names(ecoregions_list)[[i]]
+
+for(j in seq_along(numeric_variables)) {
+  
+# Plot each numeric variable on the y axis, against boxplots of the different
+# factor levels on the x axis
+  
+  plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", sep = "_")
+  
+  group_numerics[[j]] <- ggplot(data,aes_string(x = "subgroup", 
+                                                y = numeric_variables[[j]])) +
+                         geom_boxplot() +
+                         # geom_point(position = "jitter",alpha = 0.1) +
+                         theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+                         geom_hline(yintercept = 0) +
+                         theme(
+                            legend.position = "none",
+                            axis.text.y = element_text(size = 6),
+                            axis.text.x = element_text(size = 6))+
+                          xlab(group) + ylab(numeric_variables[[j]]) 
+
+  ggsave(file.path(collinearity_outputs, plotname),
+         group_numerics[[j]],
+         device = "png")
+
+  }
+
+ecoregion_groups[[i]] <- group_numerics
+
+}
+
+i <- i + 1
+
+j <- 1
+ecoregion_groups[[i]][[j]]
+
+j <- j + 1
+ecoregion_groups[[i]][[j]]
+
+
 # Indicator data ----
 
 # Indicator data

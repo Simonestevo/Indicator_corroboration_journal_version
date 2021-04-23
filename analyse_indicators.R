@@ -43,6 +43,7 @@ library(ggpubr)
 
 # Data handling and table reshaping
 library(tidyverse)
+library(tidylog)
 library(reshape2)
 library(devtools)
 library(data.table)
@@ -50,6 +51,7 @@ library(rlist)
 library(e1071)
 library(psych)
 library(arules)
+library(ppsr)
 
 # Plotting
 library(ggplot2)
@@ -408,7 +410,8 @@ dir.create(collinearity_outputs, recursive = TRUE ) # create a new directory for
 
 # Summary table
 
-ecoregion_summary_table <- summary(ecoregions_wide)
+ecoregion_summary_table <- summary(ecoregions_wide[, 2:ncol(ecoregions_wide)], 
+                                   maxsum = length(unique(ecoregions_wide$biome)))
 ecoregion_summary_table
 
 saveRDS(ecoregion_summary_table,
@@ -426,6 +429,8 @@ ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
 
 ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
                                      method = "spearman")
+
+x <- ppsr::score_correlations(ecoregions_collinear_inputs)
 
 saveRDS(ecoregions_correlation_matrix,
         file.path(collinearity_outputs, "ecoregion_correlation_matrix.RDS"))
@@ -454,13 +459,22 @@ ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as
 
 lapply(ecoregions_chisq_inputs, class)
 
-ecoregions_chisq_inputs <- as.matrix(ecoregions_chisq_inputs)
+#ecoregions_chisq_inputs <- as.matrix(ecoregions_chisq_inputs)
 
 # https://statsandr.com/blog/chi-square-test-of-independence-in-r/
 
-table(ecoregions_chisq_inputs$biome, ecoregions_chisq_inputs$rli_records_factor)
-test <- chisq.test(ecoregions_chisq_inputs$biome, ecoregions_chisq_inputs$rli_records_factor)
+var1 <- ecoregions_chisq_inputs$disturbance_year
+var2 <- ecoregions_chisq_inputs$included_in_hfp
+
+table(var1, var2)
+
+test <- chisq.test(table(var1, 
+                   var2))
+
 c(test$statistic, test$p.value)
+
+test$observed
+test$expected
 
 table(ecoregions_chisq_inputs$high_beta_area_factor, 
       ecoregions_chisq_inputs$predominant_threat_type)

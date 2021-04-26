@@ -548,7 +548,7 @@ saveRDS(ecoregion_summary_table,
 write.csv(ecoregion_summary_table,
           file.path(current_analysis_outputs, "ecoregion_summary_table.csv"))
 
-## Numeric correlation test
+## ** Numeric ----
 
 ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
 
@@ -558,15 +558,13 @@ ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
 ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
                                      method = "spearman")
 
-x <- ppsr::score_correlations(ecoregions_collinear_inputs)
-
 saveRDS(ecoregions_correlation_matrix,
-        file.path(collinearity_outputs, "ecoregion_correlation_matrix.RDS"))
+        file.path(collinearity_outputs, "ecoregion_numerical_correlations.RDS"))
 
 write.csv(ecoregions_correlation_matrix,
-          file.path(collinearity_outputs, "ecoregion_correlation_matrix.csv"))
+          file.path(collinearity_outputs, "ecoregion_numerical_correlations.csv"))
 
-## Categorical variables
+# ** Categorical -----
 
 # Remove incomplete rows
 ecoregions_wide_complete <- ecoregions_wide[complete.cases(ecoregions_wide),]
@@ -579,48 +577,108 @@ ecoregions_wide_complete<- ecoregions_wide_complete %>%
 
 ecoregions_chisq_inputs <- ecoregions_wide[,grouping_variables]
 
+# Select rows with complete data for all variables
+
 ecoregions_chisq_inputs <- ecoregions_chisq_inputs[complete.cases(
                            ecoregions_chisq_inputs),]
 
 
 ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as.factor)
 
-lapply(ecoregions_chisq_inputs, class)
+# Get all possible combinations of variables
 
-#ecoregions_chisq_inputs <- as.matrix(ecoregions_chisq_inputs)
+categorical_combinations <- combn(names(ecoregions_chisq_inputs), 2)
 
 # https://statsandr.com/blog/chi-square-test-of-independence-in-r/
 
-var1 <- ecoregions_chisq_inputs$disturbance_year
-var2 <- ecoregions_chisq_inputs$included_in_hfp
+chisq_results <- list() # list to catch results of independence test
+chi_residual_plots <- list(0) # list to catch correlation plot for each combo
 
-test <- dx2y(ecoregions_chisq_inputs, confidence = TRUE)
+for (i in 1:ncol(categorical_combinations)) {
+  
+combo <- categorical_combinations[,i]
 
-table(var1, var2)
+print(paste("testing",combo[1], "and", combo[2], "for independence", sep = " "))
 
-test <- chisq.test(table(var1, 
-                   var2))
+test_inputs <- table(pull(ecoregions_chisq_inputs[, combo[1]]), # Get the two variables to test
+                   pull(ecoregions_chisq_inputs[, combo[2]]))
 
-c(test$statistic, test$p.value)
+chi_result <- tryCatch(chisq.test(test_inputs,
+                                  simulate.p.value = TRUE,
+                                  B = 10000),
+                   error=function(e) e, warning=function(w) w)
 
-test$observed
-test$expected
+# If the chi sq test throws a warning bc of small values, do fisher test instead
 
-table(ecoregions_chisq_inputs$high_beta_area_factor, 
-      ecoregions_chisq_inputs$predominant_threat_type)
+if(is(chi_result,"warning")) { 
 
-test2 <- chisq.test(ecoregions_chisq_inputs$high_beta_area_factor, 
-                    ecoregions_chisq_inputs$predominant_threat_type, 
-                    correct = FALSE)
-test2
+print( "Values too small for chi-square test, performing fisher test instead")
 
-# https://stackoverflow.com/questions/60679649/apply-chi-squared-test-in-r-on-more-than-5-variables-and-find-the-p-values
-CHIS <- lapply(ecoregions_chisq_inputs[,-1], 
-               function(x) chisq.test(ecoregions_chisq_inputs[,1], x))
+fisher_result <- fisher.test(test_inputs, simulate.p.value = TRUE, B = 10000)
 
-library(data.table)
-library(broom)
-x <- rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+# Make nice df result
+
+result <- cbind(combo[1], combo[2], fisher_result$p.value, NA, 
+                fisher_result$method)
+
+} else {
+  
+result <- cbind(combo[1], combo[2], chi_result$p.value, 
+                chi_result$statistic, chi_result$method)
+
+# Plot the contingency table correlation for all subgroups (shows which 
+# subgroups contribute most to the result of independent or related)
+
+tiff(file = file.path(collinearity_outputs, 
+                      paste(combo[1], "x", combo[2], "residuals.tiff",
+                            sep = "_")), 
+     units = "in", width=5, height=5, res = 300)
+
+plot <- corrplot(chi_result$residuals, is.cor = FALSE)
+
+dev.off()
+
+}
+
+chisq_results[[i]] <- result
+
+chi_residual_plots[[i]] <- plot
+
+}
+
+# Format the results into a nice dataframe and save
+
+categorical_independence_results <- as.data.frame(do.call(rbind, all_results))
+
+names(categorical_independence_results) <- c("var1", "var2", "p_value", 
+                                             "statistic", "method")
+
+# Convert characters back to numeric (needed for sorting in next step)
+
+categorical_independence_results$p_value <- as.numeric(categorical_independence_results$p_value)
+categorical_independence_results$statistic <- as.numeric(categorical_independence_results$statistic)
+
+independent_categoricals <- categorical_independence_results %>% 
+                            filter(p_value >= 0.05) %>% 
+                            mutate(status = "independent") %>% 
+                            arrange(desc(statistic))
+
+dependent_categoricals <- categorical_independence_results %>% 
+                          filter(p_value < 0.05) %>% 
+                          mutate(status = "correlated") %>% 
+                          arrange(desc(statistic))
+
+categorical_independence_output <- rbind(independent_categoricals,
+                                         dependent_categoricals)
+
+saveRDS(categorical_independence_output,
+        file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
+
+write.csv(categorical_independence_output,
+          file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
+
+
+# ** Numeric vs categorical ----
 
 # Get all the column names except ecoregion ID,so we can convert to long format
 ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(

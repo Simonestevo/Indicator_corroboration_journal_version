@@ -32,6 +32,7 @@ rm(list = ls()) # clear memory
 #' TODO: Figure out cluster on princomp pl.pca object
 #' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
 #' caterpillar plots
+#' TODO: Rename grouping variables to categorical variables
 
 # PCA and Clustering
 library(factoextra)
@@ -520,7 +521,7 @@ chi_residual_plots[[i]] <- plot
 
 # Format the results into a nice dataframe and save
 
-categorical_independence_results <- as.data.frame(do.call(rbind, all_results))
+categorical_independence_results <- as.data.frame(do.call(rbind, chisq_results))
 
 names(categorical_independence_results) <- c("var1", "var2", "p_value", 
                                              "statistic", "method")
@@ -817,8 +818,6 @@ saveRDS(indicators_cleaned,
 
 write.csv(indicators_cleaned,
           file.path(current_analysis_outputs, "indicators_cleaned.csv"))
-
-
 
 # * Centre ----
 
@@ -1244,7 +1243,71 @@ ggsave(file.path(cluster_outputs, "cluster_biplot.png"),
 
 rm(cluster_map)
 
+# * Cluster comparisons ----
+
+comparison_data <- boxplot_data %>%
+                   dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                                 indicators, 
+                                 numeric_variables,
+                                 grouping_variables)))
+
+i <- 1
+
+i <- i + 1
+
+grouping_variables[i]
+
+test_inputs <- table(comparison_data[, "cluster"], # Get the two variables to test
+                     comparison_data[, grouping_variables[i]])
+
+chi_result <- tryCatch(chisq.test(test_inputs,
+                                  simulate.p.value = TRUE,
+                                  B = 10000),
+                       error=function(e) e, warning=function(w) w)
+
+chi_result
+corrplot(chi_result$residuals, is.cor = FALSE)
+
 # * Cluster boxplots ----
+
+
+x <- group_by(comparison_data, cluster) %>%
+  summarise(
+    count = n(),
+    median = median(BHI_plants_2005, na.rm = TRUE),
+    IQR = IQR(BHI_plants_2005, na.rm = TRUE)
+  )
+
+i <- i + 1
+i
+ggboxplot(comparison_data, x = "cluster", y = indicators[i], 
+          color = "cluster", palette = c("#00AFBB", "#E7B800", "hot pink"),
+          ylab = indicators[i], xlab = "cluster")
+
+cl1 <- comparison_data %>% 
+       dplyr::select(cluster, LPI_2005) %>% 
+       filter(cluster == 1) %>% 
+       dplyr::select(LPI_2005) %>% 
+       pull()
+
+cl2 <- comparison_data %>% 
+      dplyr::select(cluster, LPI_2005) %>% 
+      filter(cluster == 2) %>% 
+      dplyr::select(LPI_2005) %>% 
+      pull()
+
+cl3 <- comparison_data %>% 
+      dplyr::select(cluster, LPI_2005) %>% 
+      filter(cluster == 3) %>% 
+      dplyr::select(LPI_2005) %>% 
+      pull()
+
+z <- wilcox.test(cl3, cl1, alternative = "two.sided")
+z
+
+# Compare categoricals
+
+
 
 # Finalise data
 
@@ -1454,26 +1517,31 @@ write.csv(correlation_input_data_all,
 BHI_data <- correlation_input_data_all %>%
             dplyr::select(all_of(c("ecoregion_id", "realm", 
                                    "BHI_plants_2005", 
-                                   "BHI_plants_2015")))
+                                   "BHI_plants_2015",
+                                   "cluster")))
 
  
 RLI_birds_data <- correlation_input_data_all %>%
   dplyr::select(all_of(c("ecoregion_id", "realm", 
                          "BirdRLI_2008", 
-                         "BirdRLI_2016")))
+                         "BirdRLI_2016",
+                         "cluster")))
 
 
 extinct_data <- correlation_input_data_all %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "extinct_2008", "extinct_2016")))
+                         "extinct_2008", "extinct_2016",
+                         "cluster")))
 
 threatened_data <- correlation_input_data_all %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "threatened_2008", "threatened_2016")))
+                         "threatened_2008", "threatened_2016",
+                         "cluster")))
 
 LPI_data <- correlation_input_data_all %>%
   dplyr::select(all_of(c("ecoregion_id", "realm",
-                         "LPI_2005", "LPI_2015")))
+                         "LPI_2005", "LPI_2015",
+                         "cluster")))
 
 time_correlation_input_list <- list(BHI_data, RLI_birds_data, extinct_data, 
                                     threatened_data, LPI_data)
@@ -1487,12 +1555,12 @@ for (i in seq_along(time_correlation_input_list)) {
   
   labx <- names(scatterplot_data)[3]
   laby <- names(scatterplot_data)[4]
-  names(scatterplot_data) <- c("ecoregion_id", "realm","varx", "vary")
-  vargroup <- "realm"
+  names(scatterplot_data) <- c("ecoregion_id", "realm","varx", "vary", "cluster")
+  vargroup <- "cluster"
   
   scatterplot <- ggplot(scatterplot_data,aes(x = varx, 
                                              y = vary, 
-                                             color = realm)) +
+                                             color = cluster)) +
     geom_point() +
     #geom_text(label = scatterplot_data$ecoregion_id) + 
     #geom_smooth(method=lm) +
@@ -2277,6 +2345,41 @@ for (i in seq_along(group_dataframes)){
   group_scatterplots[[i]] <- subgroup_scatterplots
 
 }
+
+# Make cluster scatterplots
+
+cluster_scatterplots <- list()
+
+for (i in seq_along(time_correlation_input_list)) {
+  
+  scatterplot_data <- correlation_input_data %>% 
+                      dplyr::select(ecoregion_id, cluster,
+                                    BHI_plants_2005, BIIab)
+  
+ labx <- "BHI"
+ laby <- "BII abundance"
+ 
+  scatterplot <- ggplot(scatterplot_data,aes(x = BHI_plants_2005, 
+                                             y = BIIab, 
+                                             color = cluster)) +
+    geom_point() +
+    geom_text(label = scatterplot_data$ecoregion_id) + 
+    labs(x= labx,
+         y = laby) + 
+    stat_cor(method = "spearman")
+  
+  scatterplot
+  
+  ggsave(file.path(correlation_outputs, paste(labx, "_x_", 
+                                              laby,"_by_cluster", ".png", sep = "")),
+         scatterplot, device = "png")
+  
+  time_scatterplots[[i]] <- scatterplot
+  
+}
+
+i <- 1
+cluster_scatterplots[[i]]
 
 # ANALYSIS WITH LPI ----
 

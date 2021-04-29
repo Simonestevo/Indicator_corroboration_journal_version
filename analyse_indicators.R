@@ -33,6 +33,8 @@ rm(list = ls()) # clear memory
 #' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
 #' caterpillar plots
 #' TODO: Rename grouping variables to categorical variables
+#' TODO: Note the categorical independence matrices contain NAs because the combinations
+#' are in the wrong order - not sure how to fix?
 
 # PCA and Clustering
 library(factoextra)
@@ -541,6 +543,8 @@ dependent_categoricals <- categorical_independence_results %>%
                           mutate(status = "correlated") %>% 
                           arrange(desc(statistic))
 
+# Save the outputs in tidy format
+
 categorical_independence_output <- rbind(independent_categoricals,
                                          dependent_categoricals)
 
@@ -548,7 +552,39 @@ saveRDS(categorical_independence_output,
         file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
 
 write.csv(categorical_independence_output,
-          file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
+          file.path(collinearity_outputs, "ecoregion_categorical_correlations.csv"))
+
+# Make a matrix of chi square statistic values
+
+chi_sq_matrix_stat <- categorical_independence_output %>% 
+                     dplyr::select(var1, var2, statistic) %>% 
+                     pivot_wider(names_from = var2, values_from = statistic,
+                                 id_cols = c(var1,var2))
+
+
+saveRDS(chi_sq_matrix_stat,
+        file.path(collinearity_outputs, "chi_sq_statistic_matrix.RDS"))
+
+write.csv(chi_sq_matrix_stat,
+          file.path(collinearity_outputs, "chi_sq_statistic_matrix.csv"))
+
+# Make a matrix of independence status
+
+x <- unique(categorical_independence_output$var1)
+
+chi_sq_matrix_pval <- categorical_independence_output %>% 
+                      dplyr::select(var1, var2, status) %>%
+                      pivot_longer(names_from = var2, values_from = status,
+                             names_sort = TRUE)
+
+
+saveRDS(chi_sq_matrix_pval,
+        file.path(collinearity_outputs, "chi_sq_pvalue_matrix.RDS"))
+
+write.csv(chi_sq_matrix_pval,
+          file.path(collinearity_outputs, "chi_sq_pvalue_matrix.csv"))
+
+
 
 
 # ** Numeric vs categorical ----
@@ -1047,6 +1083,19 @@ fviz_pca_var(pl2.pca,
 )
 
 dev.off()
+
+# Possible pretty plot (code from Ecology in R facebook page)
+
+plot.pcasat <- ggplot(sites.pcasat, aes(x = PC1, y = PC2))+
+  geom_point(aes(color = lat, alpha = .5, size = dfc))+
+  scale_color_gradient(low = "blue", high = "red")+
+  geom_segment(data = spec.pcasat, aes(x = 0, y = 0, xend = PC1, yend = PC2), arrow=arrow(length=unit(0.2,"cm")),
+               alpha = 0.75, color = 'darkred')+
+  geom_text(data = spec.pcasat, aes(x = PC1, y = PC2, label = Label), nudge_x = .15)+
+  guides(alpha = FALSE)+
+  labs(colour = "Latitud", size = "DC(mn)")
+
+
 # # Alt approach to plotting
 # 
 # PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
@@ -1243,71 +1292,7 @@ ggsave(file.path(cluster_outputs, "cluster_biplot.png"),
 
 rm(cluster_map)
 
-# * Cluster comparisons ----
-
-comparison_data <- boxplot_data %>%
-                   dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                                 indicators, 
-                                 numeric_variables,
-                                 grouping_variables)))
-
-i <- 1
-
-i <- i + 1
-
-grouping_variables[i]
-
-test_inputs <- table(comparison_data[, "cluster"], # Get the two variables to test
-                     comparison_data[, grouping_variables[i]])
-
-chi_result <- tryCatch(chisq.test(test_inputs,
-                                  simulate.p.value = TRUE,
-                                  B = 10000),
-                       error=function(e) e, warning=function(w) w)
-
-chi_result
-corrplot(chi_result$residuals, is.cor = FALSE)
-
 # * Cluster boxplots ----
-
-
-x <- group_by(comparison_data, cluster) %>%
-  summarise(
-    count = n(),
-    median = median(BHI_plants_2005, na.rm = TRUE),
-    IQR = IQR(BHI_plants_2005, na.rm = TRUE)
-  )
-
-i <- i + 1
-i
-ggboxplot(comparison_data, x = "cluster", y = indicators[i], 
-          color = "cluster", palette = c("#00AFBB", "#E7B800", "hot pink"),
-          ylab = indicators[i], xlab = "cluster")
-
-cl1 <- comparison_data %>% 
-       dplyr::select(cluster, LPI_2005) %>% 
-       filter(cluster == 1) %>% 
-       dplyr::select(LPI_2005) %>% 
-       pull()
-
-cl2 <- comparison_data %>% 
-      dplyr::select(cluster, LPI_2005) %>% 
-      filter(cluster == 2) %>% 
-      dplyr::select(LPI_2005) %>% 
-      pull()
-
-cl3 <- comparison_data %>% 
-      dplyr::select(cluster, LPI_2005) %>% 
-      filter(cluster == 3) %>% 
-      dplyr::select(LPI_2005) %>% 
-      pull()
-
-z <- wilcox.test(cl3, cl1, alternative = "two.sided")
-z
-
-# Compare categoricals
-
-
 
 # Finalise data
 
@@ -1317,64 +1302,174 @@ boxplot_data <- indicators_wide_centred %>%
         by = "ecoregion_id") %>%
   dplyr::select(-geometry)
 
-# Plot data by cluster
+# # Plot data by cluster
+# 
+# cluster_boxplot_data_wide <- boxplot_data %>%
+#   dplyr::select(all_of(c("ecoregion_id", "cluster", 
+#                          indicators, numeric_variables)))
+# 
+# summary(cluster_boxplot_data_wide)
+# 
+# # Make sure all the values are scaled
+# 
+# cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
+#                                                                 numeric_variables)])
+# 
+# cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
+#                                                                  "cluster")], 
+#                                    cluster_boxplot_data_wide)
+# summary(cluster_boxplot_data_wide)
+# 
+# cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
+#   dplyr::select(-predominant_threat_count,
+#                 -number_of_endemics) 
+# 
+# # Melt back into long format
+# 
+# cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
+#                                        measure.vars = c(indicators, 
+#                                                         "ecoregion_area_km_sq",
+#                                                         "high_beta_area",
+#                                                         "lpi_records",
+#                                                         "mean_human_population_density",
+#                                                         "rli_records"))
+# 
+# head(cluster_boxplot_data)
+# 
+# names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
+#                                  "Indicator", "Indicator value")
+# 
+# saveRDS(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.rds"))
+# write.csv(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.csv"))
+# 
+# cluster_boxplots <- ggplot(cluster_boxplot_data) +
+#   geom_boxplot(aes(x = Indicator, y = `Indicator value`,
+#                    fill = Indicator)) +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   facet_wrap( ~ cluster) +
+#   geom_hline(yintercept = 0) +
+#   scale_fill_viridis(discrete=TRUE) +
+#   scale_color_viridis(discrete=TRUE) +
+#   theme(
+#     legend.position = "none",
+#     axis.text.y = element_text(size = 6),
+#     axis.text.x = element_text(size = 6)
+#   )
+# 
+# cluster_boxplots
+# 
+# ggsave(file.path(cluster_outputs, "cluster_boxplots.png"),
+#        cluster_boxplots, device = "png")
 
-cluster_boxplot_data_wide <- boxplot_data %>%
-  dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                         indicators, numeric_variables)))
+# * Cluster comparisons ----
 
-summary(cluster_boxplot_data_wide)
+comparison_data_all <- boxplot_data %>%
+                       dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                                 indicators, 
+                                 numeric_variables,
+                                 grouping_variables)))
 
-# Make sure all the values are scaled
+head(comparison_data_all)
 
-cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
-                                                                numeric_variables)])
+# * ANOVAS ----
+## Compare means of the numeric explanatory variables between clusters
 
-cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
-                                                                 "cluster")], 
-                                   cluster_boxplot_data_wide)
-summary(cluster_boxplot_data_wide)
+comparison_data_numeric <- comparison_data_all %>% 
+                           dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                                                    numeric_variables))) %>% 
+                           mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
+                           mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
+                                  scaled_endemics = number_of_endemics/ecoregion_area_km_sq)
 
-cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
-  dplyr::select(-predominant_threat_count,
-                -number_of_endemics) 
+# Check a random sample
 
-# Melt back into long format
+set.seed(1234)
 
-cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
-                                       measure.vars = c(indicators, 
-                                                        "ecoregion_area_km_sq",
-                                                        "high_beta_area",
-                                                        "lpi_records",
-                                                        "mean_human_population_density",
-                                                        "rli_records"))
+dplyr::sample_n(comparison_data_numeric, 10)
 
-head(cluster_boxplot_data)
+# Calculate mean and sd
 
-names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
-                                 "Indicator", "Indicator value")
+group_by(comparison_data_numeric[,-1], cluster) %>%
+  summarise(
+    count = n(),
+    mean = mean(predominant_threat_count, na.rm = TRUE),
+    sd = sd(predominant_threat_count, na.rm = TRUE)
+  )
 
-saveRDS(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.rds"))
-write.csv(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.csv"))
+library("ggpubr")
+ggboxplot(comparison_data_numeric, x = "cluster", y = "scaled_lpi_records", 
+          color = "cluster", palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+          order = c("1", "2", "3"),
+          ylab = "indicator", xlab = "clusters")
 
-cluster_boxplots <- ggplot(cluster_boxplot_data) +
-  geom_boxplot(aes(x = Indicator, y = `Indicator value`,
-                   fill = Indicator)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap( ~ cluster) +
-  geom_hline(yintercept = 0) +
-  scale_fill_viridis(discrete=TRUE) +
-  scale_color_viridis(discrete=TRUE) +
-theme(
-  legend.position = "none",
-  axis.text.y = element_text(size = 6),
-  axis.text.x = element_text(size = 6)
-)
+ggline(comparison_data_numeric, x = "cluster", y = "rli_records",
+       add = c("mean_se", "jitter"), 
+       order = c("1", "2", "3"),
+       ylab = "rli records", xlab = "clusters")
 
-cluster_boxplots
 
-ggsave(file.path(cluster_outputs, "cluster_boxplots.png"),
-       cluster_boxplots, device = "png")
+# Compute the analysis of variance
+# http://www.sthda.com/english/wiki/one-way-anova-test-in-r
+
+# Get the names of the variables
+
+numeric_explanatory_variables <- names(comparison_data_numeric[,3:ncol(comparison_data_numeric)])
+
+numeric_explanatory_variables
+
+# Check distributions - none are normally distributed except number of RLI records
+# but that needs to be scaled against area
+
+hist(comparison_data_numeric$ecoregion_area_km_sq)
+hist(comparison_data_numeric$high_beta_area)
+hist(comparison_data_numeric$lpi_records)
+hist(comparison_data_numeric$mean_human_population_density)
+hist(comparison_data_numeric$number_of_endemics)
+hist(comparison_data_numeric$predominant_threat_count)
+hist(comparison_data_numeric$rli_records)
+hist(comparison_data_numeric$scaled_rli_records)
+hist(comparison_data_numeric$lpi_records)
+hist(comparison_data_numeric$scaled_lpi_records)
+hist(comparison_data_numeric$scaled_endemics)
+
+anova_list <- list()
+tukey_list <- list()
+  
+for(i in seq_along(numeric_explanatory_variables)) {
+    
+    expl_variable <- comparison_data_numeric[,numeric_explanatory_variables[i]]
+  
+    anova_list[[i]] <- aov(expl_variable ~ cluster, data = comparison_data_numeric)
+  
+  # Summary of the analysis
+    
+    print(numeric_explanatory_variables[i])
+    summary(anova_list[[i]])
+    means <- group_by(comparison_data_numeric[,-1], cluster) %>%
+      summarise(
+        count = n(),
+        mean = mean(expl_variable, na.rm = TRUE),
+        sd = sd(expl_variable, na.rm = TRUE)
+      )
+    
+    print(means)
+    
+    name <- names(comparison_data_numeric)[i + 2]
+    
+    outputs <- TukeyHSD(anova_list[[i]])$cluster
+    
+    tukey_list[[i]] <- as.data.frame(outputs) %>% 
+                       tibble::rownames_to_column() %>% 
+                       mutate(variable = name) %>% 
+                       rename(comparison == rowname)
+    
+    print(TukeyHSD(anova_list[[i]]))
+  
+}
+
+comparisons <- do.call(rbind, tukey_list)
+
+
 
 # * Cluster barplots ----
 

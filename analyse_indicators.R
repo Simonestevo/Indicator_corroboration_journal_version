@@ -1432,6 +1432,52 @@ hist(comparison_data_numeric$lpi_records)
 hist(comparison_data_numeric$scaled_lpi_records)
 hist(comparison_data_numeric$scaled_endemics)
 
+# Therefore we need a non-parametric test
+# http://www.sthda.com/english/wiki/kruskal-wallis-test-in-r
+
+kruskal_wallis_list <- list()
+wilcox_list <- list()
+
+for(i in seq_along(numeric_explanatory_variables)) {
+  
+  expl_variable <- comparison_data_numeric[,numeric_explanatory_variables[i]]
+  
+  kruskal_wallis_list[[i]] <- kruskal.test(expl_variable ~ cluster, data = comparison_data_numeric)
+  
+  # Summary of the analysis
+  
+  print(numeric_explanatory_variables[i])
+ 
+  means <- group_by(comparison_data_numeric[,-1], cluster) %>%
+    summarise(
+      count = n(),
+      mean = mean(expl_variable, na.rm = TRUE),
+      sd = sd(expl_variable, na.rm = TRUE)
+    )
+  
+  print(means)
+  
+  name <- names(comparison_data_numeric)[i + 2]
+  
+  outputs <- pairwise.wilcox.test(expl_variable,
+                                  comparison_data_numeric$cluster,
+                                  p.adjust.method = "BH")$p.value
+  
+  wilcox_list[[i]] <- data.frame(expand.grid(dimnames(outputs)),array(outputs)) %>% 
+        mutate(variable = name) %>% 
+        mutate(status = ifelse(array.outputs. < 0.07, "different", "same")) %>% 
+        rename(p_val = array.outputs.) %>% 
+        mutate(comparison = paste(Var1, Var2, sep = "x")) %>% 
+        na.omit(.)
+  
+  print(wilcox_list[[i]])
+  
+}
+
+wilcox_comparisons <- do.call(rbind, wilcox_list)
+
+
+
 anova_list <- list()
 tukey_list <- list()
   
@@ -1445,6 +1491,7 @@ for(i in seq_along(numeric_explanatory_variables)) {
     
     print(numeric_explanatory_variables[i])
     summary(anova_list[[i]])
+    
     means <- group_by(comparison_data_numeric[,-1], cluster) %>%
       summarise(
         count = n(),
@@ -1460,14 +1507,20 @@ for(i in seq_along(numeric_explanatory_variables)) {
     
     tukey_list[[i]] <- as.data.frame(outputs) %>% 
                        tibble::rownames_to_column() %>% 
-                       mutate(variable = name) %>% 
-                       rename(comparison == rowname)
+                       mutate(variable = name) # %>% 
+                       #rename(comparison == rowname) %>% 
+    
+    names(tukey_list[[i]]) <- c("comparison", "diff", "lwr", "upper", 
+                                "padj", "variable")
+                       
+    tukey_list[[i]] <- tukey_list[[i]] %>% 
+    mutate(status = ifelse(padj < 0.07, "different", "same"))
     
     print(TukeyHSD(anova_list[[i]]))
   
 }
 
-comparisons <- do.call(rbind, tukey_list)
+anova_comparisons <- do.call(rbind, tukey_list)
 
 
 

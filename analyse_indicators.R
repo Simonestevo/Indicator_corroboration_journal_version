@@ -1379,7 +1379,8 @@ comparison_data_numeric <- comparison_data_all %>%
                                                     numeric_variables))) %>% 
                            mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
                            mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
-                                  scaled_endemics = number_of_endemics/ecoregion_area_km_sq)
+                                  scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
+                                  scaled_threat_count = predominant_threat_count/rli_records)
 
 # Check a random sample
 
@@ -1392,15 +1393,15 @@ dplyr::sample_n(comparison_data_numeric, 10)
 group_by(comparison_data_numeric[,-1], cluster) %>%
   summarise(
     count = n(),
-    mean = mean(predominant_threat_count, na.rm = TRUE),
-    sd = sd(predominant_threat_count, na.rm = TRUE)
+    mean = mean(scaled_threat_count, na.rm = TRUE),
+    sd = sd(scaled_threat_count, na.rm = TRUE)
   )
 
 library("ggpubr")
 
 # Visualise means between groups
 
-ggboxplot(comparison_data_numeric, x = "cluster", y = "rli_records", 
+ggboxplot(comparison_data_numeric, x = "cluster", y = "scaled_threat_count", 
           color = "cluster", palette = c("#00AFBB", "#E7B800", "#FC4E07"),
           order = c("1", "2", "3"),
           ylab = "indicator", xlab = "clusters")
@@ -1410,7 +1411,7 @@ ggboxplot(comparison_data_numeric, x = "cluster", y = "scaled_rli_records",
           order = c("1", "2", "3"),
           ylab = "indicator", xlab = "clusters")
 
-ggline(comparison_data_numeric, x = "cluster", y = "rli_records",
+ggline(comparison_data_numeric, x = "cluster", y = "scaled_threat_count",
        add = c("mean_se", "jitter"), 
        order = c("1", "2", "3"),
        ylab = "rli records", xlab = "clusters")
@@ -1442,10 +1443,12 @@ hist(comparison_data_numeric$scaled_endemics)
 
 # Therefore we need a non-parametric test
 # http://www.sthda.com/english/wiki/kruskal-wallis-test-in-r
+# https://bookdown.org/thomas_pernet/Tuto/_main.pdf
 
 kruskal_wallis_list <- list()
 wilcox_list <- list()
 mean_boxplots <- list()
+means <- list()
 
 for(i in seq_along(numeric_explanatory_variables)) {
   
@@ -1463,6 +1466,20 @@ for(i in seq_along(numeric_explanatory_variables)) {
             color = "cluster", palette = c("#00AFBB", "#E7B800", "#FC4E07"),
             order = c("1", "2", "3"),
             ylab = "variable", xlab = "clusters", main = name)
+  
+  data <- as.data.frame(cbind(comparison_data_numeric$cluster,
+                        expl_variable))
+  
+  names(data) <- cbind("cluster", "variable")
+ 
+  means[[i]] <- data %>%
+      group_by(cluster) %>% 
+      summarise(
+        count = n(),
+        mean = mean(variable, na.rm = TRUE),
+        sd = sd(variable, na.rm = TRUE)
+      ) %>% 
+      mutate(varname = name)
   
   ggsave(file.path(cluster_outputs, paste(name, "cluster_means_boxplot.png", sep = "")),
          mean_boxplots[[i]], device = "png")
@@ -1487,6 +1504,11 @@ wilcox_comparisons <- do.call(rbind, wilcox_list)
 saveRDS(wilcox_comparisons, file.path(cluster_outputs, "wilcox_results.rds"))
 write.csv(wilcox_comparisons, file.path(cluster_outputs, "wilcox_results.csv"))
 
+cluster_means <- do.call(rbind, means)
+
+saveRDS(cluster_means, file.path(cluster_outputs, "cluster_means.rds"))
+write.csv(cluster_means, file.path(cluster_outputs, "cluster_means.csv"))
+
 i <- 1
 
 mean_boxplots[[i]]
@@ -1495,7 +1517,87 @@ i <- i + 1
 
 mean_boxplots[[i]]
 
+# ** Chi squared comparison ----
 
+# https://statsandr.com/blog/chi-square-test-of-independence-in-r/
+
+cluster_chisq_results <- list() # list to catch results of independence test
+cluster_chi_residual_plots <- list(0) # list to catch correlation plot for each combo
+cluster_chi_contribution_plots <- list()
+
+for (i in seq_along(grouping_variables)) {
+  
+
+  print(paste("testing",grouping_variables[i], "and clusters", 
+              "for independence", sep = " "))
+  
+  test_inputs <- table(comparison_data_all[, grouping_variables[i]], # Get the two variables to test
+                       comparison_data_all$cluster)
+  
+  chi_result <- tryCatch(chisq.test(test_inputs,
+                                    simulate.p.value = TRUE,
+                                    B = 10000),
+                         error=function(e) e, warning=function(w) w)
+  
+  # If the chi sq test throws a warning bc of small values, do fisher test instead
+  
+  if(is(chi_result,"warning")) { 
+    
+    print( "Values too small for chi-square test, performing fisher test instead")
+    
+    fisher_result <- fisher.test(test_inputs, simulate.p.value = TRUE, B = 10000)
+    
+    # Make nice df result
+    
+    result <- cbind(grouping_variables[i], "clusters", fisher_result$p.value, NA, 
+                    fisher_result$method)
+    
+  } else {
+    
+    result <- cbind(grouping_variables[i], "clusters", chi_result$p.value, 
+                    chi_result$statistic, chi_result$method)
+    
+    # Plot the contingency table correlation for all subgroups (shows which 
+    # subgroups contribute most to the result of independent or related)
+    
+    tiff(file = file.path(cluster_outputs, 
+                          paste(grouping_variables[i], "cluster_contributions.tiff",
+                                sep = "_")), 
+         units = "in", width=5, height=5, res = 300)
+   
+    # http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r
+    
+    # Contibution in percentage (%)
+    contrib <- 100*chi_result$residuals^2/chi_result$statistic
+    
+    contribution_plot <- corrplot(contrib, is.cor = FALSE, tl.cex = 0.8)
+    
+    dev.off()
+    
+    tiff(file = file.path(cluster_outputs, 
+                          paste(grouping_variables[i], "cluster_residuals.tiff",
+                                sep = "_")), 
+         units = "in", width=5, height=5, res = 300)
+    
+    residual_plot <- corrplot(chi_result$residuals, is.cor = FALSE, tl.cex = 0.7)
+    
+    dev.off()
+  }
+  
+  cluster_chisq_results[[i]] <- result
+  
+  cluster_chi_residual_plots[[i]] <- residual_plot
+  
+  cluster_chi_contribution_plots[[i]] <- contribution_plot
+  
+}
+
+cluster_categorical_results <- do.call(rbind, cluster_chisq_results)
+cluster_categorical_results
+
+i <- 1
+cluster_chi_residual_plots[[i]]
+cluster_chi_contribution_plots[[i]]
 
 # * Cluster barplots ----
 
@@ -1606,6 +1708,200 @@ dev.off()
 
 # Prepare model data ----
 
+# https://www.zeileis.org/papers/ERCIM-2010.pdf
+
+model_input_data <- comparison_data_numeric %>% 
+                    merge(indicators_wide, by = "ecoregion_id") %>% 
+                    merge(comparison_data_all[c("ecoregion_id",
+                                                "disturbance_year",
+                                                "included_in_hfp",
+                                                "predominant_threat_type",
+                                                "area_factor",
+                                                "island_status")])
+
+# model_input_data$RLI_2008 <- scale(model_input_data$RLI_2008,
+#                                    center = TRUE,
+#                                    scale = TRUE)
+
+model_input_data$BHI_plants_2005 <- scale(model_input_data$BHI_plants_2005,
+                                   center = TRUE,
+                                   scale = TRUE)
+
+model_input_data$ecoregion_area_km_sq <- scale(model_input_data$ecoregion_area_km_sq,
+                                          center = TRUE,
+                                          scale = TRUE)
+
+model_input_data$rli_records <- scale(model_input_data$rli_records,
+                                               center = TRUE,
+                                               scale = TRUE)
+
+model_input_data$scaled_rli_records <- scale(model_input_data$scaled_rli_records,
+                                      center = TRUE,
+                                      scale = TRUE)
+
+model_input_data$BIIab_2005 <- scale(model_input_data$BIIab_2005,
+                                             center = TRUE,
+                                             scale = TRUE)
+
+model_input_data$scaled_threat_count <- scale(model_input_data$scaled_threat_count,
+                                     center = TRUE,
+                                     scale = TRUE)
+
+boxplot(RLI_2008 ~ area_factor, data = model_input_data) 
+
+# Try a glm - not correct family, gives odd qqplots etc
+mod_out_bhi <- glm(RLI_2008 ~ BHI_plants_2005 * rli_records, 
+                family = "gaussian", data = model_input_data)
+
+mod_out_scaled_rli <- glm(RLI_2008 ~ BHI_plants_2005 * rli_records * ecoregion_area_km_sq, 
+                          family = "gaussian", data = model_input_data)
+
+# Try beta regression
+# https://stats.stackexchange.com/questions/233366/how-to-fit-a-mixed-model-with-response-variable-between-0-and-1
+
+bhi_mod <- betareg(RLI_2008 ~ BHI_plants_2005, data = model_input_data)
+summary(bhi_mod)
+qqnorm(resid(bhi_mod))
+qqline(resid(bhi_mod))
+
+bhi_rli_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * rli_records, data = model_input_data)
+summary(bhi_rli_mod)
+qqnorm(resid(bhi_rli_mod))
+qqline(resid(bhi_rli_mod))
+
+bii_mod <- betareg(RLI_2008 ~ BIIab_2005 | scaled_rli_records, data = model_input_data)
+summary(bii_mod)
+qqnorm(resid(bii_mod))
+qqline(resid(bii_mod))
+
+bhi_clus_mod <- betareg(RLI_2008 ~ BHI_plants_2005 + cluster, data = model_input_data)
+summary(bhi_clus_mod)
+qqnorm(resid(bii_mod))
+qqline(resid(bii_mod))
+
+bii_clus_mod <- betareg(RLI_2008 ~ BIIab_2005 + cluster, data = model_input_data)
+summary(bii_clus_mod)
+qqnorm(resid(bii_clus_mod))
+qqline(resid(bii_clus_mod))
+
+bii_threat_mod <- betareg(RLI_2008 ~ BIIab_2005 + scaled_threat_count, data = model_input_data)
+summary(bii_threat_mod)
+qqnorm(resid(bii_threat_mod))
+qqline(resid(bii_threat_mod))
+
+bhi_threat_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * scaled_threat_count, data = model_input_data)
+summary(bii_threat_mod)
+qqnorm(resid(bii_threat_mod))
+qqline(resid(bii_threat_mod))
+
+bhi_island_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status, data = model_input_data)
+summary(bii_threat_mod)
+qqnorm(resid(bii_threat_mod))
+qqline(resid(bii_threat_mod))
+
+bhi_island_time_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * disturbance_year, data = model_input_data)
+summary(bii_threat_mod)
+qqnorm(resid(bii_threat_mod))
+qqline(resid(bii_threat_mod))
+
+bhi_island_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count, data = model_input_data)
+summary(bii_threat_mod)
+qqnorm(resid(bii_threat_mod))
+qqline(resid(bii_threat_mod))
+
+bhi_threat_type_mod <- betareg(RLI_2008 ~ BHI_plants_2005 + predominant_threat_type, 
+                               data = model_input_data)
+summary(bhi_threat_type_mod)
+qqnorm(resid(bhi_threat_type_mod))
+qqline(resid(bhi_threat_type_mod))
+
+bii_threat_area_mod <- betareg(RLI_2008 ~ BIIab_2005 + scaled_threat_count + 
+                            ecoregion_area_km_sq, data = model_input_data)
+summary(bii_threat_area_mod)
+qqnorm(resid(bii_threat_area_mod))
+qqline(resid(bii_threat_area_mod))
+
+bii_threat_area_data_mod <- betareg(RLI_2008 ~ BIIab_2005 + scaled_threat_count + 
+                                 ecoregion_area_km_sq + scaled_rli_records, data = model_input_data)
+summary(bii_threat_area_mod)
+qqnorm(resid(bii_threat_area_mod))
+qqline(resid(bii_threat_area_mod))
+
+bii_data_mod <- betareg(RLI_2008 ~ BIIab_2005 + rli_records, data = model_input_data)
+summary(bii_threat_area_mod)
+qqnorm(resid(bii_threat_area_mod))
+qqline(resid(bii_threat_area_mod))
+
+hfp_mod <- betareg(RLI_2008 ~ HFP_2005, 
+                    data = model_input_data)
+summary(test_mod)
+qqnorm(resid(test_mod))
+qqline(resid(test_mod))
+
+test_mod <- betareg(RLI_2008 ~ island_status , 
+                             data = model_input_data)
+summary(test_mod)
+qqnorm(resid(test_mod))
+qqline(resid(test_mod))
+
+null_mod <- betareg(RLI_2008 ~ 1 | 1, data = model_input_data)
+summary(null_mod)
+qqnorm(resid(null_mod))
+qqline(resid(null_mod))
+
+beta_AIC <- as.data.frame(AIC(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
+                       bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
+                       test_mod, hfp_mod, bhi_threat_type_mod, bhi_island_mod, bhi_island_time_mod))
+
+beta_AIC <- beta_AIC %>% 
+  arrange(AIC)
+
+beta_AIC
+
+
+bii_bhi_mod <- lm(BHI_plants_2005 ~ BIIab_2005, data = model_input_data)
+summary(bii_bhi_mod)
+qqnorm(resid(bii_bhi_mod))
+qqline(resid(bii_bhi_mod))
+
+bii_bhi_time_mod <- lm(BHI_plants_2005 ~ BIIab_2005 + disturbance_year, data = model_input_data)
+summary(bii_bhi_time_mod)
+qqnorm(resid(bii_bhi_time_mod))
+qqline(resid(bii_bhi_time_mod))
+
+bii_bhi_island_mod <- lm(BHI_plants_2005 ~ BIIab_2005 + island_status, 
+                         data = model_input_data)
+
+summary(bii_bhi_island_mod)
+qqnorm(resid(bii_bhi_island_mod))
+qqline(resid(bii_bhi_island_mod))
+
+lm_AIC <- as.data.frame(AIC(bii_bhi_mod, bii_bhi_island_mod, bii_bhi_time_mod))
+
+lm_AIC <- lm_AIC %>% 
+  arrange(AIC)
+
+lm_AIC
+
+
+x <- as.data.frame(AIC(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
+    bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
+    test_mod, hfp_mod, bhi_threat_type_mod, bhi_island_mod, bhi_island_time_mod))
+
+x2 <- x %>% 
+      arrange(AIC)
+x2
+
+
+bii_mod <- lmer(RLI_2008 ~ BIIab_2005 * rli_records + (1|cluster), 
+                           data = model_input_data)
+
+summary(bii_mod)
+
+hfp_mod <- lmer(RLI_2008 ~ HFP_2005 * rli_records + (1|cluster), 
+                           data = model_input_data)
+
+summary(hfp_mod)
 
 # Prepare correlation data ----
 

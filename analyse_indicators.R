@@ -389,6 +389,14 @@ ecoregions_wide <- ecoregions_wide %>%
 ecoregions_wide <- ecoregions_wide %>% 
                    mutate(across(where(is.character), as.factor)) 
 
+# Add scaled/density variables
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
+                   mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
+                           scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
+                           scaled_threat_count = predominant_threat_count/rli_records)
+
 
 # Get the names of factors
 
@@ -401,264 +409,6 @@ grouping_variables
 numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
 numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
 numeric_variables
-
-# * Check for collinearity ----
-
-# Create a folder for the PCA outputs
-
-collinearity_outputs <- file.path(current_analysis_outputs, "collinearity_outputs")
-
-dir.create(collinearity_outputs, recursive = TRUE ) # create a new directory for today's outputs
-
-
-# Summary table
-
-ecoregion_summary_table <- summary(ecoregions_wide[, 2:ncol(ecoregions_wide)], 
-                                   maxsum = length(unique(ecoregions_wide$biome)))
-ecoregion_summary_table
-
-saveRDS(ecoregion_summary_table,
-        file.path(current_analysis_outputs, "ecoregion_summary_table.RDS"))
-
-write.csv(ecoregion_summary_table,
-          file.path(current_analysis_outputs, "ecoregion_summary_table.csv"))
-
-## ** Numeric ----
-
-ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
-
-ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
-                               ecoregions_collinear_inputs),]
-
-ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
-                                     method = "spearman")
-
-saveRDS(ecoregions_correlation_matrix,
-        file.path(collinearity_outputs, "ecoregion_numerical_correlations.RDS"))
-
-write.csv(ecoregions_correlation_matrix,
-          file.path(collinearity_outputs, "ecoregion_numerical_correlations.csv"))
-
-# ** Categorical -----
-
-# Remove incomplete rows
-ecoregions_wide_complete <- ecoregions_wide[complete.cases(ecoregions_wide),]
-
-ecoregions_wide_complete<- ecoregions_wide_complete %>% 
-    mutate(area_factor = factor(ecoregions_wide_complete$area_factor, 
-                                               ordered = FALSE))
-
-# Subset to only categorical variables
-
-ecoregions_chisq_inputs <- ecoregions_wide[,grouping_variables]
-
-# Select rows with complete data for all variables
-
-ecoregions_chisq_inputs <- ecoregions_chisq_inputs[complete.cases(
-                           ecoregions_chisq_inputs),]
-
-
-ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as.factor)
-
-# Get all possible combinations of variables
-
-categorical_combinations <- combn(names(ecoregions_chisq_inputs), 2)
-
-# https://statsandr.com/blog/chi-square-test-of-independence-in-r/
-
-chisq_results <- list() # list to catch results of independence test
-chi_residual_plots <- list(0) # list to catch correlation plot for each combo
-
-for (i in 1:ncol(categorical_combinations)) {
-  
-combo <- categorical_combinations[,i]
-
-print(paste("testing",combo[1], "and", combo[2], "for independence", sep = " "))
-
-test_inputs <- table(pull(ecoregions_chisq_inputs[, combo[1]]), # Get the two variables to test
-                   pull(ecoregions_chisq_inputs[, combo[2]]))
-
-chi_result <- tryCatch(chisq.test(test_inputs,
-                                  simulate.p.value = TRUE,
-                                  B = 10000),
-                   error=function(e) e, warning=function(w) w)
-
-# If the chi sq test throws a warning bc of small values, do fisher test instead
-
-if(is(chi_result,"warning")) { 
-
-print( "Values too small for chi-square test, performing fisher test instead")
-
-fisher_result <- fisher.test(test_inputs, simulate.p.value = TRUE, B = 10000)
-
-# Make nice df result
-
-result <- cbind(combo[1], combo[2], fisher_result$p.value, NA, 
-                fisher_result$method)
-
-} else {
-  
-result <- cbind(combo[1], combo[2], chi_result$p.value, 
-                chi_result$statistic, chi_result$method)
-
-# Plot the contingency table correlation for all subgroups (shows which 
-# subgroups contribute most to the result of independent or related)
-
-tiff(file = file.path(collinearity_outputs, 
-                      paste(combo[1], "x", combo[2], "residuals.tiff",
-                            sep = "_")), 
-     units = "in", width=5, height=5, res = 300)
-
-plot <- corrplot(chi_result$residuals, is.cor = FALSE)
-
-dev.off()
-
-}
-
-chisq_results[[i]] <- result
-
-chi_residual_plots[[i]] <- plot
-
-}
-
-# Format the results into a nice dataframe and save
-
-categorical_independence_results <- as.data.frame(do.call(rbind, chisq_results))
-
-names(categorical_independence_results) <- c("var1", "var2", "p_value", 
-                                             "statistic", "method")
-
-# Convert characters back to numeric (needed for sorting in next step)
-
-categorical_independence_results$p_value <- as.numeric(categorical_independence_results$p_value)
-categorical_independence_results$statistic <- as.numeric(categorical_independence_results$statistic)
-
-independent_categoricals <- categorical_independence_results %>% 
-                            filter(p_value >= 0.05) %>% 
-                            mutate(status = "independent") %>% 
-                            arrange(desc(statistic))
-
-dependent_categoricals <- categorical_independence_results %>% 
-                          filter(p_value < 0.05) %>% 
-                          mutate(status = "correlated") %>% 
-                          arrange(desc(statistic))
-
-# Save the outputs in tidy format
-
-categorical_independence_output <- rbind(independent_categoricals,
-                                         dependent_categoricals)
-
-saveRDS(categorical_independence_output,
-        file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
-
-write.csv(categorical_independence_output,
-          file.path(collinearity_outputs, "ecoregion_categorical_correlations.csv"))
-
-# Make a matrix of chi square statistic values
-
-chi_sq_matrix_stat <- categorical_independence_output %>% 
-                     dplyr::select(var1, var2, statistic) %>% 
-                     pivot_wider(names_from = var2, values_from = statistic,
-                                 id_cols = c(var1,var2))
-
-
-saveRDS(chi_sq_matrix_stat,
-        file.path(collinearity_outputs, "chi_sq_statistic_matrix.RDS"))
-
-write.csv(chi_sq_matrix_stat,
-          file.path(collinearity_outputs, "chi_sq_statistic_matrix.csv"))
-
-# Make a matrix of independence status
-
-x <- unique(categorical_independence_output$var1)
-
-chi_sq_matrix_pval <- categorical_independence_output %>% 
-                      dplyr::select(var1, var2, status) %>%
-                      pivot_longer(names_from = var2, values_from = status,
-                             names_sort = TRUE)
-
-
-saveRDS(chi_sq_matrix_pval,
-        file.path(collinearity_outputs, "chi_sq_pvalue_matrix.RDS"))
-
-write.csv(chi_sq_matrix_pval,
-          file.path(collinearity_outputs, "chi_sq_pvalue_matrix.csv"))
-
-
-
-
-# ** Numeric vs categorical ----
-
-# Get all the column names except ecoregion ID,so we can convert to long format
-ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(
-                       ecoregions_wide_complete), "ecoregion_id")]
-
-# Convert it to wide format so we can plot
-
-ecoregions_long <- ecoregions_wide_complete %>% 
-                   pivot_longer(all_of(grouping_variables)) %>% 
-                   rename(group = name,
-                          subgroup = value)
-
-# Split data by grouping variables
-
-ecoregions_list <- split(ecoregions_long, 
-                         ecoregions_long$group)
-
-# Create empty lists to catch output
-
-# by categorical grouping variable
-ecoregion_groups <- list()
-
-# by numeric grouping variable
-group_numerics <- list()
-
-for ( i in seq_along(ecoregions_list)) {
-
-# Get the data for a single grouping variable
-  
-data <- ecoregions_list[[i]]
-
-group_name <- names(ecoregions_list)[[i]]
-
-for(j in seq_along(numeric_variables)) {
-  
-# Plot each numeric variable on the y axis, against boxplots of the different
-# factor levels on the x axis
-  
-  plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", 
-                    sep = "_")
-  
-  group_numerics[[j]] <- ggplot(data,aes_string(x = "subgroup", 
-                                                y = numeric_variables[[j]])) +
-                         geom_boxplot() +
-                         # geom_point(position = "jitter",alpha = 0.1) +
-                         theme(axis.text.x = element_text(angle= 45,hjust=1)) +
-                         geom_hline(yintercept = 0) +
-                         theme(
-                            legend.position = "none",
-                            axis.text.y = element_text(size = 6),
-                            axis.text.x = element_text(size = 6))+
-                          xlab(group_name) + ylab(numeric_variables[[j]]) 
-
-  ggsave(file.path(collinearity_outputs, plotname),
-         group_numerics[[j]],
-         device = "png")
-
-  }
-
-ecoregion_groups[[i]] <- group_numerics
-
-}
-
-i <- i + 1
-
-j <- 1
-ecoregion_groups[[i]][[j]]
-
-j <- j + 1
-ecoregion_groups[[i]][[j]]
-
 
 # Indicator data ----
 
@@ -779,9 +529,10 @@ names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
 
 names(indicators_wide) <- str_replace(names(indicators_wide), " ", "_")
 
-indicators <- names(indicators_wide)
+indicators_all_timepoints <- names(indicators_wide)
 
-indicators_all <- indicators[!indicators %in% "ecoregion_id"]
+indicators_all <- indicators_all_timepoints[!indicators_all_timepoints %in% 
+                                              "ecoregion_id"]
 
 # * Manage outliers ---- 
 
@@ -872,7 +623,8 @@ summary(indicators_wide_centred)
 
 # Get 2005 only
 indicator_boxplot_data_wide <- indicators_wide_centred %>%
-  dplyr::select(all_of(c("ecoregion_id", indicators)))
+  dplyr::select(all_of(c("ecoregion_id", indicators))) %>% 
+  dplyr::select(-AmphRLI_2008, -BirdRLI_2008, -MammRLI_2008, -number_extinct_2008)
 
 # Convert back into long format
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
@@ -898,6 +650,273 @@ ggsave(file.path(current_analysis_outputs, "indicator_boxplots.png"),
        boxplots, device = "png")
 
 rm(raw_indicators_wide)
+
+# * Check for collinearity ----
+
+# Create a folder for the collinearity test
+
+collinearity_outputs <- file.path(current_analysis_outputs, "collinearity_outputs")
+
+dir.create(collinearity_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+
+# Summary table
+
+ecoregion_summary_table <- summary(ecoregions_wide[, 2:ncol(ecoregions_wide)], 
+                                   maxsum = length(unique(ecoregions_wide$biome)))
+
+ecoregion_summary_table
+
+saveRDS(ecoregion_summary_table,
+        file.path(current_analysis_outputs, "ecoregion_summary_table.RDS"))
+
+write.csv(ecoregion_summary_table,
+          file.path(current_analysis_outputs, "ecoregion_summary_table.csv"))
+
+## ** Numeric ----
+
+ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
+
+ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
+  ecoregions_collinear_inputs),]
+
+ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
+                                     method = "spearman")
+ecoregions_correlation_matrix
+
+saveRDS(ecoregions_correlation_matrix,
+        file.path(collinearity_outputs, "ecoregion_numerical_correlations.RDS"))
+
+write.csv(ecoregions_correlation_matrix,
+          file.path(collinearity_outputs, "ecoregion_numerical_correlations.csv"))
+
+# ** Categorical -----
+
+# Remove incomplete rows
+ecoregions_wide_complete <- ecoregions_wide[complete.cases(ecoregions_wide),]
+
+ecoregions_wide_complete<- ecoregions_wide_complete %>% 
+  mutate(area_factor = factor(ecoregions_wide_complete$area_factor, 
+                              ordered = FALSE))
+
+# Subset to only categorical variables
+
+ecoregions_chisq_inputs <- ecoregions_wide[,grouping_variables]
+
+# Select rows with complete data for all variables
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs[complete.cases(
+  ecoregions_chisq_inputs),]
+
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as.factor)
+
+# Get all possible combinations of variables
+
+categorical_combinations <- combn(names(ecoregions_chisq_inputs), 2)
+
+# https://statsandr.com/blog/chi-square-test-of-independence-in-r/
+
+chisq_results <- list() # list to catch results of independence test
+chi_residual_plots <- list(0) # list to catch correlation plot for each combo
+
+for (i in 1:ncol(categorical_combinations)) {
+  
+  combo <- categorical_combinations[,i]
+  
+  print(paste("testing",combo[1], "and", combo[2], "for independence", sep = " "))
+  
+  test_inputs <- table(pull(ecoregions_chisq_inputs[, combo[1]]), # Get the two variables to test
+                       pull(ecoregions_chisq_inputs[, combo[2]]))
+  
+  chi_result <- tryCatch(chisq.test(test_inputs,
+                                    simulate.p.value = TRUE,
+                                    B = 10000),
+                         error=function(e) e, warning=function(w) w)
+  
+  # If the chi sq test throws a warning bc of small values, do fisher test instead
+  
+  if(is(chi_result,"warning")) { 
+    
+    print( "Values too small for chi-square test, performing fisher test instead")
+    
+    fisher_result <- fisher.test(test_inputs, simulate.p.value = TRUE, B = 10000)
+    
+    # Make nice df result
+    
+    result <- cbind(combo[1], combo[2], fisher_result$p.value, NA, 
+                    fisher_result$method)
+    
+  } else {
+    
+    result <- cbind(combo[1], combo[2], chi_result$p.value, 
+                    chi_result$statistic, chi_result$method)
+    
+    # Plot the contingency table correlation for all subgroups (shows which 
+    # subgroups contribute most to the result of independent or related)
+    
+    tiff(file = file.path(collinearity_outputs, 
+                          paste(combo[1], "x", combo[2], "residuals.tiff",
+                                sep = "_")), 
+         units = "in", width=5, height=5, res = 300)
+    
+    plot <- corrplot(chi_result$residuals, is.cor = FALSE, tl.cex = 0.8)
+    
+    dev.off()
+    
+  }
+  
+  chisq_results[[i]] <- result
+  
+  chi_residual_plots[[i]] <- plot
+  
+}
+
+walk(chi_residual_plots, print)
+
+# Format the results into a nice dataframe and save
+
+categorical_independence_results <- as.data.frame(do.call(rbind, chisq_results))
+
+names(categorical_independence_results) <- c("var1", "var2", "p_value", 
+                                             "statistic", "method")
+
+# Convert characters back to numeric (needed for sorting in next step)
+
+categorical_independence_results$p_value <- as.numeric(categorical_independence_results$p_value)
+categorical_independence_results$statistic <- as.numeric(categorical_independence_results$statistic)
+
+independent_categoricals <- categorical_independence_results %>% 
+  filter(p_value >= 0.05) %>% 
+  mutate(status = "independent") %>% 
+  arrange(desc(statistic))
+
+dependent_categoricals <- categorical_independence_results %>% 
+  filter(p_value < 0.05) %>% 
+  mutate(status = "correlated") %>% 
+  arrange(desc(statistic))
+
+# Save the outputs in tidy format
+
+categorical_independence_output <- rbind(independent_categoricals,
+                                         dependent_categoricals)
+
+saveRDS(categorical_independence_output,
+        file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
+
+write.csv(categorical_independence_output,
+          file.path(collinearity_outputs, "ecoregion_categorical_correlations.csv"))
+
+print(categorical_independence_output)
+
+# Make a matrix of chi square statistic values
+
+chi_sq_matrix_stat <- categorical_independence_output %>% 
+  dplyr::select(var1, var2, statistic) %>% 
+  pivot_wider(names_from = var2, values_from = statistic,
+              id_cols = c(var1,var2))
+
+
+saveRDS(chi_sq_matrix_stat,
+        file.path(collinearity_outputs, "chi_sq_statistic_matrix.RDS"))
+
+write.csv(chi_sq_matrix_stat,
+          file.path(collinearity_outputs, "chi_sq_statistic_matrix.csv"))
+
+# Make a matrix of independence status
+
+x <- unique(categorical_independence_output$var1)
+
+chi_sq_matrix_pval <- categorical_independence_output %>% 
+  dplyr::select(var1, var2, status) %>%
+  pivot_longer(names_from = var2, values_from = status,
+               names_sort = TRUE)
+
+
+saveRDS(chi_sq_matrix_pval,
+        file.path(collinearity_outputs, "chi_sq_pvalue_matrix.RDS"))
+
+write.csv(chi_sq_matrix_pval,
+          file.path(collinearity_outputs, "chi_sq_pvalue_matrix.csv"))
+
+
+
+
+# ** Numeric vs categorical ----
+
+# Get all the column names except ecoregion ID,so we can convert to long format
+ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(
+  ecoregions_wide_complete), "ecoregion_id")]
+
+# Convert it to wide format so we can plot
+
+ecoregions_long <- ecoregions_wide_complete %>% 
+  pivot_longer(all_of(grouping_variables)) %>% 
+  rename(group = name,
+         subgroup = value)
+
+# Split data by grouping variables
+
+ecoregions_list <- split(ecoregions_long, 
+                         ecoregions_long$group)
+
+# Create empty lists to catch output
+
+# by categorical grouping variable
+ecoregion_groups <- list()
+
+# by numeric grouping variable
+group_numerics <- list()
+
+for ( i in seq_along(ecoregions_list)) {
+  
+  # Get the data for a single grouping variable
+  
+  data <- ecoregions_list[[i]]
+  
+  group_name <- names(ecoregions_list)[[i]]
+  
+  for(j in seq_along(numeric_variables)) {
+    
+    # Plot each numeric variable on the y axis, against boxplots of the different
+    # factor levels on the x axis
+    
+    plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", 
+                      sep = "_")
+    
+    group_numerics[[j]] <- ggplot(data,aes_string(x = "subgroup", 
+                                                  y = numeric_variables[[j]])) +
+      geom_boxplot() +
+      # geom_point(position = "jitter",alpha = 0.1) +
+      theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+      geom_hline(yintercept = 0) +
+      theme(
+        legend.position = "none",
+        axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 6))+
+      xlab(group_name) + ylab(numeric_variables[[j]]) 
+    
+    ggsave(file.path(collinearity_outputs, plotname),
+           group_numerics[[j]],
+           device = "png")
+    
+  }
+  
+  ecoregion_groups[[i]] <- group_numerics
+  
+}
+
+# i <- i + 1
+# 
+# j <- 1
+# ecoregion_groups[[i]][[j]]
+# 
+# j <- j + 1
+# ecoregion_groups[[i]][[j]]
+
+walk(ecoregion_groups, print)
+
+
 
 # PCA ----
 
@@ -1294,100 +1313,6 @@ rm(cluster_map)
 
 # * Cluster boxplots ----
 
-# Finalise data
-
-boxplot_data <- indicators_wide_centred %>%
-  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
-  merge(cluster_map_data[c("ecoregion_id", "cluster")],
-        by = "ecoregion_id") %>%
-  dplyr::select(-geometry)
-
-# # Plot data by cluster
-# 
-# cluster_boxplot_data_wide <- boxplot_data %>%
-#   dplyr::select(all_of(c("ecoregion_id", "cluster", 
-#                          indicators, numeric_variables)))
-# 
-# summary(cluster_boxplot_data_wide)
-# 
-# # Make sure all the values are scaled
-# 
-# cluster_boxplot_data_wide <- scale(cluster_boxplot_data_wide[,c(indicators, 
-#                                                                 numeric_variables)])
-# 
-# cluster_boxplot_data_wide <- cbind(correlation_input_data_all[,c("ecoregion_id",
-#                                                                  "cluster")], 
-#                                    cluster_boxplot_data_wide)
-# summary(cluster_boxplot_data_wide)
-# 
-# cluster_boxplot_data_wide <- cluster_boxplot_data_wide %>%
-#   dplyr::select(-predominant_threat_count,
-#                 -number_of_endemics) 
-# 
-# # Melt back into long format
-# 
-# cluster_boxplot_data <- reshape2::melt(cluster_boxplot_data_wide, 
-#                                        measure.vars = c(indicators, 
-#                                                         "ecoregion_area_km_sq",
-#                                                         "high_beta_area",
-#                                                         "lpi_records",
-#                                                         "mean_human_population_density",
-#                                                         "rli_records"))
-# 
-# head(cluster_boxplot_data)
-# 
-# names(cluster_boxplot_data) <- c("ecoregion_id", "cluster", 
-#                                  "Indicator", "Indicator value")
-# 
-# saveRDS(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.rds"))
-# write.csv(cluster_boxplot_data, file.path(cluster_outputs, "cluster_boxplot_data.csv"))
-# 
-# cluster_boxplots <- ggplot(cluster_boxplot_data) +
-#   geom_boxplot(aes(x = Indicator, y = `Indicator value`,
-#                    fill = Indicator)) +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   facet_wrap( ~ cluster) +
-#   geom_hline(yintercept = 0) +
-#   scale_fill_viridis(discrete=TRUE) +
-#   scale_color_viridis(discrete=TRUE) +
-#   theme(
-#     legend.position = "none",
-#     axis.text.y = element_text(size = 6),
-#     axis.text.x = element_text(size = 6)
-#   )
-# 
-# cluster_boxplots
-# 
-# ggsave(file.path(cluster_outputs, "cluster_boxplots.png"),
-#        cluster_boxplots, device = "png")
-
-# * Cluster comparisons ----
-
-comparison_data_all <- boxplot_data %>%
-                       dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                                 indicators, 
-                                 numeric_variables,
-                                 grouping_variables)))
-
-head(comparison_data_all)
-
-# ** Wilcox mean comparisons ----
-## Compare means of the numeric explanatory variables between clusters
-
-comparison_data_numeric <- comparison_data_all %>% 
-                           dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                                                    numeric_variables))) %>% 
-                           mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
-                           mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
-                                  scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
-                                  scaled_threat_count = predominant_threat_count/rli_records)
-
-# Check a random sample
-
-set.seed(1234)
-
-dplyr::sample_n(comparison_data_numeric, 10)
-
 # Calculate mean and sd
 
 group_by(comparison_data_numeric[,-1], cluster) %>%
@@ -1598,6 +1523,81 @@ cluster_categorical_results
 i <- 1
 cluster_chi_residual_plots[[i]]
 cluster_chi_contribution_plots[[i]]
+
+# Cluster explanatory variable boxplots ----
+
+boxplot_data <- indicators_wide_centred %>%
+  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
+  merge(cluster_map_data[c("ecoregion_id", "cluster")],
+        by = "ecoregion_id") %>%
+  dplyr::select(-geometry)
+
+comparison_data_all <- boxplot_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         indicators, 
+                         numeric_variables,
+                         grouping_variables)))
+
+head(comparison_data_all)
+
+
+comparison_data_numeric <- comparison_data_all %>% 
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         numeric_variables))) %>% 
+  mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
+  mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
+         scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
+         scaled_threat_count = predominant_threat_count/rli_records)
+
+# Check a random sample
+
+set.seed(1234)
+
+dplyr::sample_n(comparison_data_numeric, 10)
+
+# Make sure all the values are scaled
+
+numeric_boxplot_data_wide <- scale(comparison_data_numeric[ ,-c(1:2)])
+
+# Add ecoregion id and cluster back in
+
+numeric_boxplot_data_wide <- as.data.frame(cbind(comparison_data_numeric$ecoregion_id,
+                                                 numeric_boxplot_data_wide))
+
+summary(numeric_boxplot_data_wide)
+
+# Melt back into long format
+
+numeric_boxplot_data <- numeric_boxplot_data_wide %>% 
+  pivot_longer(all_of(c(numeric_variables,
+                        "scaled_rli_records",
+                        "scaled_lpi_records",
+                        "scaled_endemics",
+                        "scaled_threat_count"))) 
+
+names(numeric_boxplot_data) <- c("Ecoregion_id", "Variable", "Value")
+
+saveRDS(numeric_boxplot_data, file.path(current_analysis_outputs, 
+                                        "numeric_variable_boxplot_data.rds"))
+write.csv(numeric_boxplot_data, file.path(current_analysis_outputs, 
+                                          "numeric_variable_boxplot_data.csv"))
+
+numeric_boxplots <- ggplot(numeric_boxplot_data) +
+  geom_boxplot(aes(x = Variable, y = Value)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 8),
+    axis.text.x = element_text(size = 8)
+  )
+
+numeric_boxplots
+
+ggsave(file.path(current_analysis_outputs, "numeric_variable_boxplots.png"),
+       cluster_boxplots, device = "png")
 
 # * Cluster barplots ----
 

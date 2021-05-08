@@ -1,0 +1,712 @@
+---
+title: "exploratory_data_analysis"
+author: "Simone Stevenson"
+date: "05/05/2021"
+output: html_document
+---
+# Setup
+## TODO: Give plots captions
+
+```{r setup, include=FALSE}
+
+# Load packages
+
+## Data wrangling
+library(tidyverse)
+library(tidylog)
+library(arules)
+library(data.table)
+library(psych)
+
+## Data visualisation
+library(tmap)
+library(viridisLite)
+library(corrplot)
+
+# Set up inputs
+
+date <- Sys.Date()
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+save_outputs <- "yes" #only applies to maps, other things will always save
+outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+timepoints <- c("2005", "2008")
+indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+load_map <- FALSE
+
+# Creat output folders 
+
+# Main folder, may already exist
+
+dir.create(manuscript_outputs, recursive = TRUE ) 
+  
+# Folder for today's outputs intended for the main manuscript (dated)
+
+main_outputs <- file.path(manuscript_outputs, paste(date,
+                                 "_main_manuscript_outputs",sep="") )
+  
+dir.create(main_outputs, recursive = TRUE )
+
+# Folder for today's outputs intended for the supporting information (dated)
+
+supp_outputs <- file.path(manuscript_outputs, paste(date,
+                                 "_supporting_info_outputs",sep="") )
+  
+dir.create(supp_outputs, recursive = TRUE )
+
+# Read in the data
+
+# ## Indicator values by ecoregion
+# 
+# indicator_values_master <- readRDS(file.path(analysis_inputs,
+#                           "global_ecoregions_2017_indicator_values_master.rds"))
+# 
+# ## Explanatory ecoregion values by ecoregion
+# 
+# ecoregion_values_master <- readRDS(file.path(analysis_inputs,
+#                                "global_ecoregions_2017_ecoregion_values_master.rds"))
+# 
+# 
+# ecoregion_map_all <- readRDS(paste(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",  "ecoregions_2017"),"Ecoregions2017valid.rds"))
+# 
+# ecoregion_map_data <- ecoregion_map_all %>%
+#                  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry) %>%
+#                       rename(ecoregion_id = ECO_ID) %>%
+#                       dplyr::select(ecoregion_id, geometry)
+# 
+# rm(ecoregion_map_all)
+
+
+# Threat scheme
+
+threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+
+headline_threats <- threat_scheme %>%
+  dplyr::select(headline_name) %>%
+  distinct(.) %>%
+  pull()
+
+headline_threats <- c(headline_threats, "All threats")
+
+# Ecoregion map ----
+
+if(load_map == TRUE) {
+
+ecoregion_map_all <- readRDS(paste(
+                     file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
+                               "ecoregions_2017"),
+                               "Ecoregions2017valid.rds"))
+
+ecoregion_map <- ecoregion_map_all %>%
+  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+
+ecoregion_map_renamed <- ecoregion_map %>% dplyr::rename(ecoregion_id = ECO_ID)
+
+rm(ecoregion_map_all, ecoregion_map)
+  
+}
+
+# ecoregions <- ecoregion_map_renamed %>% 
+#               st_drop_geometry()
+# Countries
+
+ecoregion_countries <- readRDS(file.path(outputs, "version_3",
+                        "2020-08-10_database_output_files",
+                        "ecoregion_country_data.rds"))
+
+
+```
+
+# Ecoregion data
+```{r ecoregion data, echo = FALSE, warning = FALSE, message = FALSE}
+
+
+# Ecoregion data ----
+
+raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
+                               "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
+
+# Keep a copy of unaltered ecoregion data
+
+ecoregions_wide <- raw_ecoregions_wide 
+
+names(ecoregions_wide) <- tolower(names(ecoregions_wide))
+ 
+ecoregions_wide$area_factor <- discretize(ecoregions_wide$ecoregion_area_km_sq, 
+                                   method = "frequency",
+                                   breaks = 3, 
+                                   labels = c("Small_ecoregions", 
+                                              "Medium_ecoregions",
+                                              "Large_ecoregions"),
+                                   ordered_result = TRUE)
+
+# Split the ecoregions by lpi data by fewer than 20 (minimum population sample
+# required for SDMs) and more than 20
+
+ecoregions_wide$lpi_records_factor <- cut(ecoregions_wide$lpi_records, 
+                                          breaks = c(-Inf,19, Inf),
+                                          labels = c("less than 20",
+                                                     "more than 20"))
+
+# Split ecoregions by RLI species fewer than 400 and more than 400 (based
+# on min sample in Henriques et al 2020)
+
+ecoregions_wide$rli_records_factor <- cut(ecoregions_wide$rli_records, 
+                                          breaks = c(-Inf,400, Inf),
+                                          labels = c("less than 400",
+                                                     "more than 400"))
+# table(ecoregions_wide$rli_records_factor)
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(included_in_hfp = ifelse(included_in_hfp == 1, 
+                          "Threat related to HFP",
+                          ifelse(included_in_hfp == 0,
+                          "Threat external to HFP",
+                                         NA)))
+
+ecoregions_wide <- ecoregions_wide %>%
+  mutate(scenario = as.factor(paste(rli_records_factor, included_in_hfp, sep = " & ")),
+         scenario_numeric = as.factor(as.numeric(scenario))) 
+
+ecoregions_wide$endemics_factor <- cut(ecoregions_wide$number_of_endemics, 
+                                       breaks = c(-Inf, 0 , Inf),
+                                       labels = c("no endemics",
+                                                  "endemics"))
+
+
+# table(ecoregions_wide$endemics_factor)
+
+ecoregions_wide$high_beta_area_factor <- discretize(ecoregions_wide$high_beta_area, 
+                                      method = "interval",
+                                      breaks = 4,
+                                      labels = c("very low beta",
+                                                 "low beta",
+                                                 "medium beta",
+                                                 "high beta"))
+
+# table(ecoregions_wide$high_beta_area)
+
+# Remove any unwanted grouping variables
+
+# names(ecoregions_wide)
+
+ecoregions_wide <- ecoregions_wide %>%
+                   dplyr::select(-scenario, -scenario_numeric, 
+                                 -mean_scientific_publications,
+                                 -headline_threat_type)
+
+# Convert any characters into factors
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(across(where(is.character), as.factor)) 
+
+# Add scaled/density variables
+
+ecoregions_wide <- ecoregions_wide %>% 
+                   mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
+                   mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
+                           scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
+                           scaled_threat_count = predominant_threat_count/rli_records)
+
+
+# Get the names of factors
+
+grouping_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
+
+# grouping_variables
+
+# Get names of numeric variables 
+
+numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
+numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
+# numeric_variables
+
+
+```
+
+# Indicator data
+
+
+```{r indicator data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Indicator data ----
+
+# Indicator data
+
+indicator_properties <- read.csv(file.path(analysis_inputs,
+                                          "indicator_properties.csv"))
+
+#TODO: get this out of indicator_properties
+indicator_relationships <- read.csv(file.path(analysis_inputs,
+                                           "indicator_input_relationships.csv"))
+
+raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
+                          "global_ecoregions_2017_indicator_values_master.rds"))
+
+raw_indicators_long_all$indicator_year <- str_replace(raw_indicators_long_all$indicator_year, " ", "_")
+
+
+raw_indicators_long <- raw_indicators_long_all %>%
+                       dplyr::select(ecoregion_id, indicator_year,
+                                     raw_indicator_value) %>%
+                       distinct(.)
+
+raw_indicators_wide <- raw_indicators_long %>%
+                       spread(key = indicator_year, 
+                             value = raw_indicator_value) 
+
+# dim(raw_indicators_wide)
+
+raw_names <- names(raw_indicators_wide)
+new_raw_names <- str_replace(raw_names, " ", "_")
+names(raw_indicators_wide) <- new_raw_names
+
+# Get single timepoint indicator names
+
+# Get single timepoint indicators
+
+indicators_05 <- names(raw_indicators_wide)[str_detect(names(raw_indicators_wide),
+                                                  timepoints[[1]])]
+
+indicators_08 <- names(raw_indicators_wide)[str_detect(names(raw_indicators_wide),
+                                                  timepoints[[2]])]
+
+# Remove LPI 2008 record which is the only indicator with timepoints for 05 and 08
+
+indicators_08 <- indicators_08[!str_detect(indicators_08,
+                                           "LPI_2008")]
+
+indicators <- c(indicators_05, indicators_08)
+
+# Indicator data cleaning ----
+
+# * Invert ----
+# For negatively valanced variables (where high values = negative outcome)
+
+negatives_index <- names(raw_indicators_wide) %like% 'HFP|extinct|threatened'
+negatives <- names(raw_indicators_wide)[negatives_index]
+
+cols_min <- as.numeric(sapply(raw_indicators_wide, min, na.rm = TRUE))
+cols_max <- as.numeric(sapply(raw_indicators_wide, max, na.rm = TRUE))
+
+
+keys <- as.data.frame(negatives_index) %>%
+        mutate(keys = ifelse(negatives_index == FALSE, 1, -1)) %>%
+        dplyr::select(keys) %>%
+        pull(.)
+
+indicators_wide <- as.data.frame(reverse.code(keys,raw_indicators_wide,
+                                              mini = cols_min, maxi = cols_max))
+
+# dim(indicators_wide)
+
+# * Fix column names ----
+
+# Remove the little negative thing at the end of reversed column names, otherwise
+# they become difficult to use with dplyr
+
+names(indicators_wide) <- str_replace(names(indicators_wide), "-", "")
+
+# Change full stops to underscores
+
+names(indicators_wide) <- str_replace(names(indicators_wide), " ", "_")
+
+indicators_all_timepoints <- names(indicators_wide)
+
+indicators_all <- indicators_all_timepoints[!indicators_all_timepoints %in% 
+                                              "ecoregion_id"]
+
+# * Manage outliers ---- 
+
+# A couple of big outliers in LPI values
+# hist(indicators_wide$LPI_2005, breaks = 20)
+# max(indicators_wide$LPI_2005, na.rm = TRUE)
+
+# Get the 95th percentile
+
+lpi_95 <- quantile(indicators_wide$LPI_2005, 
+                   probs = 0.95, 
+                   na.rm = TRUE)
+# lpi_95
+
+lpi_mx_eco <- raw_indicators_wide %>%
+  filter(LPI_2005 == max(LPI_2005, na.rm = TRUE)) %>%
+  dplyr::select(ecoregion_id) %>%
+  pull(.)
+
+# Note, max positive LPI score goes to ecoregion 675 Po Basin, which also gets the third most
+# negative (ie contradictory) score for HFP.  The three highest 
+# values in the LPI had populations of 0 in 1970 and have since been colonised?
+
+# ecoregion_map_renamed %>% filter(ecoregion_id == lpi_mx_eco)
+
+# Just remove LPI outliers, given we know it is a dodgier dataset and volatile
+indicators_wide_2 <- indicators_wide %>%
+  mutate(LPI_2005 = ifelse(LPI_2005 > lpi_95,
+                           NA, LPI_2005)) 
+
+# dim(indicators_wide_2)
+# max(indicators_wide_2$LPI_2005, na.rm = TRUE)
+# hist(indicators_wide_2$LPI_2005, breaks = 20)
+
+# HFP values - have a couple of exceptionally low values
+
+# hist(indicators_wide$HFP_2005, breaks = 20)
+# min(indicators_wide$HFP_2005, na.rm = TRUE)
+# hfp_mx <- max(raw_indicators_wide$HFP_2005, na.rm = TRUE)
+# hfp_mx_eco <- raw_indicators_wide %>%
+#               filter(HFP_2005 == max(HFP_2005, na.rm = TRUE)) %>%
+#               dplyr::select(ecoregion_id) %>%
+#               pull(.)
+
+# Looking at HFP map, bermuda cells do have very high scores (eg 48), which
+# matches with the ecoregions WWF description of severe degradation, so
+# don't remove outliers
+
+# lookup_ecoregion(hfp_mx_eco)
+
+# Extinctions also have some very high values, however these can be verified and are
+# correct, so don't remove
+
+# hist(indicators_wide$extinct_2008, breaks = 20)
+# min(indicators_wide$extinct_2008, na.rm = TRUE)
+
+# * Remove unwanted indicators ----
+
+indicators_cleaned <- indicators_wide_2 %>%
+                   dplyr::select(-number_extinct_2008, -number_extinct_2016,
+                                 -AmphRLI_2008, -BirdRLI_2008, -BirdRLI_2016,
+                                 -MammRLI_2008)
+
+# dim(indicators_cleaned)
+
+## Save the cleaned indicator data
+
+# saveRDS(indicators_cleaned,
+#         file.path(current_analysis_outputs, "indicators_cleaned.RDS"))
+# 
+# write.csv(indicators_cleaned,
+#           file.path(current_analysis_outputs, "indicators_cleaned.csv"))
+
+# * Centre ----
+
+#TODO: Do we need to transform any variables? bc probably need to do so before scaling
+# https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
+
+indicators_wide_centred <- indicators_wide_2 %>%
+  mutate_at(c(2:ncol(indicators_wide_2)), 
+            funs(c(scale(.)))) 
+
+# summary(indicators_wide_centred)
+
+
+
+
+```
+
+# Indicator boxplots
+
+``` {r indicator boxplots , echo = FALSE, warning = FALSE, message = FALSE}
+
+# Get 2005 only
+indicator_boxplot_data_wide <- indicators_wide_centred %>%
+  dplyr::select(all_of(c("ecoregion_id", indicators))) %>% 
+  dplyr::select(-AmphRLI_2008, -BirdRLI_2008, -MammRLI_2008, -number_extinct_2008)
+
+# Convert back into long format
+indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
+                                         id.vars = 'ecoregion_id')
+
+# saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
+# write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
+
+boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
+  geom_boxplot() +
+  #geom_point(position = "jitter",alpha = 0.1) +
+  theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+  geom_hline(yintercept = 0) +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6))+
+  xlab("Indicator") + ylab("Indicator value")
+
+boxplots
+
+ggsave(file.path(supp_outputs, "indicator_boxplots.png"),
+       boxplots, device = "png")
+
+rm(raw_indicators_wide)
+```
+
+# Independence tests
+
+``` {r independence testing, echo = FALSE, warning = FALSE, message = FALSE}
+
+# * Check for collinearity ----
+
+# Create a folder for the collinearity test
+
+# collinearity_outputs <- file.path(current_analysis_outputs, "collinearity_outputs")
+# 
+# dir.create(collinearity_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+
+# Summary table
+
+ecoregion_summary_table <- summary(ecoregions_wide[, 2:ncol(ecoregions_wide)], 
+                                   maxsum = length(unique(ecoregions_wide$biome)))
+
+ecoregion_summary_table
+
+# saveRDS(ecoregion_summary_table,
+#         file.path(current_analysis_outputs, "ecoregion_summary_table.RDS"))
+# 
+# write.csv(ecoregion_summary_table,
+#           file.path(current_analysis_outputs, "ecoregion_summary_table.csv"))
+
+## ** Numeric ----
+
+ecoregions_collinear_inputs <- as.matrix(ecoregions_wide[,numeric_variables])
+
+ecoregions_collinear_inputs <- ecoregions_collinear_inputs[complete.cases(
+  ecoregions_collinear_inputs),]
+
+ecoregions_correlation_matrix <- cor(ecoregions_collinear_inputs, 
+                                     method = "spearman")
+ecoregions_correlation_matrix
+
+# saveRDS(ecoregions_correlation_matrix,
+#         file.path(collinearity_outputs, "ecoregion_numerical_correlations.RDS"))
+# 
+# write.csv(ecoregions_correlation_matrix,
+#           file.path(collinearity_outputs, "ecoregion_numerical_correlations.csv"))
+
+# ** Categorical -----
+
+# Remove incomplete rows
+ecoregions_wide_complete <- ecoregions_wide[complete.cases(ecoregions_wide),]
+
+ecoregions_wide_complete<- ecoregions_wide_complete %>% 
+  mutate(area_factor = factor(ecoregions_wide_complete$area_factor, 
+                              ordered = FALSE))
+
+# Subset to only categorical variables
+
+ecoregions_chisq_inputs <- ecoregions_wide[,grouping_variables]
+
+# Select rows with complete data for all variables
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs[complete.cases(
+  ecoregions_chisq_inputs),]
+
+
+ecoregions_chisq_inputs <- ecoregions_chisq_inputs %>% mutate_if(is.character,as.factor)
+
+# Get all possible combinations of variables
+
+categorical_combinations <- combn(names(ecoregions_chisq_inputs), 2)
+
+# https://statsandr.com/blog/chi-square-test-of-independence-in-r/
+
+chisq_results <- list() # list to catch results of independence test
+chi_residual_plots <- list(0) # list to catch correlation plot for each combo
+
+for (i in 1:ncol(categorical_combinations)) {
+  
+  combo <- categorical_combinations[,i]
+  
+  print(paste("testing",combo[1], "and", combo[2], "for independence", sep = " "))
+  
+  test_inputs <- table(pull(ecoregions_chisq_inputs[, combo[1]]), # Get the two variables to test
+                       pull(ecoregions_chisq_inputs[, combo[2]]))
+  
+  chi_result <- tryCatch(chisq.test(test_inputs,
+                                    simulate.p.value = TRUE,
+                                    B = 10000),
+                         error=function(e) e, warning=function(w) w)
+  
+  # If the chi sq test throws a warning bc of small values, do fisher test instead
+  
+  if(is(chi_result,"warning")) { 
+    
+    print( "Values too small for chi-square test, performing fisher test instead")
+    
+    fisher_result <- fisher.test(test_inputs, simulate.p.value = TRUE, B = 10000)
+    
+    # Make nice df result
+    
+    result <- cbind(combo[1], combo[2], fisher_result$p.value, NA, 
+                    fisher_result$method)
+    
+  } else {
+    
+    result <- cbind(combo[1], combo[2], chi_result$p.value, 
+                    chi_result$statistic, chi_result$method)
+    
+    # Plot the contingency table correlation for all subgroups (shows which 
+    # subgroups contribute most to the result of independent or related)
+    
+    # tiff(file = file.path(collinearity_outputs, 
+    #                       paste(combo[1], "x", combo[2], "residuals.tiff",
+    #                             sep = "_")), 
+    #      units = "in", width=5, height=5, res = 300)
+    
+    plot <- corrplot(chi_result$residuals, is.cor = FALSE, tl.cex = 0.8)
+    
+    # dev.off()
+    
+  }
+  
+  chisq_results[[i]] <- result
+  
+  chi_residual_plots[[i]] <- plot
+  
+}
+
+walk(chi_residual_plots, print)
+
+# Format the results into a nice dataframe and save
+
+categorical_independence_results <- as.data.frame(do.call(rbind, chisq_results))
+
+names(categorical_independence_results) <- c("var1", "var2", "p_value", 
+                                             "statistic", "method")
+
+# Convert characters back to numeric (needed for sorting in next step)
+
+categorical_independence_results$p_value <- as.numeric(categorical_independence_results$p_value)
+categorical_independence_results$statistic <- as.numeric(categorical_independence_results$statistic)
+
+independent_categoricals <- categorical_independence_results %>% 
+  filter(p_value >= 0.05) %>% 
+  mutate(status = "independent") %>% 
+  arrange(desc(statistic))
+
+dependent_categoricals <- categorical_independence_results %>% 
+  filter(p_value < 0.05) %>% 
+  mutate(status = "correlated") %>% 
+  arrange(desc(statistic))
+
+# Save the outputs in tidy format
+
+categorical_independence_output <- rbind(independent_categoricals,
+                                         dependent_categoricals)
+
+# saveRDS(categorical_independence_output,
+#         file.path(collinearity_outputs, "ecoregion_categorical_correlations.RDS"))
+# 
+# write.csv(categorical_independence_output,
+#           file.path(collinearity_outputs, "ecoregion_categorical_correlations.csv"))
+
+print(categorical_independence_output)
+
+# Make a matrix of chi square statistic values
+
+chi_sq_matrix_stat <- categorical_independence_output %>% 
+  dplyr::select(var1, var2, statistic) %>% 
+  pivot_wider(names_from = var2, values_from = statistic,
+              id_cols = c(var1,var2))
+
+
+# saveRDS(chi_sq_matrix_stat,
+#         file.path(collinearity_outputs, "chi_sq_statistic_matrix.RDS"))
+# 
+# write.csv(chi_sq_matrix_stat,
+#           file.path(collinearity_outputs, "chi_sq_statistic_matrix.csv"))
+
+# Make a matrix of independence status
+
+# x <- unique(categorical_independence_output$var1)
+# 
+# chi_sq_matrix_pval <- categorical_independence_output %>% 
+#   dplyr::select(var1, var2, status) %>%
+#   pivot_longer(names_from = var2, values_from = status,
+#                names_sort = TRUE)
+
+
+# saveRDS(chi_sq_matrix_pval,
+#         file.path(collinearity_outputs, "chi_sq_pvalue_matrix.RDS"))
+# 
+# write.csv(chi_sq_matrix_pval,
+#           file.path(collinearity_outputs, "chi_sq_pvalue_matrix.csv"))
+
+
+
+
+# ** Numeric vs categorical ----
+
+# Get all the column names except ecoregion ID,so we can convert to long format
+ecoregion_variables <- names(ecoregions_wide_complete)[!str_detect(names(
+  ecoregions_wide_complete), "ecoregion_id")]
+
+# Convert it to wide format so we can plot
+
+ecoregions_long <- ecoregions_wide_complete %>% 
+  pivot_longer(all_of(grouping_variables)) %>% 
+  rename(group = name,
+         subgroup = value)
+
+# Split data by grouping variables
+
+ecoregions_list <- split(ecoregions_long, 
+                         ecoregions_long$group)
+
+# Create empty lists to catch output
+
+# by categorical grouping variable
+ecoregion_groups <- list()
+
+# by numeric grouping variable
+group_numerics <- list()
+
+for ( i in seq_along(ecoregions_list)) {
+  
+  # Get the data for a single grouping variable
+  
+  data <- ecoregions_list[[i]]
+  
+  group_name <- names(ecoregions_list)[[i]]
+  
+  for(j in seq_along(numeric_variables)) {
+    
+    # Plot each numeric variable on the y axis, against boxplots of the different
+    # factor levels on the x axis
+    
+    plotname <- paste(group_name, "x", numeric_variables[[j]], "boxplot.png", 
+                      sep = "_")
+    
+    group_numerics[[j]] <- ggplot(data,aes_string(x = "subgroup", 
+                                                  y = numeric_variables[[j]])) +
+      geom_boxplot() +
+      # geom_point(position = "jitter",alpha = 0.1) +
+      theme(axis.text.x = element_text(angle= 45,hjust=1)) +
+      geom_hline(yintercept = 0) +
+      theme(
+        legend.position = "none",
+        axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 6))+
+      xlab(group_name) + ylab(numeric_variables[[j]]) 
+    
+    # ggsave(file.path(collinearity_outputs, plotname),
+    #        group_numerics[[j]],
+    #        device = "png")
+    
+  }
+  
+  ecoregion_groups[[i]] <- group_numerics
+  
+}
+
+# i <- i + 1
+# 
+# j <- 1
+# ecoregion_groups[[i]][[j]]
+# 
+# j <- j + 1
+# ecoregion_groups[[i]][[j]]
+
+walk(ecoregion_groups, print)
+
+```

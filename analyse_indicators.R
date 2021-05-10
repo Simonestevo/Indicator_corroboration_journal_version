@@ -1313,6 +1313,30 @@ rm(cluster_map)
 
 # * Cluster boxplots ----
 
+
+boxplot_data <- indicators_wide_centred %>%
+  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
+  merge(cluster_map_data[c("ecoregion_id", "cluster")],
+        by = "ecoregion_id") %>%
+  dplyr::select(-geometry)
+
+comparison_data_all <- boxplot_data %>%
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         indicators, 
+                         numeric_variables,
+                         grouping_variables)))
+
+head(comparison_data_all)
+
+
+comparison_data_numeric <- comparison_data_all %>% 
+  dplyr::select(all_of(c("ecoregion_id", "cluster", 
+                         numeric_variables))) %>% 
+  mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
+  mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
+         scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
+         scaled_threat_count = predominant_threat_count/rli_records)
+
 # Calculate mean and sd
 
 group_by(comparison_data_numeric[,-1], cluster) %>%
@@ -1526,28 +1550,6 @@ cluster_chi_contribution_plots[[i]]
 
 # Cluster explanatory variable boxplots ----
 
-boxplot_data <- indicators_wide_centred %>%
-  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
-  merge(cluster_map_data[c("ecoregion_id", "cluster")],
-        by = "ecoregion_id") %>%
-  dplyr::select(-geometry)
-
-comparison_data_all <- boxplot_data %>%
-  dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                         indicators, 
-                         numeric_variables,
-                         grouping_variables)))
-
-head(comparison_data_all)
-
-
-comparison_data_numeric <- comparison_data_all %>% 
-  dplyr::select(all_of(c("ecoregion_id", "cluster", 
-                         numeric_variables))) %>% 
-  mutate(scaled_rli_records = rli_records/ecoregion_area_km_sq) %>% 
-  mutate(scaled_lpi_records = lpi_records/ecoregion_area_km_sq,
-         scaled_endemics = number_of_endemics/ecoregion_area_km_sq,
-         scaled_threat_count = predominant_threat_count/rli_records)
 
 # Check a random sample
 
@@ -1597,7 +1599,7 @@ numeric_boxplots <- ggplot(numeric_boxplot_data) +
 numeric_boxplots
 
 ggsave(file.path(current_analysis_outputs, "numeric_variable_boxplots.png"),
-       cluster_boxplots, device = "png")
+       numeric_boxplots, device = "png")
 
 # * Cluster barplots ----
 

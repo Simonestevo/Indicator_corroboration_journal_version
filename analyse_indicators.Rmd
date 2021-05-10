@@ -1,0 +1,129 @@
+---
+title: "analyse_indicators"
+author: "Simone Stevenson"
+date: "10/05/2021"
+output: html_document
+---
+# Setup
+## TODO: Give plots captions
+
+```{r setup, include=FALSE}
+
+# Load packages
+
+## Data wrangling
+library(tidyverse)
+library(tidylog)
+library(arules)
+library(data.table)
+library(psych)
+
+## Data visualisation
+library(tmap)
+library(viridisLite)
+library(corrplot)
+
+# Set up inputs
+
+date <- Sys.Date()
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+save_outputs <- "yes" #only applies to maps, other things will always save
+outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+timepoints <- c("2005", "2008")
+indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+load_map <- FALSE
+
+# Creat output folders 
+
+# Main folder, may already exist
+
+dir.create(manuscript_outputs, recursive = TRUE ) 
+  
+# Folder for today's outputs intended for the main manuscript (dated)
+
+main_outputs <- file.path(manuscript_outputs, paste(date,
+                                 "_main_manuscript_outputs",sep="") )
+  
+dir.create(main_outputs, recursive = TRUE )
+
+# Folder for today's outputs intended for the supporting information (dated)
+
+supp_outputs <- file.path(manuscript_outputs, paste(date,
+                                 "_supporting_info_outputs",sep="") )
+  
+dir.create(supp_outputs, recursive = TRUE )
+
+# Read in the data
+
+indicators_cleaned <- 
+
+
+# Threat scheme
+
+threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+
+headline_threats <- threat_scheme %>%
+  dplyr::select(headline_name) %>%
+  distinct(.) %>%
+  pull()
+
+headline_threats <- c(headline_threats, "All threats")
+
+# Ecoregion map ----
+
+if(load_map == TRUE) {
+
+ecoregion_map_all <- readRDS(paste(
+                     file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
+                               "ecoregions_2017"),
+                               "Ecoregions2017valid.rds"))
+
+ecoregion_map <- ecoregion_map_all %>%
+  dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
+
+ecoregion_map_renamed <- ecoregion_map %>% dplyr::rename(ecoregion_id = ECO_ID)
+
+rm(ecoregion_map_all, ecoregion_map)
+  
+}
+
+# ecoregions <- ecoregion_map_renamed %>% 
+#               st_drop_geometry()
+# Countries
+
+ecoregion_countries <- readRDS(file.path(outputs, "version_3",
+                        "2020-08-10_database_output_files",
+                        "ecoregion_country_data.rds"))
+
+
+```
+
+# 
+```{r ecoregion data, echo = FALSE, warning = FALSE, message = FALSE}
+
+
+
+```
+
+# 
+
+
+```{r indicator data, echo = FALSE, warning = FALSE, message = FALSE}
+
+```
+
+# Indicator boxplots
+
+``` {r indicator boxplots , echo = FALSE, warning = FALSE, message = FALSE}
+
+```
+
+# 
+
+``` {r independence testing, echo = FALSE, warning = FALSE, message = FALSE}
+
+
+
+```

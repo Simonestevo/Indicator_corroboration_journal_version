@@ -20,6 +20,8 @@ library(viridisLite)
 # Set up inputs
 
 date <- Sys.Date()
+today <- date
+location <- global
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
@@ -67,6 +69,17 @@ indicator_map_data <- left_join(ecoregion_map_data, indicator_values_map,
 
 names(indicator_map_data)
 
+ecoregion_map_data <- ecoregion_map %>%
+  rename(ecoregion_id = ECO_ID) %>%
+  dplyr::select(ecoregion_id, geometry)
+
+ecoregion_values_map <- ecoregion_values_master %>%
+  dplyr::select(ecoregion_id, indicator, year, raw_indicator_value) %>%
+  distinct(.)
+
+eco_variable_map_data <- left_join(ecoregion_map_data, ecoregion_values_map,
+                                by = "ecoregion_id")
+
 
 ```
 
@@ -97,9 +110,13 @@ names(indicator_map_data)
               width=2000, height=1080, asp=0)
     
     rm(rbii, rbii_data)
-    
-    ```
-```{r BII richness, echo = FALSE}
+
+
+```
+
+## Biodiversity Intactness Index - Abundance
+
+```{r BII abundance, echo = FALSE}
 # * BII Abundance ----
 
     abii_data <- indicator_map_data %>%
@@ -124,7 +141,9 @@ names(indicator_map_data)
     rm(abii_data, abii)
     ```
     
-# * BHI Plants ----
+## BHI Plants 
+
+```{r BHI, echo = FALSE}
 
     bhi_data <- indicator_map_data %>%
       filter(indicator == "BHI plants" & year == 2005)
@@ -146,8 +165,11 @@ names(indicator_map_data)
 
 rm(bhi, bhi_data)
 
-# * Proportion at risk ----
+```
 
+# Proportion threatened
+
+```{r proportion threatened, echo = FALSE}
 threatened_data <- indicator_map_data %>%
               filter(indicator == "proportion at risk" & year == 2008)
 
@@ -167,9 +189,11 @@ tmap_save(threatened, file.path(indicator_outputs, paste(location,
                        width=1920, height=1080, asp=0)
 
 rm(threatened, threatened_data)
+```
 
-# * Proportion extinct ----
+## Proportion extinct 
 
+```{r proportion extinct, echo = FALSE}
 extinct_data <- indicator_map_data %>%
   filter(indicator == "proportion extinct" & year == 2008) 
 # %>%
@@ -197,7 +221,11 @@ tmap_save(extinct, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(extinct_data, extinct)
+```
 
+## Number extinct
+
+```{r number extinct, echo = FALSE}
 # * Number extinct ----
 
 num_extinct_data <- indicator_map_data %>%
@@ -220,7 +248,12 @@ tmap_save(num_extinct, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(num_extinct_data, num_extinct)
-  
+
+```
+
+# Red List Index (all taxa)
+
+```{r RLI all, echo = FALSE}
 # * RLI ----
 
 # ** All groups ----
@@ -244,9 +277,11 @@ tmap_save(rli, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(rli_data, rli)
+```
 
-# ** Bird RLI ----
+## Red List Index Birds
 
+```{r RLI birds, echo = FALSE}
 bird_rli_data <- indicator_map_data %>%
   filter(indicator == "RLI-birds" & year == 2008)
 
@@ -266,7 +301,11 @@ tmap_save(bird_rli, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(bird_rli_data, bird_rli)
+```
 
+## Red List Index Mammals
+
+```{r BII abundance, echo = FALSE}
 # ** Mammal RLI ----
 
 mammal_rli_data <- indicator_map_data %>%
@@ -289,6 +328,11 @@ tmap_save(mammal_rli, file.path(indicator_outputs, paste(location,
 
 rm(mammal_rli_data, mammal_rli)
 
+```
+
+## Red List Index Amphibians
+
+```{r rli amphibians, echo = FALSE}
 # ** Amphibian RLI ----
 
 amphibian_rli_data <- indicator_map_data %>%
@@ -311,8 +355,11 @@ tmap_save(amphibian_rli, file.path(indicator_outputs, paste(location,
 
 rm(amphibian_rli_data, amphibian_rli)
 
+```
 
+## Human Footprint Index
 
+```{r hfp, echo = FALSE}
 # * HFP ----
 
 hfp_data <- indicator_map_data %>%
@@ -334,7 +381,11 @@ tmap_save(hfp, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(hfp_data, hfp)
+```
 
+## Living Planet Index
+
+```{r LPI, echo = FALSE}
 # * LPI ----
 
 lpi_map_data <- indicator_map_data %>%
@@ -364,19 +415,12 @@ tmap_save(lpi, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(lpi_data, lpi)
+```
 
-# Map the ecoregion characteristics ----
+# Ecoregion variables
 
-ecoregion_map_data <- ecoregion_map %>%
-  rename(ecoregion_id = ECO_ID) %>%
-  dplyr::select(ecoregion_id, geometry)
-
-ecoregion_values_map <- ecoregion_values_master %>%
-  dplyr::select(ecoregion_id, indicator, year, raw_indicator_value) %>%
-  distinct(.)
-
-eco_variable_map_data <- left_join(ecoregion_map_data, ecoregion_values_map,
-                                by = "ecoregion_id")
+## Islands
+```{r islands, echo = FALSE}
 
 # * Islands ----
 
@@ -402,9 +446,11 @@ tmap_save(island, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(island, island_data)
+```
 
-# * Biome ----
+## Biomes
 
+```{r biomes, echo = FALSE}
 biome_data <- eco_variable_map_data %>%
   filter(indicator == "Biome")
 
@@ -425,8 +471,11 @@ tmap_save(biome, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(biome, biome_data)
+```
 
-# * Realm ----
+## Realms
+
+```{r realms, echo = FALSE}
 
 realm_data <- eco_variable_map_data %>%
   filter(indicator == "realm")
@@ -450,8 +499,11 @@ tmap_save(realm, file.path(indicator_outputs, paste(location,
 
 rm(realm, realm_data)
 
-# * Number of RLI records ----
+```
 
+## Number of RLI records
+
+```{r BII abundance, echo = FALSE}
 rli_record_data <- eco_variable_map_data %>%
   filter(indicator == "RLI_records") %>%
   mutate(raw_indicator_value = as.numeric(raw_indicator_value))
@@ -474,9 +526,11 @@ tmap_save(rli_record, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(rli_record, rli_record_data)
+```
 
-# * predominant threat type ----
+## Predominant threat type
 
+```{r BII abundance, echo = FALSE}
 threat_data <- eco_variable_map_data %>%
   filter(indicator == "predominant threat type")
 
@@ -497,9 +551,11 @@ tmap_save(threat, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(threat, threat_data)
+```
 
-# * headline threat type ----
+## Headline threat type
 
+```{r BII abundance, echo = FALSE}
 headline_threat_data <- eco_variable_map_data %>%
   filter(indicator == "headline threat type")
 
@@ -521,8 +577,11 @@ tmap_save(headline_threat, file.path(indicator_outputs, paste(location,
 
 rm(headline_threat, headline_threat_data)
 
-# * Included in HFP ----
+```
 
+## Included in HFP
+
+```{r included in hfp, echo = FALSE}
 incl_hfp_data <- eco_variable_map_data %>%
   filter(indicator == "included in HFP")
 
@@ -544,8 +603,11 @@ tmap_save(incl_hfp, file.path(indicator_outputs, paste(location,
 
 rm(incl_hfp, incl_hfp_data)
 
-# * Number of endemics ----
+```
 
+## Number of endemics
+
+```{r BII abundance, echo = FALSE}
 endemics_data <- eco_variable_map_data %>%
   filter(indicator == "number of endemics")%>%
   mutate(raw_indicator_value = as.numeric(raw_indicator_value))
@@ -570,7 +632,11 @@ tmap_save(endemics, file.path(indicator_outputs, paste(location,
 
 rm(endemics, endemics_data)
 
-# * Mean human population density ----
+```
+
+## Mean human population density
+
+```{r human, echo = FALSE}
 
 human_pop_data <- eco_variable_map_data %>%
   filter(indicator == "mean human population density")%>%
@@ -595,7 +661,11 @@ tmap_save(human_pop, file.path(indicator_outputs, paste(location,
 
 rm(human_pop, human_pop_data)
 
-# * Number of LPI records ----
+```
+
+## Number of LPI records
+
+```{r lpi records, echo = FALSE}
 
 lpi_records_data <- eco_variable_map_data %>%
   filter(indicator == "LPI_records") %>%
@@ -620,8 +690,11 @@ tmap_save(lpi_records, file.path(indicator_outputs, paste(location,
           width=1920, height=1080, asp=0)
 
 rm(lpi_records, lpi_records_data)
+```
 
-# * Anthromes ----
+# Disturbance year
+
+```{r disturbance year, echo = FALSE}
 
 anthrome_data <- eco_variable_map_data %>%
   filter(indicator == "disturbance year")
@@ -644,8 +717,11 @@ tmap_save(anthrome, file.path(indicator_outputs, paste(location,
 
 rm(anthrome, anthrome_data)
 
-# * High beta diversity ----
+```
 
+## High beta diversity 
+
+```{r beta, echo = FALSE}
 beta_data <- eco_variable_map_data %>%
   filter(indicator == "High beta area")
 
@@ -663,14 +739,10 @@ beta <- tm_shape(beta_data) +
                   legend.outside.position = "right") 
 
 beta
+
+
+tmap_save(beta, file.path(indicator_outputs, paste(location,
+                              "beta_diversity_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

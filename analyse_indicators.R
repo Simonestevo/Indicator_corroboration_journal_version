@@ -36,13 +36,14 @@ rm(list = ls()) # clear memory
 #' TODO: Note the categorical independence matrices contain NAs because the combinations
 #' are in the wrong order - not sure how to fix?
 
-# PCA and Clustering
+# PCA, Clustering, Models
 library(factoextra)
 library(FactoMineR)
 library(corrplot)
 library(ape)
 #library(MASS)
 library(ggpubr)
+library(betareg)
 
 # Data handling and table reshaping
 library(tidyverse)
@@ -605,6 +606,30 @@ saveRDS(indicators_cleaned,
 
 write.csv(indicators_cleaned,
           file.path(current_analysis_outputs, "indicators_cleaned.csv"))
+
+ggplot(indicators_cleaned, aes(x = BHI_plants_2005, 
+                            y = RLI_2008)) +
+  geom_point() +
+  geom_text(label = indicators_cleaned$ecoregion_id) + 
+  stat_cor(method = "spearman")
+
+ggplot(indicators_cleaned, aes(x = BIIri_2005, 
+                               y = RLI_2008)) +
+  geom_point() +
+  geom_text(label = indicators_cleaned$ecoregion_id) + 
+  stat_cor(method = "spearman")
+
+ggplot(indicators_cleaned, aes(x = HFP_2005, 
+                               y = RLI_2008)) +
+  geom_point() +
+  geom_text(label = indicators_cleaned$ecoregion_id) + 
+  stat_cor(method = "spearman")
+
+ggplot(indicators_cleaned, aes(x = BHI_plants_2005, 
+                               y = BIIri_2005)) +
+  geom_point() +
+  geom_text(label = indicators_cleaned$ecoregion_id) + 
+  stat_cor(method = "spearman")
 
 # * Centre ----
 
@@ -1607,6 +1632,12 @@ ggsave(file.path(current_analysis_outputs, "numeric_variable_boxplots.png"),
 
 categorical_variables <- names(dplyr::select_if(ecoregions_wide, is.factor))
 
+correlation_input_data_all <- indicators_wide_centred %>%
+  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
+  merge(cluster_map_data[c("ecoregion_id", "cluster")],
+        by = "ecoregion_id") %>%
+  dplyr::select(-geometry)
+
 cluster_barplot_data_wide <- correlation_input_data_all %>%
   dplyr::select(all_of(c("ecoregion_id", "cluster",
                          categorical_variables)))  
@@ -1801,10 +1832,11 @@ summary(bii_threat_mod)
 qqnorm(resid(bii_threat_mod))
 qqline(resid(bii_threat_mod))
 
-bhi_island_time_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * disturbance_year, data = model_input_data)
-summary(bii_threat_mod)
-qqnorm(resid(bii_threat_mod))
-qqline(resid(bii_threat_mod))
+## Don't think we can include disturbance yr as it is also related to BHI through the LUH data
+# bhi_island_time_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * disturbance_year, data = model_input_data)
+# summary(bii_threat_mod)
+# qqnorm(resid(bii_threat_mod))
+# qqline(resid(bii_threat_mod))
 
 bhi_island_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count, data = model_input_data)
 summary(bii_threat_mod)
@@ -1840,7 +1872,7 @@ summary(test_mod)
 qqnorm(resid(test_mod))
 qqline(resid(test_mod))
 
-test_mod <- betareg(RLI_2008 ~ island_status , 
+bhi_threat_island_mod <- betareg(RLI_2008 ~ BHI_plants_2005 + scaled_threat_count + island_status , 
                              data = model_input_data)
 summary(test_mod)
 qqnorm(resid(test_mod))
@@ -1853,57 +1885,13 @@ qqline(resid(null_mod))
 
 beta_AIC <- as.data.frame(AIC(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
                        bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
-                       test_mod, hfp_mod, bhi_threat_type_mod, bhi_island_mod, bhi_island_time_mod))
+                       bhi_threat_island_mod, hfp_mod, bhi_threat_type_mod, bhi_island_mod))
 
 beta_AIC <- beta_AIC %>% 
   arrange(AIC)
 
 beta_AIC
 
-
-bii_bhi_mod <- lm(BHI_plants_2005 ~ BIIab_2005, data = model_input_data)
-summary(bii_bhi_mod)
-qqnorm(resid(bii_bhi_mod))
-qqline(resid(bii_bhi_mod))
-
-bii_bhi_time_mod <- lm(BHI_plants_2005 ~ BIIab_2005 + disturbance_year, data = model_input_data)
-summary(bii_bhi_time_mod)
-qqnorm(resid(bii_bhi_time_mod))
-qqline(resid(bii_bhi_time_mod))
-
-bii_bhi_island_mod <- lm(BHI_plants_2005 ~ BIIab_2005 + island_status, 
-                         data = model_input_data)
-
-summary(bii_bhi_island_mod)
-qqnorm(resid(bii_bhi_island_mod))
-qqline(resid(bii_bhi_island_mod))
-
-lm_AIC <- as.data.frame(AIC(bii_bhi_mod, bii_bhi_island_mod, bii_bhi_time_mod))
-
-lm_AIC <- lm_AIC %>% 
-  arrange(AIC)
-
-lm_AIC
-
-
-x <- as.data.frame(AIC(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
-    bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
-    test_mod, hfp_mod, bhi_threat_type_mod, bhi_island_mod, bhi_island_time_mod))
-
-x2 <- x %>% 
-      arrange(AIC)
-x2
-
-
-bii_mod <- lmer(RLI_2008 ~ BIIab_2005 * rli_records + (1|cluster), 
-                           data = model_input_data)
-
-summary(bii_mod)
-
-hfp_mod <- lmer(RLI_2008 ~ HFP_2005 * rli_records + (1|cluster), 
-                           data = model_input_data)
-
-summary(hfp_mod)
 
 # Prepare correlation data ----
 
@@ -1915,11 +1903,11 @@ dir.create(correlation_outputs, recursive = TRUE ) # create a new directory for 
 
 # Finalise data
 
-correlation_input_data_all <- indicators_wide_centred %>%
-  merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
-  merge(cluster_map_data[c("ecoregion_id", "cluster")],
-        by = "ecoregion_id") %>%
-  dplyr::select(-geometry)
+# correlation_input_data_all <- indicators_wide_centred %>%
+#   merge(ecoregions_wide, by = "ecoregion_id", all.y = TRUE) %>%
+#   merge(cluster_map_data[c("ecoregion_id", "cluster")],
+#         by = "ecoregion_id") %>%
+#   dplyr::select(-geometry)
 
 # Check it looks right (should have all timepoints)
 
@@ -1995,7 +1983,7 @@ for (i in seq_along(time_correlation_input_list)) {
   
 }
 
-time_scatterplots[[4]]
+time_scatterplots[[3]]
 
 # Grouping variables ----
 
@@ -2769,38 +2757,38 @@ for (i in seq_along(group_dataframes)){
 
 # Make cluster scatterplots
 
-cluster_scatterplots <- list()
-
-for (i in seq_along(time_correlation_input_list)) {
-  
-  scatterplot_data <- correlation_input_data %>% 
-                      dplyr::select(ecoregion_id, cluster,
-                                    BHI_plants_2005, BIIab)
-  
- labx <- "BHI"
- laby <- "BII abundance"
- 
-  scatterplot <- ggplot(scatterplot_data,aes(x = BHI_plants_2005, 
-                                             y = BIIab, 
-                                             color = cluster)) +
-    geom_point() +
-    geom_text(label = scatterplot_data$ecoregion_id) + 
-    labs(x= labx,
-         y = laby) + 
-    stat_cor(method = "spearman")
-  
-  scatterplot
-  
-  ggsave(file.path(correlation_outputs, paste(labx, "_x_", 
-                                              laby,"_by_cluster", ".png", sep = "")),
-         scatterplot, device = "png")
-  
-  time_scatterplots[[i]] <- scatterplot
-  
-}
-
-i <- 1
-cluster_scatterplots[[i]]
+# cluster_scatterplots <- list()
+# 
+# for (i in seq_along(time_correlation_input_list)) {
+#   
+#   scatterplot_data <- correlation_input_data %>% 
+#                       dplyr::select(ecoregion_id, cluster,
+#                                     BHI_plants_2005, BIIab)
+#   
+#  labx <- "BHI"
+#  laby <- "BII abundance"
+#  
+#   scatterplot <- ggplot(scatterplot_data,aes(x = BHI_plants_2005, 
+#                                              y = BIIab, 
+#                                              color = cluster)) +
+#     geom_point() +
+#     geom_text(label = scatterplot_data$ecoregion_id) + 
+#     labs(x= labx,
+#          y = laby) + 
+#     stat_cor(method = "spearman")
+#   
+#   scatterplot
+#   
+#   ggsave(file.path(correlation_outputs, paste(labx, "_x_", 
+#                                               laby,"_by_cluster", ".png", sep = "")),
+#          scatterplot, device = "png")
+#   
+#   time_scatterplots[[i]] <- scatterplot
+#   
+# }
+# 
+# i <- 1
+# cluster_scatterplots[[i]]
 
 #' # ANALYSIS WITH LPI ----
 #' 

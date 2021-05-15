@@ -21,7 +21,7 @@ library(viridisLite)
 
 date <- Sys.Date()
 today <- date
-location <- global
+location <- "global"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save

@@ -138,19 +138,13 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
-# Create a folder for the day because you'll probably make lots of version
-
-
-current_analysis_outputs <- file.path(analysis_outputs,paste(date,
-                                                             "_analysis_output_files",sep=""))
-
-dir.create(current_analysis_outputs)
-
-# Create a folder for wip and data
-
-exploratory_outputs <- file.path(current_analysis_outputs, "exploratory_outputs")
-
-dir.create(exploratory_outputs, recursive = TRUE ) # create a new directory for today's outputs
+# # Create a folder for the day because you'll probably make lots of version
+# 
+# 
+# current_analysis_outputs <- file.path(analysis_outputs,paste(date,
+#                                                              "_analysis_output_files",sep=""))
+# 
+# dir.create(current_analysis_outputs)
 
 # Folder for final manuscript figures
 
@@ -158,17 +152,28 @@ manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\output
   
 dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-main_outputs <- file.path(manuscript_outputs, paste(date,
+todays_outputs <- file.path(manuscript_outputs, date)
+
+dir.create(todays_outputs)
+
+main_outputs <- file.path(todays_outputs, paste(date,
                                  "_main_manuscript_outputs",sep="") )
   
 dir.create(main_outputs, recursive = TRUE )
 
 # Folder for supporting info figures
 
-supp_outputs <- file.path(manuscript_outputs, paste(date,
+supp_outputs <- file.path(todays_outputs, paste(date,
                                  "_supporting_info_outputs",sep="") )
   
 dir.create(supp_outputs, recursive = TRUE )
+
+# Folder for clean data
+
+data_outputs <- file.path(todays_outputs, paste(date,
+                                 "_data_outputs",sep="") )
+  
+dir.create(data_outputs, recursive = TRUE )
 
 
 # Load functions ----
@@ -314,8 +319,10 @@ make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
   
 }
 
+```
+# Prepare ecoregion data ----
 
-# Ecoregion data ----
+```{r data prep, include = FALSE, message = FALSE, warning = FALSE}
 
 raw_ecoregions_wide <- readRDS(file.path(analysis_inputs,
                                          "global_ecoregions_2017_ecoregion_values_master_wide.rds"))
@@ -339,28 +346,24 @@ ecoregions_wide$area_factor <- discretize(ecoregions_wide$ecoregion_area_km_sq,
 
 ecoregions_wide$lpi_records_factor <- cut(ecoregions_wide$lpi_records, 
                                           breaks = c(-Inf,19, Inf),
-                                          labels = c("less than 20",
-                                                     "more than 20"))
+                                          labels = c("less than 20 lpi pops",
+                                                     "more than 20 lpi pops"))
 
 # Split ecoregions by RLI species fewer than 400 and more than 400 (based
 # on min sample in Henriques et al 2020)
 
 ecoregions_wide$rli_records_factor <- cut(ecoregions_wide$rli_records, 
                                           breaks = c(-Inf,400, Inf),
-                                          labels = c("less than 400",
-                                                     "more than 400"))
+                                          labels = c("less than 400 rli spp",
+                                                     "more than 400 rli spp"))
 table(ecoregions_wide$rli_records_factor)
 
 ecoregions_wide <- ecoregions_wide %>% 
-  mutate(included_in_hfp = ifelse(included_in_hfp == 1, 
-                                  "Threat related to HFP",
+  mutate(land_use = ifelse(included_in_hfp == 1, 
+                                  "Land use",
                                   ifelse(included_in_hfp == 0,
-                                         "Threat external to HFP",
+                                         "Non land use",
                                          NA)))
-
-ecoregions_wide <- ecoregions_wide %>%
-  mutate(scenario = as.factor(paste(rli_records_factor, included_in_hfp, sep = " & ")),
-         scenario_numeric = as.factor(as.numeric(scenario))) 
 
 ecoregions_wide$endemics_factor <- cut(ecoregions_wide$number_of_endemics, 
                                        breaks = c(-Inf, 0 , Inf),
@@ -385,8 +388,7 @@ table(ecoregions_wide$high_beta_area)
 names(ecoregions_wide)
 
 ecoregions_wide <- ecoregions_wide %>%
-  dplyr::select(-scenario, -scenario_numeric, 
-                -mean_scientific_publications,
+  dplyr::select(-mean_scientific_publications,
                 -headline_threat_type)
 
 # Convert any characters into factors
@@ -415,16 +417,18 @@ numeric_variables <- names(dplyr::select_if(ecoregions_wide, is.numeric))
 numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
 numeric_variables
 
+rm(raw_ecoregions_wide)
+
 # Indicator data ----
 
 # Indicator data
 
-indicator_properties <- read.csv(file.path(analysis_inputs,
-                                           "indicator_properties.csv"))
-
-#TODO: get this out of indicator_properties
-indicator_relationships <- read.csv(file.path(analysis_inputs,
-                                              "indicator_input_relationships.csv"))
+# indicator_properties <- read.csv(file.path(analysis_inputs,
+#                                            "indicator_properties.csv"))
+# 
+# #TODO: get this out of indicator_properties
+# indicator_relationships <- read.csv(file.path(analysis_inputs,
+#                                               "indicator_input_relationships.csv"))
 
 raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
                                              "global_ecoregions_2017_indicator_values_master.rds"))
@@ -464,16 +468,16 @@ indicators_08 <- indicators_08[!str_detect(indicators_08,
 
 indicators <- c(indicators_05, indicators_08)
 
-# Threat scheme
-
-threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
-
-headline_threats <- threat_scheme %>%
-  dplyr::select(headline_name) %>%
-  distinct(.) %>%
-  pull()
-
-headline_threats <- c(headline_threats, "All threats")
+# # Threat scheme
+# 
+# threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+# 
+# headline_threats <- threat_scheme %>%
+#   dplyr::select(headline_name) %>%
+#   distinct(.) %>%
+#   pull()
+# 
+# headline_threats <- c(headline_threats, "All threats")
 
 # # Ecoregion map ----
 # 
@@ -615,16 +619,19 @@ indicators_cleaned_2005_lpi <- indicators_cleaned %>%
 indicators_correlation_input_lpi <- indicators_cleaned_2005_lpi[complete.cases(
   indicators_cleaned_2005_lpi),]
 
+saveRDS(indicators_correlation_input_lpi, file.path(data_outputs, "1_indicators_cleaned_lpi.rds"))
+write.csv(indicators_correlation_input_lpi, file.path(data_outputs, "1_indicators_cleaned_lpi.csv"))
+
 indicator_correlation_matrix_lpi <- cor(indicators_correlation_input_lpi, 
                                      method = "spearman")
 
 # Save correlaiton matrix for reference but don't print
 
 saveRDS(indicator_correlation_matrix_lpi,
-        file.path(exploratory_outputs, "indicator_correlation_matrix_lpi.RDS"))
+        file.path(supp_outputs, "indicator_correlation_matrix_lpi.RDS"))
 
 write.csv(indicator_correlation_matrix_lpi,
-          file.path(exploratory_outputs, "indicator_correlation_matrix_lpi.csv"))
+          file.path(supp_outputs, "indicator_correlation_matrix_lpi.csv"))
 
 # Get complete cases only (without LPI)
 
@@ -637,6 +644,10 @@ indicators_cleaned_2005 <- indicators_cleaned %>%
 
 indicators_correlation_input <- indicators_cleaned_2005[complete.cases(
   indicators_cleaned_2005),]
+
+saveRDS(indicators_correlation_input, file.path(data_outputs, "2_indicators_cleaned_no_lpi.rds"))
+write.csv(indicators_correlation_input, file.path(data_outputs, "2_indicators_cleaned_no_lpi.csv"))
+
 
 # Make and save the summary table
 
@@ -663,19 +674,19 @@ indicator_correlation_matrix <- cor(indicators_correlation_input,
 # Save correlaiton matrix for reference but don't print
 
 saveRDS(indicator_correlation_matrix,
-        file.path(exploratory_outputs, "indicator_correlation_matrix.RDS"))
+        file.path(supp_outputs, "indicator_correlation_matrix.RDS"))
 
 write.csv(indicator_correlation_matrix,
-          file.path(exploratory_outputs, "indicator_correlation_matrix.csv"))
+          file.path(supp_outputs, "indicator_correlation_matrix.csv"))
 
 
-## Save the cleaned indicator data
-
-saveRDS(indicators_cleaned,
-        file.path(current_analysis_outputs, "indicators_cleaned.RDS"))
-
-write.csv(indicators_cleaned,
-          file.path(current_analysis_outputs, "indicators_cleaned.csv"))
+# ## Save the cleaned indicator data
+# 
+# saveRDS(indicators_cleaned,
+#         file.path(data_outputs, "indicators_cleaned.RDS"))
+# 
+# write.csv(indicators_cleaned,
+#           file.path(data_outputs, "indicators_cleaned.csv"))
 
 # ggplot(indicators_cleaned, aes(x = BHI_plants_2005, 
 #                                y = RLI_2008)) +
@@ -701,13 +712,13 @@ write.csv(indicators_cleaned,
 #   geom_text(label = indicators_cleaned$ecoregion_id) + 
 #   stat_cor(method = "spearman")
 
-# * Centre ----
+# * standardise ----
 
-indicators_wide_centred <- indicators_wide_2 %>%
+indicators_wide_standardised <- indicators_wide_2 %>%
   mutate_at(c(2:ncol(indicators_wide_2)), 
             funs(c(scale(.)))) 
 
-summary(indicators_wide_centred)
+summary(indicators_wide_standardised)
 
 ```
 
@@ -719,16 +730,25 @@ summary(indicators_wide_centred)
 #' IMPORTANT - this boxplot shows with outliers already removed
 
 # Get 2005 only
-indicator_boxplot_data_wide <- indicators_wide_centred %>%
-  dplyr::select(all_of(c("ecoregion_id", indicators))) %>% 
-  dplyr::select(-AmphRLI_2008, -BirdRLI_2008, -MammRLI_2008, -number_extinct_2008)
+indicator_boxplot_data_wide <- indicators_wide_standardised %>%
+  dplyr::select(all_of(c("ecoregion_id", final_indicators)))
+
+saveRDS(indicator_boxplot_data_wide, file.path(data_outputs, "3_indicators_cleaned_standardised_no_lpi.rds"))
+write.csv(indicator_boxplot_data_wide, file.path(data_outputs, "3_indicators_cleaned_standardised_no_lpi.csv"))
+
+indicator_boxplot_data_wide_lpi <- indicators_wide_standardised %>%
+  dplyr::select(all_of(c("ecoregion_id", final_indicators, "LPI_2005")))
+
+saveRDS(indicator_boxplot_data_wide_lpi, file.path(data_outputs, "4_indicators_cleaned_standardised_lpi.rds"))
+write.csv(indicator_boxplot_data_wide_lpi, file.path(data_outputs, "4_indicators_cleaned_standardised_lpi.csv"))
+
 
 # Convert back into long format
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                                          id.vars = 'ecoregion_id')
 
-saveRDS(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.rds"))
-write.csv(indicator_boxplot_data, file.path(current_analysis_outputs, "indicator_boxplot_data.csv"))
+# saveRDS(indicator_boxplot_data, file.path(data_outputs, "indicator_boxplot_data.rds"))
+# write.csv(indicator_boxplot_data, file.path(data_outputs, "indicator_boxplot_data.csv"))
 
 boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
   geom_boxplot() +
@@ -746,10 +766,14 @@ ggsave(file.path(main_outputs , "indicator_boxplots.png"),
        boxplots, device = "png")
 
 rm(raw_indicators_wide)
+rm(indicator_boxplot_data)
 
 # Ecoregion summaries
 
 ecoregions_numeric <- ecoregions_wide[,c("ecoregion_id", numeric_variables)]
+
+saveRDS(ecoregions_numeric, file.path(data_outputs, "5_ecoregions_numeric.rds"))
+write.csv(ecoregions_numeric, file.path(data_outputs, "5_ecoregions_numeric.csv"))
 
 ecoregions_numeric_long <- ecoregions_numeric %>% 
                            pivot_longer(numeric_variables)
@@ -768,6 +792,10 @@ write.csv(ecoregions_summary,
 
 ecoregions_categorical <- ecoregions_wide[,c("ecoregion_id", grouping_variables)]
 
+saveRDS(ecoregions_categorical, file.path(data_outputs, "7_ecoregions_categorical.rds"))
+write.csv(ecoregions_categorical, file.path(data_outputs, "7_ecoregions_categorical.csv"))
+
+
 categorical_tables <- apply(ecoregions_categorical, 2, table)
 
 # Make boxplots
@@ -777,6 +805,9 @@ categorical_tables <- apply(ecoregions_categorical, 2, table)
 ecoregions_numeric_standardized <- ecoregions_numeric %>%
   mutate_at(c(2:ncol(ecoregions_numeric)), 
             funs(c(scale(.)))) 
+
+saveRDS(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.rds"))
+write.csv(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.csv"))
 
 ecoregion_boxplot_data <- reshape2::melt(ecoregions_numeric_standardized, 
                                          id.vars = 'ecoregion_id')
@@ -858,10 +889,10 @@ kable(ecoregions_correlation_matrix)
 
 
 saveRDS(ecoregions_correlation_matrix,
-        file.path(exploratory_outputs, "ecoregion_numerical_correlations.RDS"))
+        file.path(supp_outputs, "ecoregion_numerical_correlations.RDS"))
 
 write.csv(ecoregions_correlation_matrix,
-          file.path(exploratory_outputs, "ecoregion_numerical_correlations.csv"))
+          file.path(supp_outputs, "ecoregion_numerical_correlations.csv"))
 
 
 indicators_ecoregions <- indicators_cleaned_2005 %>% 
@@ -875,7 +906,7 @@ indicators_ecoregions_correlation_matrix <- cor(indicators_ecoregions, method = 
 kable(indicators_ecoregions_correlation_matrix)
 
 write.csv(indicators_ecoregions_correlation_matrix,
-          file.path(exploratory_outputs, "indicators_ecoregions_correlation_matrix"))
+          file.path(supp_outputs, "indicators_ecoregions_correlation_matrix"))
 
 ```
 
@@ -985,7 +1016,7 @@ categorical_independence_output <- rbind(independent_categoricals,
                                          dependent_categoricals)
 
 write.csv(categorical_independence_output,
-          file.path(exploratory_outputs, "ecoregion_categorical_correlations.csv"))
+          file.path(supp_outputs, "ecoregion_categorical_correlations.csv"))
 
 # *** PRINT CATEGORICAL INDEPENDENCE TESTs ----
 
@@ -1007,7 +1038,7 @@ chi_sq_matrix_stat <- categorical_independence_output %>%
               id_cols = c(var1,var2))
 
 write.csv(chi_sq_matrix_stat,
-          file.path(exploratory_outputs, "chi_sq_statistic_matrix.csv"))
+          file.path(supp_outputs, "chi_sq_statistic_matrix.csv"))
 
 # Make a matrix of independence status
 
@@ -1078,7 +1109,7 @@ for ( i in seq_along(ecoregions_list)) {
         axis.text.x = element_text(size = 6))+
       xlab(group_name) + ylab(numeric_variables[[j]]) 
     
-    ggsave(file.path(exploratory_outputs, plotname),
+    ggsave(file.path(supp_outputs, plotname),
            group_numerics[[j]],
            device = "png")
     

@@ -8,6 +8,8 @@ output:
 ---
 # Setup
 ## TODO: Give plots captions
+## TODO: Split up chunks with descriptors
+## TODO: Remove any unused variables from main manuscript objects
 
 ```{r setup, include=FALSE}
 

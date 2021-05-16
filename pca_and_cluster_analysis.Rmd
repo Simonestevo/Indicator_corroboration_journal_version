@@ -585,6 +585,13 @@ write.csv(cluster_two_ecoregions, file.path(supp_outputs,
 write.csv(cluster_three_ecoregions, file.path(supp_outputs,
                                               "cluster_three_ecoregions.csv"))
 
+cluster_data <- cluster_map_data %>% 
+                dplyr::select(-OBJECTID) %>% 
+                st_drop_geometry(.)
+  
+  
+write.csv(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.csv"))
+
 # Cluster biplot data
 
 cluster_biplot_data <-  pca_data_5 %>%

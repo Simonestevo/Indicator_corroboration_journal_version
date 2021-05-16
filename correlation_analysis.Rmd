@@ -1,0 +1,1111 @@
+---
+title: "correlation_analysis"
+author: "Simone Stevenson"
+date: "05/05/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Setup
+## TODO: Give plots captions
+## TODO: Split up chunks with descriptors
+## TODO: Remove any unused variables from main manuscript objects
+
+```{r setup, include=FALSE}
+
+
+# Using R version 4.0.3
+
+## Clear the space
+rm(list = ls()) # clear memory
+
+# Load packages ----
+
+# TODO ----
+
+#' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
+#' caterpillar plots
+#' TODO: Rename grouping variables to categorical variables
+#' TODO: Note the categorical independence matrices contain NAs because the combinations
+#' are in the wrong order - not sure how to fix?
+
+# PCA, Clustering, Models
+library(factoextra)
+library(FactoMineR)
+library(corrplot)
+library(ape)
+#library(MASS)
+library(ggpubr)
+library(betareg)
+
+# Data handling and table reshaping
+library(tidyverse)
+library(tidylog)
+library(reshape2)
+library(devtools)
+library(data.table)
+library(rlist)
+library(e1071)
+library(psych)
+library(arules)
+library(ppsr)
+
+# Plotting
+library(ggplot2)
+library(RColorBrewer)
+library(plot3D)
+library(plotly)
+library(viridis)
+library(png)
+library(gridExtra)
+library(GGally)
+library(ggcorrplot)
+library(visdat)
+library(cowplot)
+# library(forcats)
+library(ggpubr)
+
+# Maps
+library(sf)
+library(leaflet)
+
+
+# Set input and output locations ----
+
+analysis_date <- "2021-05-15"
+create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
+date <- Sys.Date()
+country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
+analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+save_outputs <- "yes" #only applies to maps, other things will always save
+eco_version <- "ecoregions_2017"
+parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+#eco_version <- "official_teow_wwf"
+indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
+timepoints <- c("2005", "2008")
+load_map <- TRUE
+indicators_to_remove <- c("RLIother", "RLILU")
+
+# Set up some ecoregions that we know how they should behave
+
+east_australia <- 168 # Decline over time
+amazon <- 473 # Decline over time
+cardamom <- 223 # In good shape
+mascarene <- 20 #Had a lot of extinctions
+
+
+if (!is.na(country)) {
+  
+  location <- tolower(country)
+  
+} else {
+  
+  location <- "global"
+  
+}
+
+# Set output directory
+
+db_version <- tail(sort(list.files(parent_outputs)), 1)
+db_interim <- list.files(file.path(parent_outputs,db_version))[
+  grepl("interim",list.files(file.path(parent_outputs,db_version)))]
+db_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("database",list.files(file.path(parent_outputs,db_version)))]
+ind_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("indicator",list.files(file.path(parent_outputs,db_version)))]
+analysis_outputs <- list.files(file.path(parent_outputs,db_version))[
+  grepl("analysis",list.files(file.path(parent_outputs,db_version)))]
+
+interim_outputs <- file.path(parent_outputs, db_version, db_interim)
+outputs <- file.path(parent_outputs, db_version, db_outputs)
+
+if( (length(analysis_outputs)) == 0 ) {
+  
+  analysis_outputs <- file.path(parent_outputs, db_version, paste(date,
+                                                                  "_analysis_output_files",sep="") )
+  
+  dir.create(analysis_outputs, recursive = TRUE ) # create a new directory for today's outputs
+  
+  
+} else {
+  
+  analysis_outputs <- file.path(parent_outputs, db_version, analysis_outputs)
+  
+}
+
+# Folder for final manuscript figures
+
+manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+
+dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
+
+dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), full.names = TRUE)
+
+main_outputs <- dirs[str_detect(dirs, "main")]
+
+# Folder for supporting info figures
+
+supp_outputs <- dirs[str_detect(dirs, "supporting")]
+
+# Folder with indicator data
+
+data_outputs <- dirs[str_detect(dirs, "data")]
+
+# Load functions ----
+
+# Function to scale the values of a vector from 0 to 1
+
+scale_to_1 <- function(vector){
+  
+  (vector-min(vector, na.rm = TRUE))/
+    (max(vector, na.rm = TRUE)-min(vector, na.rm = TRUE))
+}
+
+add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
+  
+  out <- indicator_data %>%
+    merge(ecoregion_data[c("ecoregion_id", variable)],
+          by = "ecoregion_id") 
+  
+  return(out)
+  
+}
+
+make_heatmap <- function(data) {
+  
+  heatmap <- ggplot(data, aes(x = subgroup,
+                              y = combination,
+                              fill = coefficient)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label=coefficient), size = 2) +
+    scale_fill_gradient2(limits = c(-1,1), low = "#453781FF", high = "#287D8EFF") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(x = paste(nice_grouping_variables[i],"ecoregion subgroups", sep = " "),
+         y = "Pairwise indicator comparisons") +
+    guides(fill = guide_legend(title = "Correlation\ncoefficient (r)")) +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "grey97"),
+          legend.position = "bottom",
+          axis.title.x = element_text(size=8),
+          axis.title.y = element_text(size=8),
+          axis.text.x = element_text(size= 7),
+          axis.text.y = element_text(size= 7)) +
+    facet_grid(ind_group ~., scales = "free_y") +
+    theme(strip.text.x = element_text(size = 7, hjust = 0))
+  
+  heatmap <- heatmap +  scale_x_discrete(label = function(x) stringr::str_trunc(x, 28)) 
+  
+  return(heatmap)
+  
+}
+
+# matrix should be indicators as columns, rownames are eco_id
+# group is string for group, subgroup is a string denoting the subgroup (eg mangroves)
+
+make_subgroup_scatterplot <- function(df, group, subgroup, group_directory) {
+  
+  
+  subgroup <- str_replace(subgroup, " - ", "_")
+  subgroup <- str_replace(subgroup, " & ", "and")
+  subgroup <- str_replace(subgroup, " , ", "_")
+  subgroup <- str_replace(subgroup, " . ", "_")
+  subgroup <- str_replace(subgroup, " ", "_")
+  subgroup <- str_replace(subgroup, "/", "_")
+  
+  # Set rownames back to column
+  # df <- tibble::rownames_to_column(df)
+  # 
+  # df <- df %>%
+  #       dplyr::rename(ecoregion_id = rowname)
+  
+  ecoregion_id <- as.numeric(df$ecoregion_id)
+  
+  # Get all possible combinations of indicators from the df
+  indicator_combos <- combn(names(df[-1]), 2)
+  
+  # Now loop through the combos
+  i <- i + 1
+  subgroup_scatterplots <- list()
+  
+  for (i in seq_along(1:ncol(indicator_combos))) {
+    
+    print(i)
+    combo <- as.vector(indicator_combos[,i])
+    
+    print(combo)
+    
+    plotname <- paste(combo[1], combo[2], subgroup, sep = "_")
+    
+    plotname
+    
+    x_axis <- df[ , grepl( combo[1] , names( df ) ) ]
+    range(x_axis)
+    
+    y_axis <- df[ , grepl( combo[2] , names( df ) ) ]
+    range(y_axis)
+    
+    plot_df <- as.data.frame(cbind(ecoregion_id, x_axis, y_axis))
+    
+    scatterplot <- ggplot(plot_df, aes(x = x_axis, y = y_axis)) +
+      geom_point() +
+      labs(x = combo[1],
+           y = combo[2]) + 
+      stat_cor(method = "spearman") +
+      ggtitle(paste(group, subgroup, sep = " - ")) +
+      geom_text(label = plot_df$ecoregion_id, nudge_x = 0.1)
+    
+    ggsave(file.path(group_directory,
+                     paste(plotname,
+                           "scatterplot.png",
+                           sep = "_")),
+           scatterplot,  device = "png")
+    
+    subgroup_scatterplots[[i]] <- scatterplot
+    
+  }
+  
+  subgroup_scatterplots
+  
+}
+
+data <- correlation_input_data %>% 
+        merge(ecoregion_clusters[c("ecoregion_id",
+                                   "ECO_NAME")], by = "ecoregion_id")
+
+col2 <- "RLI_2008"
+col1 <- "BHI_plants_2005"
+
+plotly_scatterplot <- function(data, col1, col2) {
+  
+  xcol <- data[,col1]
+  ycol <- data[,col2]
+  labels <- data[, c("ecoregion_id", "ECO_NAME")]
+
+  fig <- plot_ly(data = data, x = ~ xcol, y = ~ ycol , 
+                 color = ~ cluster, 
+                 text = paste(labels[,1], labels[,2], sep = " "))
+  fig <- fig %>% 
+         layout(xaxis = xcol, yaxis = ycol)
+}
+
+```
+# Prepare data ----
+
+```{r data prep, include = FALSE, message = FALSE, warning = FALSE}
+
+# Get data ----
+
+files_paths <- list.files(data_outputs, full.names = TRUE)
+
+indicators_all_timepoints <- readRDS(files_paths[str_detect(files_paths, 
+                                                            "0_indicators_all_timepoints.rds")])
+indicators_raw_lpi <- readRDS(files_paths[str_detect(files_paths, 
+                                                     "1_indicators_cleaned_lpi.rds")])
+indicators_raw_no_lpi <- readRDS(files_paths[str_detect(files_paths, 
+                                                        "2_indicators_cleaned_no_lpi.rds")])
+indicators_std_no_lpi <- readRDS(files_paths[str_detect(files_paths, 
+                                                        "3_indicators_cleaned_standardised_no_lpi.rds")])
+indicators_std_lpi <- readRDS(files_paths[str_detect(files_paths, 
+                                                     "4_indicators_cleaned_standardised_lpi.rds")])
+ecoregions_numeric_raw <- readRDS(files_paths[str_detect(files_paths, 
+                                                         "5_ecoregions_numeric.rds")])
+ecoregions_numeric_std <- readRDS(files_paths[str_detect(files_paths, 
+                                                         "6_ecoregions_numeric_standardized.rds")])
+ecoregions_categorical <- readRDS(files_paths[str_detect(files_paths, 
+                                                         "7_ecoregions_categorical.rds")])
+ecoregion_clusters <- read.csv(files_paths[str_detect(files_paths, 
+                                                      "8_ecoregion_clusters.csv")])
+
+# Get the names of indicators
+
+indicators <- names(indicators_raw_no_lpi)[!str_detect(names(indicators_raw_no_lpi),
+                                                       "ecoregion_id")]
+
+# Get the names of factors
+
+grouping_variables <- names(ecoregions_categorical)
+grouping_variables <- grouping_variables[!str_detect(grouping_variables, 
+                                                     c("ecoregion_id",
+                                                       "included_in_hfp"))]
+
+# Get names of numeric variables 
+
+numeric_variables <- names(ecoregions_numeric_raw)
+numeric_variables <- numeric_variables[!str_detect(numeric_variables, 
+                                                   "ecoregion_id")]
+
+# Ancillary data
+
+threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
+
+headline_threats <- threat_scheme %>%
+  dplyr::select(headline_name) %>%
+  distinct(.) %>%
+  pull()
+
+headline_threats <- c(headline_threats, "All threats")
+
+indicator_properties <- read.csv(file.path(analysis_inputs,
+                                           "indicator_properties.csv"))
+
+#TODO: get this out of indicator_properties
+indicator_relationships <- read.csv(file.path(analysis_inputs,
+                                              "indicator_input_relationships.csv"))
+
+
+```
+
+# Time point scatterplots
+
+```{r time scatters, echo=FALSE, warning = FALSE, message = FALSE}
+
+# * Time by time scatterplots ----
+
+indicators_all_timepoints <- indicators_all_timepoints %>% 
+                             merge(ecoregion_clusters[c("ecoregion_id", 
+                                                        "cluster",
+                                                        "REALM")], 
+                                   by = "ecoregion_id") %>% 
+                              rename(realm = REALM)
+                             
+# Select the correct time point columns
+
+BHI_data <- indicators_all_timepoints %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm", 
+                         "BHI_plants_2005", 
+                         "BHI_plants_2015",
+                         "cluster")))
+
+
+RLI_birds_data <- indicators_all_timepoints %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm", 
+                         "BirdRLI_2008", 
+                         "BirdRLI_2016",
+                         "cluster")))
+
+
+extinct_data <- indicators_all_timepoints %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "extinct_2008", "extinct_2016",
+                         "cluster")))
+
+threatened_data <- indicators_all_timepoints %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "threatened_2008", "threatened_2016",
+                         "cluster")))
+
+LPI_data <- indicators_all_timepoints %>%
+  dplyr::select(all_of(c("ecoregion_id", "realm",
+                         "LPI_2005", "LPI_2015",
+                         "cluster")))
+
+time_correlation_input_list <- list(BHI_data, RLI_birds_data, extinct_data, 
+                                    threatened_data, LPI_data)
+
+
+time_scatterplots <- list()
+
+for (i in seq_along(time_correlation_input_list)) {
+  
+  scatterplot_data <- time_correlation_input_list[[i]]
+  
+  labx <- names(scatterplot_data)[3]
+  laby <- names(scatterplot_data)[4]
+  names(scatterplot_data) <- c("ecoregion_id", "realm","varx", "vary", "cluster")
+  vargroup <- "cluster"
+  
+  scatterplot <- ggplot(scatterplot_data,aes(x = varx, 
+                                             y = vary, 
+                                             color = cluster)) +
+    geom_point() +
+    labs(x= labx,
+         y = laby) + stat_cor(method = "spearman")
+  
+  ggsave(file.path(supp_outputs, paste("timestep",labx, "_x_", laby,"_NL", ".png", sep = "")),
+         scatterplot, device = "png")
+  
+  time_scatterplots[[i]] <- scatterplot
+  
+}
+
+walk(time_scatterplots, print)
+
+
+```
+# Indicator x indicator data prep
+
+```{r indicator comparison data, echo=FALSE, warning = FALSE, message = FALSE}
+
+# * Prepare correlation data ----
+
+correlation_input_data <- indicators_raw_no_lpi %>%
+                          merge(ecoregion_clusters[c("ecoregion_id",
+                                                     "cluster")],
+                                by = "ecoregion_id") %>% 
+                          merge(ecoregions_categorical,
+                                by = "ecoregion_id") %>% 
+                          dplyr::select(-included_in_hfp)
+
+names(correlation_input_data)
+
+
+# Look at how groups are currently classed
+lapply(correlation_input_data, class)
+
+# Ensure ecoregion_id is numeric so it doesn't get converted
+
+correlation_input_data$ecoregion_id <- as.numeric(correlation_input_data$ecoregion_id)
+
+# Convert characters to factors (should only affect grouping vars)
+
+correlation_input_data <- correlation_input_data %>% 
+  mutate(across(where(is.character), as.factor))
+
+# Correlation plots ----
+
+# Add clusters to the grouping variables
+new_grouping_variables <- c("cluster", grouping_variables)
+
+# Tidy up the names for plotting
+all_grouping_variables <- paste("all", new_grouping_variables, sep = ".")
+nice_grouping_variables <- str_to_title(gsub(".", " ", new_grouping_variables, fixed=TRUE))
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Hfp", "HFP")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Lpi", "LPI")
+nice_grouping_variables <- str_replace(nice_grouping_variables, "Rli", "RLI")
+nice_grouping_variables <- str_remove(nice_grouping_variables, " Factor")
+
+# * Individual subgroup plots ----
+
+# Loop through the data and calculate correlation coefficients for each subgroup
+# of every grouping variable
+
+
+groups <- list()
+
+group_correlation_plots <- list()
+
+group_directories <- list()
+
+group_coefficients <- list()
+
+group_confidence_intervals_boot <- list()
+
+group_matrices <- list()
+
+group_dataframes <- list()
+
+
+for (i in seq_along(new_grouping_variables)) {
+  
+  # Format the names of the subgroups (eg mangroves, tropical forests) 
+  # in the grouping variable (eg. Biome)
+  
+  vargroup <- new_grouping_variables[i]
+  varall <- all_grouping_variables[i]
+  
+  print(paste( "Producing correlation plots for", vargroup, "grouping variable", sep = " "))
+  
+  # Create a directory for your outputs
+  
+  group_directory <- file.path(supp_outputs, paste(vargroup,
+                                                          "correlation_plots", sep = " "))
+  
+  if ( !dir.exists( group_directory ) ) {
+    
+    dir.create( group_directory, recursive = TRUE )
+    
+  }
+  
+  # * Remove LPI ----
+  # Remove LPI because it reduces the amount of data we have by about 3/4
+  
+  indicators <- indicators[!indicators %in% "LPI_2005"]
+  
+  # Get names of columns we want to subset
+  
+  x <- c("ecoregion_id", indicators, vargroup)
+  
+  # Subset correlation inputs to just the indicators, grouping variable and eco ids
+  
+  group_indicators <- correlation_input_data %>%
+    dplyr::select(all_of(x))
+  
+  all <- group_indicators
+  
+  # Split the full dataset by the grouping variable subgroup values (eg mangroves), 
+  # each into a separate matrix
+  
+  group_indicator_list <- split(group_indicators, group_indicators[,vargroup])
+  
+  # Add the full dataset to the list too (so we can compare subgroups to global)
+  
+  all[, ncol(all)] <- varall
+  
+  group_indicator_list[[varall]] <- all
+  
+  subgroups <- names(group_indicator_list)
+  
+  # Now to format the data for each sub-group, ready to calculate correlations
+  
+  
+  subgroup_correlation_plots <- list()
+  
+  subgroup_coefficients <- list()
+  
+  subgroup_confidence_intervals <- list()
+  
+  subgroup_matrices <- list()
+  
+  subgroup_dataframes <- list()
+  
+  for (j in seq_along(group_indicator_list)) {
+    
+    group_dataframe <- group_indicator_list[[j]] %>%
+      dplyr::select(-vargroup) %>%
+      na.omit(.)
+    
+    group_matrix <- group_indicator_list[[j]] %>%
+      dplyr::select(-ecoregion_id, -vargroup) %>%
+      na.omit(.)
+    
+    # Remove the years from the column names to make it tidier
+    
+    names(group_matrix) <- str_remove(names(group_matrix), "_2005")
+    
+    names(group_matrix) <- str_remove(names(group_matrix), "_2008")
+    
+    names(group_dataframe) <- c("ecoregion_id",names(group_matrix))
+    
+    subgroup_matrices[[j]] <- group_matrix
+    subgroup_dataframes[[j]] <- group_dataframe
+    
+    n <- nrow(group_matrix)
+    
+    # Create name for plot and output file
+    
+    name <- paste(names(group_indicator_list)[j], "n =", n, sep = " ")
+    name <- str_replace(name, "&", "and")
+    name <- str_replace(name, "/", "_and_")
+    name <- str_replace(name, "<", " less than ")
+    name <- str_replace(name, ">", " more than ")
+    name <- str_replace(name, ",", "")
+    name <- gsub("[()]", "", name)
+    
+    # Check how many rows, don't calculate correlation if too few ecoregions in group
+    if (nrow(group_matrix) < 3) {
+      
+      print(paste("insufficient data for", names(subgroup_matrices)[j], sep = " "))
+      
+    } else {
+      
+      # Get the correlation coefficients
+      
+      rs <- cor(group_matrix, method = "spearman")
+      
+      rs_ci <- cor.ci(group_matrix, n.iter = 2000, # n iterations taken from Ruscio et al 2008
+                      method = "spearman", plot = FALSE)
+      
+      # saveRDS(rs_ci, file.path(group_directory, paste(name,
+      #                                                 "correlation_outputs.rds",
+      #                                                 sep = " ")))
+      
+      subgroup_confidence_intervals[[j]] <- rs_ci
+      
+      subgroup_coefficients[[j]] <- rs
+      
+      p.mat <- cor_pmat(group_matrix)
+      
+      # Make a correlation heatmap for the individual sub group
+      
+      correlation_plot <- ggcorrplot(cor(group_matrix, method = "spearman"),
+                                     title = name, 
+                                     p.mat = p.mat, 
+                                     type = "lower", insig = "blank",
+                                     outline.color = "white",
+                                     colors = c("#453781FF", "white", "#287D8EFF"),
+                                     lab = TRUE)
+      
+      subgroup_correlation_plots[[j]] <- correlation_plot
+      
+      ggsave(file.path(group_directory,
+                       paste(name, "heatmap.png", sep = " ")),
+             correlation_plot, device = "png")
+      
+      print(paste("correlation complete", name, sep = " "))
+      
+      
+    }
+    
+    groups[[i]] <- subgroups
+    
+    group_correlation_plots[[i]] <- subgroup_correlation_plots
+    
+    group_directories[[i]] <- group_directory
+    
+    group_coefficients[[i]] <- subgroup_coefficients
+    
+    group_confidence_intervals_boot[[i]] <- subgroup_confidence_intervals
+    
+    group_matrices[[i]] <- subgroup_matrices
+    
+    group_dataframes[[i]] <- subgroup_dataframes
+    
+  }
+}
+
+names(group_correlation_plots) <- new_grouping_variables
+names(groups) <- new_grouping_variables
+names(group_matrices) <- new_grouping_variables
+names(group_coefficients) <- new_grouping_variables
+names(group_confidence_intervals_boot) <- new_grouping_variables
+names(group_dataframes) <- new_grouping_variables
+
+# Check nested lists are correct lengths
+length(group_correlation_plots)
+lapply(group_correlation_plots, length)
+
+# * Get coefficient dataframes ----
+
+group_correlation_dataframes <- list()
+
+#subgroup_correlations_dataframes <- list()
+
+for (i in seq_along(group_correlation_plots)) {
+  
+  # Get the plots for one grouping variable (eg Biomes)
+  
+  subgroup_plots <- group_correlation_plots[[i]]
+  
+  names(subgroup_plots) <- groups[[i]]
+  
+  subgroup_plots <- list.clean(subgroup_plots)
+  
+  subgroups <- names(subgroup_plots)
+  
+  subgroup_correlations_dataframes <- list()
+  
+  for (j in seq_along(subgroup_plots)) {
+    
+    # Get the plot for one sub-group of the grouping variable (eg Mangroves)
+    
+    correlation_plot <- subgroup_plots[[j]]
+    
+    subgroup <- subgroups[j]
+    
+    # Get the coefficients, and add some additional grouping variables 
+    # for the different types of indicator combinations (eg independent or related inputs)
+    
+    ## Independent data
+    
+    correlation_df1 <- correlation_plot$data[,1:5] %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var1", by.y = "indicator") %>%
+      dplyr::rename(input1 = inputs) %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var2", by.y = "indicator") %>%
+      dplyr::rename(input2 = inputs) %>%
+      mutate(subgroup = subgroup,
+             combination = paste(Var1, "x", Var2, sep = " "),
+             inputs = paste(input1, "x", input2, sep = " ")) %>%
+      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                             "iucn red list x land use data", inputs)) %>%
+      dplyr::rename(coefficient = value) %>%
+      dplyr::select(-Var2) %>%
+      merge(indicator_relationships, by = "combination") %>%
+      dplyr::rename(ind_group = Var1) 
+    
+    # Related data
+    
+    correlation_df2 <- correlation_plot$data[,1:5] %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var1", by.y = "indicator") %>%
+      dplyr::rename(input1 = inputs) %>%
+      merge(indicator_properties[c("indicator","inputs")], 
+            by.x = "Var2", by.y = "indicator") %>%
+      dplyr::rename(input2 = inputs) %>%
+      mutate(subgroup = subgroup,
+             combination = paste(Var2, "x", Var1, sep = " "),
+             inputs = paste(input1, "x", input2, sep = " ")) %>%
+      mutate(inputs = ifelse(inputs == "land use data x iucn red list",
+                             "iucn red list x land use data", inputs)) %>%
+      dplyr::rename(coefficient = value) %>%
+      dplyr::select(-Var1) %>%
+      merge(indicator_relationships, by = "combination") %>%
+      dplyr::rename(ind_group = Var2)
+    
+    # Independent and dependent data combined
+    correlation_df <- rbind(correlation_df1, correlation_df2)
+    
+    subgroup_correlations_dataframes[[j]] <- correlation_df
+    
+    all_combos <- correlation_df$combination
+    
+  }
+  
+  # Combine all possible subgroups and correlation coefficients for the group
+  # into one dataframe
+  
+  subgroup_full_dataframe <- do.call(rbind, subgroup_correlations_dataframes)
+  
+  write.csv(subgroup_full_dataframe, file.path(group_directories[[i]], 
+                                               paste(names(group_correlation_plots)[[i]],
+                                                     "coefficient_data.csv", sep = "_")))
+  saveRDS(subgroup_full_dataframe, file.path(group_directories[[i]], 
+                                             paste(names(group_correlation_plots)[[i]],
+                                                   "coefficient_data.rds", sep = "_")))
+  
+  #group_correlation_dataframes[[i]] <- subgroup_correlations_dataframes
+  group_correlation_dataframes[[i]] <- subgroup_full_dataframe
+  
+}
+
+length(group_correlation_dataframes)
+lapply(group_correlation_dataframes, length)
+
+names(group_correlation_dataframes) <- new_grouping_variables
+
+
+## Bootstrapped confidence intervals
+
+group_confidence_intervals_boot <- list.clean(group_confidence_intervals_boot,
+                                              recursive = TRUE)
+
+group_ci_boot <- list()
+
+for (i in seq_along(group_confidence_intervals_boot)) {
+  
+  
+  subgroup_cis <- group_confidence_intervals_boot[[i]]
+  
+  group_name <- names(group_confidence_intervals_boot)[i]
+  
+  subgroup_ci_boot <- list()
+  
+  for (j in seq_along(subgroup_cis)) {
+    
+    n <- nrow(group_matrices[[i]][[j]])
+    
+    rho <- as.data.frame(subgroup_cis[[j]][[1]]) %>% 
+      tibble::rownames_to_column() %>% 
+      rename(ind_1 = rowname)
+    
+    
+    rho_long <- rho %>% 
+      pivot_longer(c("BHI_plants",
+                     "BIIab",
+                     "BIIri",
+                     "HFP",
+                     "extinct",
+                     "RLI", 
+                     "threatened")) %>% 
+      rename(ind_2 = name,
+             rs = value) %>% 
+      distinct(.) %>% 
+      mutate(pair = paste(ind_1, "x", ind_2, sep = " ")) %>% 
+      mutate(pair_flip = paste(ind_2, "x", ind_1, sep = " ")) %>% 
+      mutate(group = group_name,
+             subgroup = groups[[i]][[j]])
+    
+    pair <- c("BHI_plants x BIIab", "BHI_plants x BIIri", 
+              "BHI_plants x HFP",
+              "BHI_plants x extinct" ,
+              "BHI_plants x RLI", 
+              "BHI_plants x threatened",
+              "BIIab x BIIri", 
+              "BIIab x HFP",
+              "BIIab x extinct",
+              "BIIab x RLI" , 
+              "BIIab x threatened", 
+              "BIIri x HFP","BIIri x extinct", "BIIri x RLI",
+              "BIIri x threatened", "HFP x extinct","HFP x RLI", 
+              "HFP x threatened", "extinct x RLI", "extinct x threatened",   
+              "RLI x threatened")
+    
+    cis <- as.data.frame(subgroup_cis[[j]][[6]]) %>% 
+      tibble::rownames_to_column() %>% 
+      dplyr::select(rowname, lower, upper, p) %>% 
+      rename(lower_ci = lower,
+             upper_ci = upper,
+             pair_abbr = rowname) %>% 
+      mutate(correct_pair = pair)
+    
+    subgroup_ci_boot[[j]] <- rho_long %>% 
+      merge(cis, by.x = "pair", 
+            by.y = "correct_pair") %>% 
+      mutate(n = n) %>% 
+      dplyr::select(group, subgroup, ind_1, ind_2, rs, lower_ci, upper_ci,
+                    n, pair)
+    
+  }
+  
+  group_ci_boot[[i]] <- subgroup_ci_boot 
+  
+}
+
+confidence_intervals <- list()
+
+for (i in seq_along(group_ci_boot)) {
+  
+  confidence_intervals[[i]] <- do.call(rbind, group_ci_boot[[i]])
+  
+}
+
+
+```
+
+# Caterpillar plots
+
+```{Caterpillar plots, echo=FALSE, warning = FALSE, message = FALSE}
+
+# * Make independent caterpillar plots ----
+
+caterpillar_plots <- list()
+
+for (i in seq_along(confidence_intervals)) {
+  
+  y <- confidence_intervals[[i]]
+  
+  
+  names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
+                "upper_ci", "n", "pair")
+  
+  y <- y %>%
+    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " ")) %>%
+    filter(pair == "BHI_plants x extinct"|
+             pair == "BHI_plants x RLI"|
+             pair == "BHI_plants x threatened"|
+             pair == "BIIab x extinct"|
+             pair == "BIIab x RLI"|
+             pair == "BIIab x threatened"|
+             pair == "BIIri x extinct"|
+             pair == "BIIri x RLI"|
+             pair == "BIIri x threatened"|
+             pair == "HFP x extinct"|
+             pair == "HFP x RLI"|
+             pair == "HFP x threatened")
+  
+  
+  y <- y %>%
+    mutate(id = paste(pair, subgroup, sep = "_"))
+  
+  pval <- group_correlation_dataframes[[i]] %>%
+    dplyr::select(combination, coefficient, pvalue, signif, subgroup) %>%
+    distinct(.) %>%
+    mutate(id = paste(combination, subgroup, sep = "_"))
+  
+  
+  plotdata <- y %>%
+    merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
+    dplyr::select(rs, coefficient, pvalue,signif, everything()) %>%
+    filter(signif != 0)
+  
+  catplot <-  ggplot(plotdata, aes(rs, pair)) +
+    geom_point(aes(col = pair)) +
+    geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
+                       col = pair)) +
+    facet_wrap(~ subgroup_label) +
+    geom_vline(xintercept = 0, col = "red") +
+    geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
+    ggtitle(new_grouping_variables[[i]]) +
+    theme(axis.text.y = element_blank(),
+          strip.text.x = element_text(size = 5),
+          axis.text.x = element_text(size = 5),
+          legend.position = "none",
+          legend.text = element_text(size = 5),
+          axis.ticks = element_blank()) +
+    xlab("Spearman's rank correlation coefficient") + 
+    ylab("Ecoregion categories") + 
+    labs(color ='Ecoregion categories') +
+    scale_fill_viridis(discrete=TRUE) +
+    scale_color_viridis(discrete=TRUE) + 
+    geom_text(aes(label = pair), size= 2, vjust = 1.5) +
+    xlim(-1, 1)
+  
+  ggsave(file.path(group_directories[[i]],
+                   paste(new_grouping_variables[[i]],
+                         "caterpillar_plot.png", sep = "_")),
+         catplot, device = "png", width = 12, height = 17, units = "cm")
+  
+  caterpillar_plots[[i]] <- catplot
+  
+}
+
+names(caterpillar_plots) <- new_grouping_variables
+
+# * Make related indicator caterpillar plots ----
+
+related_caterpillar_plots <- list()
+
+for (i in seq_along(confidence_intervals)) {
+  
+  y <- confidence_intervals[[i]]
+  
+  names(y) <- c("grouping var", "subgroup", "ind1", "ind2", "rs", "lower_ci",
+                "upper_ci", "n", "pair")
+  
+  y <- y %>%
+    mutate(subgroup_label = paste(subgroup, "n =", n, sep = " ")) %>%
+    filter(pair == "BHI_plants x BIIab"|
+             pair == "BHI_plants x BIIri"|
+             pair == "BHI_plants x HFP"|
+             pair == "BIIab x BIIri"|
+             pair == "BIIab x HFP"|
+             pair == "BIIri x HFP"|
+             pair == "extinct x RLI"|
+             pair == "extinct x threatened"|
+             pair == "RLI x threatened")
+  
+  y <- y %>%
+    mutate(id = paste(pair, subgroup, sep = "_"))
+  
+  pval <- group_correlation_dataframes[[i]] %>%
+    dplyr::select(combination, coefficient, pvalue, signif, subgroup) %>%
+    distinct(.) %>%
+    mutate(id = paste(combination, subgroup, sep = "_"))
+  
+  
+  plotdata <- y %>%
+    merge(pval[c("id","coefficient", "pvalue", "signif")], by = "id") %>%
+    dplyr::select(rs, coefficient, pvalue,signif, everything()) %>%
+    filter(signif != 0)
+  
+  catplot <-  ggplot(plotdata, aes(rs, pair)) +
+    geom_point(aes(col = pair)) +
+    geom_linerange(aes(xmin = lower_ci, xmax = upper_ci,
+                       col = pair)) +
+    facet_wrap(~ subgroup_label) +
+    geom_vline(xintercept = 0, col = "red") +
+    geom_vline(xintercept = 0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.3, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = 0.7, col = "black", linetype = "dotted") +
+    geom_vline(xintercept = -0.7, col = "black", linetype = "dotted") +
+    ggtitle(new_grouping_variables[[i]]) +
+    theme(axis.text.y = element_blank(),
+          strip.text.x = element_text(size = 5),
+          axis.text.x = element_text(size = 5),
+          legend.position = "none",
+          legend.text = element_text(size = 5),
+          axis.ticks = element_blank()) +
+    xlab("Spearman's rank correlation coefficient") + 
+    ylab("Ecoregion categories") + 
+    labs(color ='Ecoregion categories') +
+    scale_fill_viridis(discrete=TRUE) +
+    scale_color_viridis(discrete=TRUE) + 
+    geom_text(aes(label = pair), size= 2, vjust = 1.5) +
+    xlim(-1, 1)
+  
+  
+  ggsave(file.path(group_directories[[i]],
+                   paste(new_grouping_variables[[i]],
+                         "related_caterpillar_plot.png", sep = "_")),
+         catplot, device = "png", width = 12, height = 17, units = "cm")
+  
+  related_caterpillar_plots[[i]] <- catplot
+  
+}
+
+names(related_caterpillar_plots) <- new_grouping_variables
+
+# * Correlation table ----
+
+## Make a mega table of all correlations
+
+pairwise_correlations_cf <- do.call(rbind, group_correlation_dataframes) %>% 
+  tibble::rownames_to_column()
+
+pairwise_correlations_ci <- do.call(rbind, confidence_intervals) %>% 
+  tibble::rownames_to_column()
+
+pairwise_correlations <- pairwise_correlations_cf %>% 
+  merge(pairwise_correlations_ci[c("group", "rs", "lower_ci",
+                                   "upper_ci","pair", "subgroup")],
+        by.x = c("combination","subgroup"),
+        by.y = c("pair", "subgroup")) %>% 
+  dplyr::select(group, subgroup, combination, coefficient, rs,
+                lower_ci, upper_ci, pvalue, signif, input_relationship) %>% 
+  mutate(signif_2 = ifelse((pvalue > 0.05 | lower_ci < 0 & upper_ci > 0),
+                           0, 1))
+
+
+saveRDS(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.rds"))
+write.csv(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.csv"))
+
+```
+
+# Scatterplots ----
+
+```{r indicator scatterplots, echo=FALSE, warning = FALSE, message = FALSE }
+
+# * Make subgroup scatterplots ----
+
+# Make directories for the scatterplots (this can probably go in the make plots
+# loop itself now have resolved issues with naming)
+
+scatter_directories <- list()
+
+for (i in 1:length(names(group_matrices))) {
+  
+  group <- names(group_matrices)[i]
+  
+  print(group)
+  
+  scatter_directory <- file.path(supp_outputs, paste(group,
+                                                            "scatterplots", sep = "_"))
+  
+  if ( !dir.exists( scatter_directory ) ) {
+    
+    dir.create( scatter_directory, recursive = FALSE )
+    
+  }
+  
+  scatter_directories[[i]] <- scatter_directory
+  
+}
+
+# For each grouping variable, for each subgroup, for each indicator pair,
+# make a scatterplot
+
+group_scatterplots <- list()
+
+for (i in seq_along(group_dataframes)){
+  
+  subgroup_dataframes <- group_dataframes[[i]]
+  
+  scatter_directory <- scatter_directories[[i]]
+  
+  subgroup_scatterplots <- list()
+  
+  for (j in seq_along(subgroup_dataframes)) {
+    
+    subgroup <- groups[[i]][j]
+    
+    subgroup
+    
+    subgroup <- substring(subgroup, 1, 8)
+    
+    # subgroup <- str_replace(subgroup, " - ", "_")
+    # subgroup <- str_replace(subgroup, " & ", "_")
+    # subgroup <- str_replace(subgroup, " , ", "_")
+    # subgroup <- str_replace(subgroup, " . ", "_")
+    # subgroup <- str_replace(subgroup, " ", "_")
+    # subgroup <- str_replace(subgroup, ", ", "_")
+    # subgroup <- str_replace(subgroup, " ", "_")
+    # 
+    # subgroup
+    
+    subgroup_scatterplots[[j]] <- make_subgroup_scatterplot(subgroup_dataframes[[j]], 
+                                                            names(group_dataframes)[i], 
+                                                            subgroup,
+                                                            scatter_directory)
+    
+  }
+  
+  group_scatterplots[[i]] <- subgroup_scatterplots
+  
+}
+
+```

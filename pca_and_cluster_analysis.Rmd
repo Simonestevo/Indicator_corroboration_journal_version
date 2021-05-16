@@ -216,7 +216,6 @@ ecoregions <- ecoregion_map_renamed %>%
 write.csv(ecoregions, file.path(supp_outputs, "ecoregion_list.csv"))
 
 
-
 ```
 
 # PCA data prep
@@ -591,6 +590,7 @@ cluster_data <- cluster_map_data %>%
   
   
 write.csv(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.csv"))
+saveRDS(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.rds"))
 
 # Cluster biplot data
 

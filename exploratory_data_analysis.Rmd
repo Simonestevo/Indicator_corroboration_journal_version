@@ -423,13 +423,6 @@ rm(raw_ecoregions_wide)
 
 # Indicator data
 
-# indicator_properties <- read.csv(file.path(analysis_inputs,
-#                                            "indicator_properties.csv"))
-# 
-# #TODO: get this out of indicator_properties
-# indicator_relationships <- read.csv(file.path(analysis_inputs,
-#                                               "indicator_input_relationships.csv"))
-
 raw_indicators_long_all <- readRDS(file.path(analysis_inputs,
                                              "global_ecoregions_2017_indicator_values_master.rds"))
 
@@ -599,6 +592,9 @@ hist(indicators_wide$extinct_2008, breaks = 20)
 min(indicators_wide$extinct_2008, na.rm = TRUE)
 
 # * Remove unwanted indicators ----
+
+saveRDS(indicators_wide_2, file.path(data_outputs, "0_indicators_all_timepoints.rds"))
+write.csv(indicators_wide_2, file.path(data_outputs, "0_indicators_all_timepoints.csv"))
 
 indicators_cleaned <- indicators_wide_2 %>%
   dplyr::select(-number_extinct_2008, -number_extinct_2016,

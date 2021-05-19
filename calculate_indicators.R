@@ -982,7 +982,11 @@ species_by_ecoregion <- species_data %>%
                          mutate(number_of_species = max(number_of_species_year),
                                 proportion_extinct = number_extinct/number_of_species,
                                 proportion_atrisk = number_atrisk/number_of_species,
-                                proportion_lowrisk = number_lowrisk/number_of_species)
+                                proportion_lowrisk = number_lowrisk/number_of_species,
+                                amphibians = n_distinct(tsn[class == "Amphibia"]),
+                                birds = n_distinct(tsn[class == "Aves"]),
+                                mammals = n_distinct(tsn[class == "Mammalia"]),
+                                proportion_birds = birds/number_of_species)
 
 saveRDS(species_by_ecoregion, file.path(indicator_outputs, 
                                      paste(location, eco_version, 
@@ -3086,6 +3090,22 @@ ecoregion_beta_values <- dinerstein_data %>%
 
 head(ecoregion_beta_values)
 
+# Proportion birds ----
+
+proportion_bird_values <-  species_by_ecoregion %>%
+  mutate(indicator = "proportion birds") %>%
+  dplyr::select(indicator, redlist_assessment_year, 
+                ecoregion_id, proportion_birds) %>%
+  rename(year = redlist_assessment_year) %>%
+  distinct(.) %>%
+  drop_na(year) %>%
+  group_by(ecoregion_id) %>%
+  arrange(year) %>%
+  mutate(raw_indicator_value = proportion_birds) 
+
+head(proportion_bird_values)
+
+
 # Combine indicator values into a single dataframe ----
 
 indicator_values <- rbind(extinction_values, 
@@ -3889,6 +3909,40 @@ beta <- tm_shape(beta_data) +
                   legend.outside.position = "right") 
 
 beta
+
+tmap_save(beta, file.path(indicator_outputs, paste(location,
+                          "beta_diversity_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(beta, beta_data)
+
+# * Proportion birds ----
+
+bird_data <- ecoregion_map_data %>% 
+             merge(proportion_bird_values, by = "ecoregion_id") %>% 
+             dplyr::select(-proportion_birds) %>% 
+             filter(year == "2008")
+
+head(bird_data)
+
+birds <- tm_shape(bird_data) +
+  tm_polygons(col = "raw_indicator_value",
+              border.col = "black",
+              style = "cont",
+              pal = "viridis",
+              title = "Proportion of birds",
+              colorNA = "grey",
+              alpha = 0.8) +
+  tm_layout(legend.outside = TRUE,
+            legend.outside.position = "right") 
+
+birds
+
+tmap_save(birds, file.path(indicator_outputs, paste(location,
+                 "proportion_birds_map.png", sep = "_")),
+          width=1920, height=1080, asp=0)
+
+rm(birds, bird_data)
 
 # Create an interactive map ----
 

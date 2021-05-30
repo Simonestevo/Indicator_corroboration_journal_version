@@ -29,26 +29,22 @@ rm(list = ls()) # clear memory
 #' TODO: Note the categorical independence matrices contain NAs because the combinations
 #' are in the wrong order - not sure how to fix?
 
-# PCA, Clustering, Models
-library(factoextra)
-library(FactoMineR)
+# Correlation tools
 library(corrplot)
 library(ape)
-#library(MASS)
 library(ggpubr)
-library(betareg)
 
 # Data handling and table reshaping
 library(tidyverse)
 library(tidylog)
-library(reshape2)
+#library(reshape2)
 library(devtools)
 library(data.table)
 library(rlist)
-library(e1071)
-library(psych)
-library(arules)
-library(ppsr)
+# library(e1071)
+# library(psych)
+# library(arules)
+
 
 # Plotting
 library(ggplot2)
@@ -85,6 +81,16 @@ indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value
 timepoints <- c("2005", "2008")
 load_map <- TRUE
 indicators_to_remove <- c("RLIother", "RLILU")
+
+# Make some colour palettes
+mag20 <- magma(20)
+vir20 <- viridis(20)
+#show_col(mag20)
+
+mag3 <- c("#400F73FF", "#AB337CFF", "#FA815FFF")
+vir3 <- c("#32648EFF","#20A386FF","#481568FF")
+
+vir2 <- viridis(2)
 
 # Set up some ecoregions that we know how they should behave
 
@@ -139,7 +145,9 @@ manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\output
 
 dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), full.names = TRUE)
+dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), 
+                  full.names = TRUE,
+                  recursive = FALSE)
 
 main_outputs <- dirs[str_detect(dirs, "main")]
 
@@ -170,6 +178,8 @@ add_grouping_variable <- function(variable, indicator_data, ecoregion_data) {
   return(out)
   
 }
+
+    
 
 make_heatmap <- function(data, directory, name) {
   
@@ -356,6 +366,13 @@ indicator_properties <- read.csv(file.path(analysis_inputs,
 #TODO: get this out of indicator_properties
 indicator_relationships <- read.csv(file.path(analysis_inputs,
                                               "indicator_input_relationships.csv"))
+
+# Rename the relationship categories and remove the old column
+indicator_relationships <- indicator_relationships %>% 
+                           mutate(temp = ifelse(input_relationship == "related",
+                                               "divergent", "convergent")) %>% 
+                           dplyr::select(-input_relationship) %>% 
+                           rename(input_relationship = temp)
 
 
 ```
@@ -1034,9 +1051,8 @@ pairwise_correlations_no_lpi <- pairwise_correlations_cf %>%
   mutate(signif_2 = ifelse((pvalue > 0.05 | lower_ci < 0 & upper_ci > 0),
                            0, 1))
 
-
-#saveRDS(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.rds"))
-# write.csv(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.csv"))
+saveRDS(pairwise_correlations_no_lpi, file.path(data_outputs, "11_correlation_dataframe.rds"))
+write.csv(pairwise_correlations_no_lpi, file.path(data_outputs, "11_correlation_dataframe.csv"))
 
 ```
 
@@ -1725,38 +1741,263 @@ pairwise_correlations_lpi <- pairwise_correlations_cf %>%
                            0, 1))
 
 
-#saveRDS(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.rds"))
-# write.csv(pairwise_correlations, file.path(supp_outputs, "correlation_dataframe.csv"))
+
+saveRDS(pairwise_correlations_lpi, file.path(data_outputs, "12_correlation_dataframe_lpi.rds"))
+write.csv(pairwise_correlations_lpi, file.path(data_outputs, "12_correlation_dataframe_lpi.csv"))
 
 ```
 
-# Make global heatmaps
+# Global heatmap no lpi
 
 ```{r heatmaps, include = FALSE, echo=FALSE, warning = FALSE, message = FALSE}
 
-global_heatmap_no_lpi_data <- pairwise_correlations_no_lpi %>% 
-                              filter(subgroup == "all.biome") %>% 
-                              arrange(coefficient)
+cor_inputs_no_lpi <- indicators_raw_no_lpi %>%
+              dplyr::select(-ecoregion_id) %>%
+              as.matrix(.)
 
-global_heatmap_no_lpi <- make_heatmap(global_heatmap_no_lpi_data,
-                                      main_outputs,
-                                      "global_heatmap_no_lpi")
+cor_outputs_no_lpi <- cor(cor_inputs_no_lpi, method = "spearman")
 
- ggsave(file.path(main_outputs, "global_heatmap_no_lpi.png"),
-         global_heatmap_no_lpi, device = "png")
-  
+global_heatmap_no_lpi <- ggcorrplot(cor_outputs_no_lpi,
+                                    colors = c("#481568FF","white", "#20A386FF"),
+                                    sig.level = 0.05,
+                                    hc.order = TRUE,
+                                    lab = TRUE,
+                                    insig = "blank")
+# 
+# ggsave(file.path(main_outputs, "global_heatmap_no_lpi.png"),
+#          global_heatmap_no_lpi, device = "png")
+#   
+# 
+cor_inputs_lpi <- indicators_raw_lpi %>%
+              dplyr::select(-ecoregion_id) %>%
+              as.matrix(.)
 
-global_heatmap_lpi_data <- pairwise_correlations_lpi %>% 
-                              filter(subgroup == "all.cluster") %>% 
-                              arrange(coefficient)
+cor_outputs_lpi <- cor(cor_inputs_lpi, method = "spearman")
 
-global_heatmap_lpi <- make_heatmap(global_heatmap_lpi_data,
-                                   main_outputs,
-                                   "global_heatmap_no_lpi")
+global_heatmap_lpi <- ggcorrplot(cor_outputs_lpi,
+                                    colors = c("#481568FF","white", "#20A386FF"),
+                                    sig.level = 0.05,
+                                    hc.order = TRUE,
+                                    lab = TRUE,
+                                    insig = "blank")
+# 
+# ggsave(file.path(main_outputs, "global_heatmap_lpi.png"),
+#          global_heatmap_lpi, device = "png")
+ 
 
- ggsave(file.path(main_outputs, "global_heatmap_lpi.png"),
-         global_heatmap_lpi, device = "png")
+all_correlations <- readRDS(file.path(data_outputs, 
+                                      "11_correlation_dataframe.rds"))
 
+head(all_correlations)
+
+correlations_edited <- all_correlations %>% 
+                       filter(subgroup == "all.cluster") %>% # Get just global coeffs
+                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
+                                                  coefficient < 0, "weak",
+                                           ifelse(coefficient < 0.3 & # assign the rankings
+                                                  coefficient > 0, "weak",
+                                           ifelse(coefficient > 0.3 &
+                                                  coefficient < 0.7,
+                                                  "complementary",
+                                           ifelse(coefficient > 0.7 |
+                                                  coefficient < -0.7,
+                                                  "proxy-redundant",
+                                           ifelse(coefficient < -0.3 &
+                                                  coefficient > -0.7,
+                                                  "complementary",
+                                           ifelse(coefficient == 0,
+                                                  "no-relationship",
+                                                  "NA"))))))) %>% 
+                       mutate(corr_level = factor(corr_level, levels = c("proxy-redundant",
+                                                                         "complementary",
+                                                                         "weak",
+                                                                         "no-relationship"))) %>%
+                       mutate(coeff_ch = as.character(coefficient)) %>% 
+                       mutate(coeff_ch = ifelse(coeff_ch == "0", "0.00",
+                                              ifelse(coeff_ch == "0.8", "0.80",
+                                                coeff_ch))) %>% # Make sure all coefficients display 3 digits
+                       mutate(coeff_label = ifelse(input_relationship == "convergent", # identify convergent comparisons with a *
+                                                   paste(coeff_ch, "*", sep = "", collapse = NULL),
+                                                   coefficient))
+
+data <- as.data.frame(str_split_fixed(correlations_edited$combination, " x ", 2)) 
+names(data) <- c("Ind1", "Ind2")
+
+correlations_edited <- cbind(correlations_edited, data)  
+
+flipped_correlations <- correlations_edited %>% 
+                        mutate(Ind12 = Ind1,
+                               Ind21 = Ind2) %>% 
+                        dplyr::select(-Ind1, -Ind2) %>% 
+                        rename(Ind1 = Ind21,
+                               Ind2 = Ind12)
+
+temp_corr <- rbind(correlations_edited, flipped_correlations) %>% 
+            dplyr::select(Ind1, Ind2, coefficient, corr_level, coeff_label)
+
+Ind1 <- unique(temp_corr$Ind1)
+Ind2 <- Ind1
+coefficient <- rep(1, times = length(Ind1))
+red <- unique(temp_corr$corr_level)[3]
+corr_level <- rep(red, times = length(Ind1))
+coeff_label <- rep("1.00",
+                   times = length(Ind1))
+
+self_corr <- data.frame(Ind1, Ind2, coefficient, corr_level, coeff_label)
+
+global_heatmap_no_lpi_data <- rbind(temp_corr, self_corr) %>% 
+                              mutate(Ind1 = factor(Ind1, levels = c("extinct","RLI",
+                                                             "threatened",
+                                                             "BIIab",
+                                                             "BIIri",
+                                                             "BHI_plants",
+                                                             "HFP"))) %>%
+                              mutate(Ind2 = factor(Ind2, levels = c("extinct","RLI",
+                                                             "threatened",
+                                                             "BIIab",
+                                                             "BIIri",
+                                                             "BHI_plants",
+                                                             "HFP"))) 
+
+heatmap_pal_gradient <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
+heatmap_pal_vir <- viridis(4)
+
+global_heatmap_no_lpi <- ggplot(global_heatmap_no_lpi_data, aes(x = Ind1, 
+                                                                y = Ind2, 
+                                                                fill = corr_level)) +
+  geom_tile(color = "white", height = 1.0, alpha = 0.75) +
+  geom_text(aes(label = coeff_label), size = 5) +
+  scale_fill_manual(values = heatmap_pal_vir) +
+  labs(x = "Indicator 1",
+       y = "Indicator 2") +
+    guides(fill = guide_legend(title = "Correlation\nstrength")) +
+   theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "grey97"),
+          legend.position = "bottom",
+          axis.title.x = element_text(size=20),
+          axis.title.y = element_text(size=20),
+          axis.text.x = element_text(size=18),
+          axis.text.y = element_text(size=18),
+          axis.ticks.x = element_blank(), 
+          axis.ticks.y = element_blank())
+
+
+ggsave(file.path(main_outputs, "global_heatmap_no_lpi.png"),
+       global_heatmap_no_lpi, width = 10, height = 10, units = "in",
+       device = "png")
+
+
+```
+
+# Global heatmap lpi
+
+```{r heatmaps with lpi, include = FALSE, echo=FALSE, warning = FALSE, message = FALSE}
+
+all_correlations <- readRDS(file.path(data_outputs, 
+                                      "12_correlation_dataframe_lpi.rds"))
+
+head(all_correlations)
+
+correlations_edited <- all_correlations %>% 
+                       filter(subgroup == "all.cluster") %>% # Get just global coeffs
+                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
+                                                  coefficient < 0, "weak",
+                                           ifelse(coefficient < 0.3 & # assign the rankings
+                                                  coefficient > 0, "weak",
+                                           ifelse(coefficient > 0.3 &
+                                                  coefficient < 0.7,
+                                                  "complementary",
+                                           ifelse(coefficient > 0.7 |
+                                                  coefficient < -0.7,
+                                                  "proxy-redundant",
+                                           ifelse(coefficient < -0.3 &
+                                                  coefficient > -0.7,
+                                                  "complementary",
+                                           ifelse(coefficient == 0,
+                                                  "no-relationship",
+                                                  "NA"))))))) %>% 
+                       mutate(corr_level = factor(corr_level, levels = c("proxy-redundant",
+                                                                         "complementary",
+                                                                         "weak",
+                                                                         "no-relationship"))) %>% 
+                       mutate(coeff_ch = as.character(coefficient)) %>% 
+                       mutate(coeff_ch = ifelse(coeff_ch == "0", "0.00",
+                                              ifelse(coeff_ch == "0.8", "0.80",
+                                                coeff_ch))) %>% # Make sure all coefficients display 3 digits
+                       mutate(coeff_label = ifelse(input_relationship == "convergent", # identify convergent comparisons with a *
+                                                   paste(coeff_ch, "*", sep = "", collapse = NULL),
+                                                   coefficient))
+
+data <- as.data.frame(str_split_fixed(correlations_edited$combination, " x ", 2)) 
+names(data) <- c("Ind1", "Ind2")
+
+correlations_edited <- cbind(correlations_edited, data)  
+
+flipped_correlations <- correlations_edited %>% 
+                        mutate(Ind12 = Ind1,
+                               Ind21 = Ind2) %>% 
+                        dplyr::select(-Ind1, -Ind2) %>% 
+                        rename(Ind1 = Ind21,
+                               Ind2 = Ind12)
+
+temp_corr <- rbind(correlations_edited, flipped_correlations) %>% 
+            dplyr::select(Ind1, Ind2, coefficient, corr_level, coeff_label)
+
+Ind1 <- unique(temp_corr$Ind1)
+Ind2 <- Ind1
+coefficient <- rep(1, times = length(Ind1))
+red <- unique(temp_corr$corr_level)[3]
+corr_level <- rep(red, times = length(Ind1))
+coeff_label <- rep("1.00",
+                   times = length(Ind1))
+
+self_corr <- data.frame(Ind1, Ind2, coefficient, corr_level, coeff_label)
+
+global_heatmap_lpi_data <- rbind(temp_corr, self_corr) %>% 
+                              mutate(Ind1 = factor(Ind1, 
+                                    levels = c("LPI",
+                                              "extinct","RLI",
+                                                             "threatened",
+                                                             "BIIab",
+                                                             "BIIri",
+                                                             "BHI_plants",
+                                                             "HFP"))) %>%
+                              mutate(Ind2 = factor(Ind2, levels = c("LPI",
+                                                                    "extinct","RLI",
+                                                             "threatened",
+                                                             "BIIab",
+                                                             "BIIri",
+                                                             "BHI_plants",
+                                                             "HFP"))) 
+
+heatmap_pal <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
+heatmap_pal_vir <- viridis(4)
+
+global_heatmap_lpi <- ggplot(global_heatmap_lpi_data, 
+                             aes(x = Ind1, y = Ind2, 
+                                 fill = corr_level)) +
+  geom_tile(color = "white", height = 1.0, alpha = 0.75) +
+  geom_text(aes(label = coeff_label), size = 5) +
+  scale_fill_manual(values = heatmap_pal_vir) +
+  labs(x = "Indicator 1",
+       y = "Indicator 2") +
+    guides(fill = guide_legend(title = "Correlation\nstrength")) +
+   theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "grey97"),
+          legend.position = "bottom",
+          axis.title.x = element_text(size=18),
+          axis.title.y = element_text(size=18),
+          axis.text.x = element_text(size=14),
+          axis.text.y = element_text(size=14),
+          axis.ticks.x = element_blank(), 
+          axis.ticks.y = element_blank())
+
+
+ggsave(file.path(main_outputs, "global_heatmap_lpi.png"),
+       global_heatmap_lpi, width = 10, height = 10, units = "in",
+       device = "png")
 
 ```
 

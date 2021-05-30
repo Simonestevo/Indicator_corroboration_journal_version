@@ -64,7 +64,7 @@ library(rlist)
 library(e1071)
 library(psych)
 library(arules)
-library(ppsr)
+
 
 # Plotting
 library(ggplot2)
@@ -73,6 +73,7 @@ library(viridis)
 library(png)
 library(ggcorrplot)
 library(knitr)
+library(ggthemes)
 
 
 
@@ -751,11 +752,18 @@ boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
   #geom_point(position = "jitter",alpha = 0.1) +
   theme(axis.text.x = element_text(angle= 45,hjust=1)) +
   geom_hline(yintercept = 0) +
-  theme(
-    legend.position = "none",
-    axis.text.y = element_text(size = 6),
-    axis.text.x = element_text(size = 6))+
-  xlab("Indicator") + ylab("Indicator value")
+  theme(panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x = element_text(size=18),
+              axis.title.y = element_text(size=18),
+              axis.text.x = element_text(size=14),
+              axis.text.y = element_text(size=14),
+              strip.text.x = element_text(size = 18),
+              strip.background = element_blank(),
+        legend.position = "none") +
+   xlab("Indicator") + ylab("Standardised indicator value")
 
 
 ggsave(file.path(main_outputs , "indicator_boxplots.png"),
@@ -763,9 +771,11 @@ ggsave(file.path(main_outputs , "indicator_boxplots.png"),
 
 rm(raw_indicators_wide)
 rm(indicator_boxplot_data)
+```
 
-# Ecoregion summaries
+# Ecoregion Boxplots
 
+```{r eco boxplots, echo=FALSE, warning = FALSE, message = FALSE}
 ecoregions_numeric <- ecoregions_wide[,c("ecoregion_id", numeric_variables)]
 
 saveRDS(ecoregions_numeric, file.path(data_outputs, "5_ecoregions_numeric.rds"))
@@ -805,7 +815,10 @@ ecoregions_numeric_standardized <- ecoregions_numeric %>%
 saveRDS(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.rds"))
 write.csv(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.csv"))
 
-ecoregion_boxplot_data <- reshape2::melt(ecoregions_numeric_standardized, 
+eco_temp <- ecoregions_numeric_standardized %>% 
+            dplyr::select(-scaled_lpi_records, - scaled_endemics)
+
+ecoregion_boxplot_data <- reshape2::melt(eco_temp, 
                                          id.vars = 'ecoregion_id')
 
 eco_boxplots <- ggplot(ecoregion_boxplot_data,aes(x = variable, y = value)) +
@@ -813,15 +826,22 @@ eco_boxplots <- ggplot(ecoregion_boxplot_data,aes(x = variable, y = value)) +
   #geom_point(position = "jitter",alpha = 0.1) +
   theme(axis.text.x = element_text(angle= 45,hjust=1)) +
   geom_hline(yintercept = 0) +
-  theme(
-    legend.position = "none",
-    axis.text.y = element_text(size = 6),
-    axis.text.x = element_text(size = 6))+
-  xlab("Variable") + ylab("Ecoregion variable value")
+ theme(panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x = element_text(size=18),
+              axis.title.y = element_text(size=18),
+              axis.text.x = element_text(size=14),
+              axis.text.y = element_text(size=14),
+              strip.text.x = element_text(size = 18),
+              strip.background = element_blank(),
+        legend.position = "none") +
+   xlab("Ecoregion variable") + ylab("Standardised value")
 
 
 ggsave(file.path(main_outputs , "eco_boxplots.png"),
-       boxplots, device = "png")
+       eco_boxplots, device = "png")
 
 barplot_data <- reshape2::melt(ecoregions_wide, measure.vars = grouping_variables)
 

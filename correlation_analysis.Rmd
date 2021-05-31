@@ -2026,7 +2026,8 @@ correlations_clusters <- all_correlations %>%
                                                   coefficient < 0.7,
                                                   "complementary",
                                            ifelse(coefficient >= 0.7 |
-                                                  coefficient < -0.7,
+                                                  coefficient <= -0.7|
+                                                  coefficient == 1,
                                                   "proxy-redundant",
                                            ifelse(coefficient <= -0.3 &
                                                   coefficient >= -0.7,
@@ -2049,6 +2050,7 @@ correlations_clusters <- all_correlations %>%
 prep_heatmap_data <- function(data, sub_name) {
   
 inds <- as.data.frame(str_split_fixed(data$combination, " x ", 2)) 
+
 names(inds) <- c("Ind1", "Ind2")
 
 newdata <- cbind(data, inds)  
@@ -2068,9 +2070,8 @@ temp_corr <- rbind(newdata, flipped_correlations) %>%
 
 Ind1 <- unique(temp_corr$Ind1)
 Ind2 <- Ind1
-coefficient <- rep(1, times = length(Ind1))
-red <- unique(temp_corr$corr_level)[3]
-corr_level <- rep(red, times = length(Ind1))
+coefficient <- rep(1.00, times = length(Ind1))
+corr_level <- rep("proxy-redundant", times = length(Ind1))
 coeff_label <- rep("1.00",
                    times = length(Ind1))
 subgroup <- rep(sub_name,
@@ -2107,7 +2108,9 @@ clus3 <- prep_heatmap_data(cluster_data[[3]], "Cluster three")
 cluster_heatmap_data <- rbind(clus1, clus2, clus3) %>% 
                         mutate(subgroup = factor(subgroup, 
                                levels = c("Cluster one","Cluster two",
-                                          "Cluster three")))
+                                          "Cluster three"))) %>% 
+                        mutate(coeff_label = ifelse(coeff_label == "0", "0.00",
+                                                    coeff_label))
 
 heatmap_pal <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
 heatmap_pal_vir <- viridis(4)

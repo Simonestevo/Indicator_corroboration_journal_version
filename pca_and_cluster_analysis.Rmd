@@ -3,11 +3,11 @@ title: "exploratory_data_analysis"
 author: "Simone Stevenson"
 date: "05/05/2021"
 output:
-    html_document:
-    toc: true
-    theme: united
-  pdf_document: default
+    html_document: default
+    pdf_document: default
 ---
+
+# Set up
 
 ```{r setup, include=FALSE}
 
@@ -54,7 +54,7 @@ library(rlist)
 library(e1071)
 library(psych)
 library(arules)
-library(ppsr)
+#library(ppsr)
 
 # Plotting
 library(ggplot2)
@@ -65,15 +65,17 @@ library(viridis)
 library(png)
 library(gridExtra)
 library(GGally)
-library(ggcorrplot)
+#library(ggcorrplot)
 library(visdat)
 library(cowplot)
 library(knitr)
 library(ggpubr)
+library(scales)
 
 # Maps
 library(sf)
 library(leaflet)
+library(ggspatial)
 
 
 # Set input and output locations ----
@@ -91,6 +93,14 @@ indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value
 timepoints <- c("2005", "2008")
 load_map <- TRUE
 indicators_to_remove <- c("RLIother", "RLILU")
+
+# Make some colour palettes
+mag20 <- magma(20)
+vir20 <- viridis(20)
+#show_col(mag20)
+mag3 <- c("#400F73FF", "#AB337CFF", "#FA815FFF")
+vir3 <- viridis(3)
+vir2 <- viridis(2)
 
 # Set up some ecoregions that we know how they should behave
 
@@ -128,7 +138,7 @@ outputs <- file.path(parent_outputs, db_version, db_outputs)
 if( (length(analysis_outputs)) == 0 ) {
   
   analysis_outputs <- file.path(parent_outputs, db_version, paste(date,
-                                                                  "_analysis_output_files",sep="") )
+                                 "_analysis_output_files",sep="") )
   
   dir.create(analysis_outputs, recursive = TRUE ) # create a new directory for today's outputs
   
@@ -145,7 +155,7 @@ manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\output
 
 dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), full.names = TRUE)
+dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), full.names = TRUE, recursive = FALSE)
 
 main_outputs <- dirs[str_detect(dirs, "main")]
 
@@ -216,7 +226,7 @@ write.csv(ecoregions, file.path(supp_outputs, "ecoregion_list.csv"))
 
 ```
 
-# Ecoregions with incomplete data
+# Ecoregions with incomplete data (when not including the Living Planet Index in the indicator dataset)
 
 ```{r pca prep, echo=FALSE, warning = FALSE, message = FALSE}
 
@@ -255,7 +265,7 @@ head(pca_input_data)
 
 # Prepare data
 
-# Add the grouping ecoregion variables back in
+# Add the categorical ecoregion variables back in
 
 pca_data_no_lpi <- indicators_std_no_lpi %>%
   merge(ecoregions_categorical[c("ecoregion_id",
@@ -302,7 +312,7 @@ pca_data_5 <- pca_data_lpi[complete.cases(pca_data_lpi[,2:8]),]
 dim(pca_data_5)
 
 # Make a table of excluded ecoregions 
-incomplete_ecoregions_no_lpi <- pca_data_lpi[!complete.cases(pca_data_lpi[,2:9]),]
+incomplete_ecoregions_no_lpi <- pca_data_no_lpi[!complete.cases(pca_data_no_lpi[,2:9]),]
 
 
 incomplete_ecoregions_no_lpi <- incomplete_ecoregions_no_lpi %>% 
@@ -312,21 +322,30 @@ incomplete_ecoregions_no_lpi <- incomplete_ecoregions_no_lpi %>%
 
 names(incomplete_ecoregions_no_lpi) <- tolower(names(incomplete_ecoregions_no_lpi))
 
-kable(incomplete_ecoregions_no_lpi)
-# write.csv(incomplete_ecoregions_no_lpi, file.path(
-#   supp_outputs, "ecoregions_excluded_from_no_lpi_pca.csv"))
+names(incomplete_ecoregions_no_lpi) <- c("Ecoregion ID", "Ecoregion name", "Realm")
 
-# Only conducts the PCA on the main 7 indicators (excludes LPI)
+kable(incomplete_ecoregions_no_lpi, 
+      format = "simple", 
+      align = "l",
+      caption = "Ecoregions excluded from analysis for having incomplete data (if the Living Planet Index is also excluded)")
+
+write.csv(incomplete_ecoregions_no_lpi, file.path(
+  supp_outputs, "ecoregions_excluded_from_no_lpi_pca.csv"))
+
+# Get names of the indicators we want to perform the PCA on (ie exclude the LPI)
 
 indicators_for_pca_2 <- names(indicators_raw_no_lpi)[!str_detect(
   names(indicators_raw_no_lpi),"ecoregion_id")]
+
+# Use them to subset the data
 
 indicator_only_pca_2_data <- pca_data_5[,names(indicators_std_no_lpi)]
 
 ```
 # PCA
 
-```{r pca, echo=FALSE, warning = FALSE, message = FALSE}
+```{r pca, echo=FALSE, warning = FALSE, message = FALSE, fig.cap = "biplot TBD"}
+
 # * PCA ----
 
 # Tidy up names
@@ -344,17 +363,67 @@ pl2.data <- as.data.frame(pl2.data)
 dim(pl2.data)
 sd(pl2.data$BHI_plants_2005)
 
-# Save a copy of the inputs
-# write.csv(pl2.data, file.path(pca_outputs, "pca_input_data.csv"))
+# Using PCA function from FactoMineR package
 
-# Get formula for pca
+res.pca24 <- PCA(pl2.data, ncp = 5, graph = FALSE)
+
+# Plot results - look to see number of PCA axes to retain
+# plot(res.pca24, type = "lines")
+# 
+# biplot(pl2.pca, cex = 0.8, col = c(1,8))
+
+# tiff(file = file.path(main_outputs, "pca_variable_plot.tiff"), 
+#      units = "in", width=5, height=5, res = 300)
+
+# Graph of variables
+fviz_pca_var(res.pca24,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = vir3,# c("#36648B", "#FFA500", "#8B2500"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+
+# Scree plot
+
+tiff(file = file.path(supp_outputs, "pca_scree_plot.tiff"),
+     units = "in", width=5, height=5, res = 300)
+
+fviz_eig(res.pca24, addlabels = TRUE, ylim = c(0, 50))
+
+dev.off()
+
+# Alt - Using princomp function 
 
 pc.f2 <- formula(paste("~", paste(names(pl2.data), collapse = "+")))
 
 # Run pca
 
 pl2.pca <- princomp(pc.f2, cor=TRUE, data=pl2.data)
+summary(pl2.pca)
 
+test <- prcomp(pc.f2, cor=TRUE, data=pl2.data)
+summary(test)
+
+test$rotation[, 1:3]
+
+
+data.scaled <- scale(wisc.data)
+
+# Calculate the (Euclidean) distances: data.dist
+data.dist <- dist(pl2.data)
+
+# Create a hierarchical clustering model: wisc.hclust
+wisc.hclust <- hclust(data.dist, method = "complete")
+
+plot(wisc.hclust)
+
+wisc.hclust.clusters <- cutree(wisc.hclust, k = 3)
+
+
+test.out <- hclust(dist(test$x[, 1:4]), method = "complete")
+
+wisc.pr.hclust.clusters <- cutree(test.out, k = 3)
+table(wisc.pr.hclust.clusters)
 # save pca
 
 # saveRDS(pl2.pca, file.path(pca_outputs, "pca.rds"))
@@ -366,84 +435,105 @@ pca_loadings <- as.table(pca_loadings)
 
 write.csv(pca_loadings, file.path(main_outputs, 
                                   "pca_loadings.csv"))
+```
 
+```{r pca scree plot, echo=FALSE, warning = FALSE, message = FALSE,  fig.cap = "Table X.1: Scree plot of amount of variance explained by each principal component"}
 # Print out eigenvalues
-pl2.pca$sd^2
+# pl2.pca$sd^2
 
 # Print PCA summary
-summary(pl2.pca)
+# summary(pl2.pca)
 
 # Look at the amount of explained variance
 
-cumpro <- cumsum(pl2.pca$sdev^2 / sum(pl2.pca$sdev^2))
-plot(cumpro[0:5], xlab = "PC #", 
-     ylab = "Amount of explained variance",
-     main = "Cumulative variance plot")
+# cumpro <- cumsum(pl2.pca$sdev^2 / sum(pl2.pca$sdev^2))
+# plot(cumpro[0:5], xlab = "PC #", 
+#      ylab = "Amount of explained variance",
+#      main = "Cumulative variance plot")
 
 # Plot results - look to see number of PCA axes to retain
 plot(pl2.pca, type="lines")
 
+# Plot points#
+
+# text(pl2.pca$scores, labels = as.character(row.names(pl2.data)), pos=1, cex=0.7, add = TRUE)
+
+```
+
+```{r 3d, echo=FALSE, warning = FALSE, message = FALSE,  fig.cap = "TBD"}
+
 ### Looks like need to consider the first three axes still?
 
-# Plot points
-text(pl2.pca$scores, labels=as.character(row.names(pl2.data)), pos=1, cex=0.7)
 
-# Biplot of PCA
-biplot(pl2.pca, cex=0.8, col=c(1,8))
-
-tiff(file = file.path(main_outputs, "pca_variable_plot.tiff"), 
-     units = "in", width=5, height=5, res = 300)
-
-# Graph of variables
-fviz_pca_var(pl2.pca,
-             col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = viridis(3),# c("#36648B", "#FFA500", "#8B2500"),
-             repel = TRUE     # Avoid text overlapping
-)
-
-dev.off()
-
-# Possible pretty plot (code from Ecology in R facebook page)
-
-# plot.pcasat <- ggplot(sites.pcasat, aes(x = PC1, y = PC2))+
-#   geom_point(aes(color = lat, alpha = .5, size = dfc))+
-#   scale_color_gradient(low = "blue", high = "red")+
-#   geom_segment(data = spec.pcasat, aes(x = 0, y = 0, xend = PC1, yend = PC2), arrow=arrow(length=unit(0.2,"cm")),
-#                alpha = 0.75, color = 'darkred')+
-#   geom_text(data = spec.pcasat, aes(x = PC1, y = PC2, label = Label), nudge_x = .15)+
-#   guides(alpha = FALSE)+
-#   labs(colour = "Latitud", size = "DC(mn)")
+# # Biplot of PCA
+# biplot(pl2.pca, cex=0.8, col=c(1,8))
+# 
+# tiff(file = file.path(main_outputs, "pca_variable_plot.tiff"), 
+#      units = "in", width=5, height=5, res = 300)
+# 
+# # Graph of variables
+# fviz_pca_var(pl2.pca,
+#              col.var = "contrib", # Color by contributions to the PC
+#              gradient.cols =mag3,# c("#36648B", "#FFA500", "#8B2500"),
+#              repel = TRUE     # Avoid text overlapping
+# )
+# 
+# dev.off()
 
 
 # # Alt approach to plotting
 # 
-# PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
-# fviz_eig(pl2.pca)
-# 
-# # Put on row named
-# #Rename Col 1
-# View(pl2.data)
-# 
-# pcx <- pl2.pca$scores[,1]
-# pcy <- pl2.pca$scores[,2]
-# pcz <- pl2.pca$scores[,3]
-# 
-# pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
-# pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
-# pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
-# 
-# View(pl2.pca$scores)
-# 
-# tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"), 
+PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
+fviz_eig(pl2.pca)
+
+# Put on row named
+#Rename Col 1
+#View(pl2.data)
+
+pcx <- pl2.pca$scores[,1]
+pcy <- pl2.pca$scores[,2]
+pcz <- pl2.pca$scores[,3]
+
+pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
+pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
+pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
+
+View(pl2.pca$scores)
+
+# tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"),
 #      units = "in", width=10, height=5, res = 300)
-# 
+
+#plot.new()
+
 # # 3D as points
-# scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2, 
-#           col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
-#           ylab =pcylab, zlab = pczlab)
-# text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2,
+          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
+          ylab =pcylab, zlab = pczlab)
+#text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
+
+# Make interactive 3D plot
 # 
-# dev.off()
+# df3D <- data.frame(comp1=pl.pca$scores[,1],
+#                    comp2=pl.pca$scores[,2],
+#                    comp3=pl.pca$scores[,3])
+# fig <- plot_ly(df3D, x = ~comp1, y = ~comp2, z = ~comp3, color = ~comp3,  mode = 'lines+markers',
+#                # Hover text:
+#                text = ~rownames(pl.pca$scores))
+# fig <- fig %>% add_markers()
+# fig <- fig %>% add_text(textposition = "top right")
+# fig <- fig %>% layout(scene = list(xaxis = list(title = pcxlab),
+#                                    yaxis = list(title = pcylab),
+#                                    zaxis = list(title = pczlab)),
+#                       annotations = list(
+#                         x = 1.13,
+#                         y = 1.05,
+#                         text = 'PC3 Score',
+#                         showarrow = FALSE
+#                       ))
+# fig
+
+
+#dev.off()
 
 # ###Use prcomp() instead - this uses singular value decomposition 
 # 
@@ -478,13 +568,24 @@ dev.off()
 
 # Clusters
 
-```{r clusters , echo=FALSE, warning = FALSE, message = FALSE}
+```{r clusters , echo=FALSE, warning = FALSE, message = FALSE, fig.cap = "Dendrogram of PCA clusters"}
 
 # * Compute clusters ----
 
 # Compute hierarchical clustering on principal components
-res.pca24 <- PCA(pl2.data, ncp = 5, graph = FALSE)
-res.hcpc2 <- HCPC(res.pca24, graph = FALSE)
+
+
+#dev.off()
+
+res.hcpc2 <- HCPC(res.pca24,nb.clust = -1, graph = FALSE)
+
+# Tried including numerical variables inside PCA and cluster, but ends up with like 8 dimensions
+# x <- indicators_std_no_lpi %>% 
+#       merge(ecoregions_numeric_std, by = "ecoregion_id") %>% 
+#       dplyr::select(-ecoregion_id)
+# 
+# testpca <- PCA(x, ncp = 5, graph = FALSE)
+# testclust <- HCPC(testpca,nb.clust = -1, graph = FALSE)
 
 # saveRDS(res.hcpc2, file.path(cluster_outputs, "cluster.rds"))
 
@@ -509,7 +610,7 @@ tiff(file = file.path(supp_outputs, "pca_cluster_dendrogram.tiff"),
 
 dend <- fviz_dend(res.hcpc2, 
           cex = 0.7,                     # Label size
-          palette = viridis(3),               # Color palette see ?ggpubr::ggpar
+          palette = mag3,               # Color palette see ?ggpubr::ggpar
           rect = TRUE, rect_fill = TRUE, # Add rectangle around groups
           rect_border = viridis(3),           # Rectangle color
           labels_track_height = 0.8      # Augment the room for labels
@@ -529,51 +630,60 @@ dend
 #              main = "Factor map"
 # )
 
+```
 
+# Cluster map
+
+```{r cluster map , echo=FALSE, warning = FALSE, message = FALSE}
 # * Map clusters ----
+
 
 cluster_map_data <- ecoregion_map_renamed %>%
   merge(data.hcpc2[c("ecoregion_id", "cluster")], 
-        by = "ecoregion_id")
+        by = "ecoregion_id", all = TRUE)
 
-cluster_map <-  ggplot(cluster_map_data) +
+st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
+
+test_data <- cluster_map_data[1:50,]
+
+
+cluster_map <-  ggplot(test_data) +
   geom_sf(aes(fill = cluster), colour = "black", 
           size = 0.05, show.legend = 'fill') +
-  scale_fill_viridis_d(alpha = .8,
+  scale_fill_viridis_d(option = "plasma",
+                       alpha = .8,
+                       trans = "sqrt",
                        na.value = "grey70") +
-  theme(axis.line = element_line(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank()) +
+  theme_bw() +
   labs(fill = "Cluster") +
-  theme(legend.position = "right")
+  xlab("Longitude") + 
+  ylab("Latitude") +
+  theme(legend.position = "right",
+        panel.background = "light blue") +
+  annotation_scale(location = "bl", width_hint = 0.5) +
+  annotation_north_arrow(location = "bl", which_north = "true", 
+        pad_x = unit(0.75, "in"), pad_y = unit(0.5, "in"),
+        style = north_arrow_fancy_orienteering) 
+
+
+tmap_mode("view")
+
+tm_basemap("Stamen.Watercolor") +
+tm_shape(test_data) +
+      tm_polygons(col = "cluster",
+                  border.col = "black",
+                  style = "fixed",
+                  pal = "plasma") +
+      tm_layout(legend.outside = TRUE,
+                legend.outside.position = "right") +
+tm_tiles("Stamen.TonerLabels")
+    
 
 ggsave(file.path(main_outputs,
                  "cluster_map.png"), 
        cluster_map,  device = "png")
 
 # Add clusters to our data
-
-# Look at the ecoregions in each cluster
-
-cluster_one_ecoregions <- cluster_map_data %>% 
-  filter(cluster == 1) %>%
-  st_drop_geometry(.)
-
-cluster_two_ecoregions <- cluster_map_data %>% 
-  filter(cluster == 2) %>%
-  st_drop_geometry(.)
-
-cluster_three_ecoregions <- cluster_map_data %>% 
-  filter(cluster == 3) %>%
-  st_drop_geometry(.)
-
-# write.csv(cluster_one_ecoregions, file.path(supp_outputs, 
-#                                             "cluster_one_ecoregions.csv"))
-# write.csv(cluster_two_ecoregions, file.path(supp_outputs, 
-#                                             "cluster_two_ecoregions.csv"))
-# write.csv(cluster_three_ecoregions, file.path(supp_outputs,
-#                                               "cluster_three_ecoregions.csv"))
 
 cluster_data <- cluster_map_data %>% 
                 dplyr::select(-OBJECTID) %>% 
@@ -588,18 +698,16 @@ saveRDS(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.rds"))
 cluster_biplot_data <-  pca_data_5 %>%
   merge(cluster_map_data, by = "ecoregion_id")
 
-# saveRDS(cluster_biplot_data, file.path(cluster_outputs, 
-#                                        "cluster_biplot_data.rds"))
-# write.csv(cluster_biplot_data, file.path(cluster_outputs, 
-#                                          "cluster_biplot_data.csv"))
 
+# https://www.benjaminbell.co.uk/2018/02/principal-components-analysis-pca-in-r.html
 
-pca_cluster_plot <- fviz_pca_biplot(pl2.pca, geom.ind = "point", pointshape = 21, 
+pca_cluster_plot <- fviz_pca_biplot(res.pca24, geom.ind = "point", 
+                                    pointshape = 21, 
                                     pointsize = 2, 
-                                    col.ind = "black", 
-                                    palette = c("#453781FF","#287D8EFF", "#DCE319FF"),
-                                    alpha = 0.4,
-                                    addEllipses = TRUE,
+                                    #col.ind = "black", 
+                                    palette = mag3,
+                                    alpha = 0.2,
+                                    addEllipses = FALSE,
                                     label = "var",
                                     col.var = "black",
                                     repel = TRUE,

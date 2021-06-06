@@ -344,7 +344,7 @@ indicator_only_pca_2_data <- pca_data_5[,names(indicators_std_no_lpi)]
 ```
 # PCA
 
-```{r pca, echo=FALSE, warning = FALSE, message = FALSE, fig.cap = "biplot TBD"}
+```{r pca, echo=FALSE, warning = FALSE, message = FALSE, fig.cap = "Scree plot"}
 
 # * PCA ----
 
@@ -392,6 +392,31 @@ fviz_eig(res.pca24, addlabels = TRUE, ylim = c(0, 50))
 
 dev.off()
 
+# dimension descriptions
+
+res.desc <- dimdesc(res.pca24, axes = c(1,2), proba = 0.05)
+# Description of dimension 1
+one <- as.data.frame(cbind(rownames(res.desc$Dim.1[[1]]), res.desc$Dim.1[[1]]))
+
+one <- one %>% 
+       mutate(dimension = "1") %>% 
+       rename(indicators = V1)
+      
+
+two <- as.data.frame(cbind(rownames(res.desc$Dim.2[[1]]), res.desc$Dim.2[[1]]))
+
+two <- two %>% 
+       mutate(dimension = "2")  %>% 
+       rename(indicators = V1)
+
+pca_dimension_correlations <- rbind(one, two)
+
+pca_dimension_correlations
+
+write.csv(pca_dimension_correlations,
+          file.path(supp_outputs,
+                    "pca_dimension_correlations.csv"))
+
 # Alt - Using princomp function 
 
 pc.f2 <- formula(paste("~", paste(names(pl2.data), collapse = "+")))
@@ -401,29 +426,6 @@ pc.f2 <- formula(paste("~", paste(names(pl2.data), collapse = "+")))
 pl2.pca <- princomp(pc.f2, cor=TRUE, data=pl2.data)
 summary(pl2.pca)
 
-test <- prcomp(pc.f2, cor=TRUE, data=pl2.data)
-summary(test)
-
-test$rotation[, 1:3]
-
-
-data.scaled <- scale(wisc.data)
-
-# Calculate the (Euclidean) distances: data.dist
-data.dist <- dist(pl2.data)
-
-# Create a hierarchical clustering model: wisc.hclust
-wisc.hclust <- hclust(data.dist, method = "complete")
-
-plot(wisc.hclust)
-
-wisc.hclust.clusters <- cutree(wisc.hclust, k = 3)
-
-
-test.out <- hclust(dist(test$x[, 1:4]), method = "complete")
-
-wisc.pr.hclust.clusters <- cutree(test.out, k = 3)
-table(wisc.pr.hclust.clusters)
 # save pca
 
 # saveRDS(pl2.pca, file.path(pca_outputs, "pca.rds"))
@@ -452,7 +454,7 @@ write.csv(pca_loadings, file.path(main_outputs,
 #      main = "Cumulative variance plot")
 
 # Plot results - look to see number of PCA axes to retain
-plot(pl2.pca, type="lines")
+# plot(pl2.pca, type="lines")
 
 # Plot points#
 
@@ -483,32 +485,32 @@ plot(pl2.pca, type="lines")
 
 # # Alt approach to plotting
 # 
-PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
-fviz_eig(pl2.pca)
-
-# Put on row named
-#Rename Col 1
-#View(pl2.data)
-
-pcx <- pl2.pca$scores[,1]
-pcy <- pl2.pca$scores[,2]
-pcz <- pl2.pca$scores[,3]
-
-pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
-pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
-pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
-
-View(pl2.pca$scores)
-
-# tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"),
-#      units = "in", width=10, height=5, res = 300)
-
-#plot.new()
-
-# # 3D as points
-scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2,
-          col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
-          ylab =pcylab, zlab = pczlab)
+# PoV <- pl2.pca$sdev^2/sum(pl2.pca$sdev^2)
+# fviz_eig(pl2.pca)
+# 
+# # Put on row named
+# #Rename Col 1
+# #View(pl2.data)
+# 
+# pcx <- pl2.pca$scores[,1]
+# pcy <- pl2.pca$scores[,2]
+# pcz <- pl2.pca$scores[,3]
+# 
+# pcxlab <- paste("PC1 (", round(PoV[1] * 100, 2), "%)")
+# pcylab <- paste("PC2 (", round(PoV[2] * 100, 2), "%)")
+# pczlab <- paste("PC3 (", round(PoV[3] * 100, 2), "%)")
+# 
+# View(pl2.pca$scores)
+# 
+# # tiff(file = file.path(current_analysis_outputs, "pca_3D_plot.tiff"),
+# #      units = "in", width=10, height=5, res = 300)
+# 
+# #plot.new()
+# 
+# # # 3D as points
+# scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2,
+#           col = gg.col(100), theta = 150, phi = 0, main = "PCA Scores", xlab = pcxlab,
+#           ylab =pcylab, zlab = pczlab)
 #text3D(pcx, pcy, pcz,  labels = rownames(pl2.pca$scores), add = TRUE, colkey = FALSE, cex = 0.7)
 
 # Make interactive 3D plot
@@ -574,20 +576,32 @@ scatter3D(pcx, pcy, pcz, bty = "g", pch = 20, cex = 2,
 
 # Compute hierarchical clustering on principal components
 
+# http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/
 
 #dev.off()
 
-res.hcpc2 <- HCPC(res.pca24,nb.clust = -1, graph = FALSE)
+res.hcpc2 <- HCPC(res.pca24,nb.clust = -1, graph = FALSE) # - 1 lets algorithm select number of clusters
 
-# Tried including numerical variables inside PCA and cluster, but ends up with like 8 dimensions
-# x <- indicators_std_no_lpi %>% 
-#       merge(ecoregions_numeric_std, by = "ecoregion_id") %>% 
-#       dplyr::select(-ecoregion_id)
-# 
-# testpca <- PCA(x, ncp = 5, graph = FALSE)
-# testclust <- HCPC(testpca,nb.clust = -1, graph = FALSE)
 
-# saveRDS(res.hcpc2, file.path(cluster_outputs, "cluster.rds"))
+clusters <- fviz_cluster(res.hcpc2,
+             repel = TRUE,            # Avoid label overlapping
+             show.clust.cent = TRUE, # Show cluster centers
+             palette = "jco",         # Color palette see ?ggpubr::ggpar
+             ggtheme = theme_minimal(),
+             main = "Factor map"
+             )
+
+# Get indicators most associated with each cluster
+
+cluster_indicators <- res.hcpc2$desc.var$quanti
+
+# Look at dimensions most associated with each cluster
+
+cluster_dimensions <- res.hcpc2$desc.axes$quanti
+
+# Get ecoregions representative of each cluster
+
+cluster_ecoregion_representatives <- res.hcpc2$desc.ind$para
 
 # * Make cluster data ----
 
@@ -620,16 +634,6 @@ dev.off()
 
 dend
 
-# Factor map
-
-# fviz_cluster(res.hcpc2,
-#              repel = TRUE,            # Avoid label overlapping
-#              show.clust.cent = TRUE, # Show cluster centers
-#              palette = "jco",         # Color palette see ?ggpubr::ggpar
-#              ggtheme = theme_bw(),
-#              main = "Factor map"
-# )
-
 ```
 
 # Cluster map
@@ -637,46 +641,151 @@ dend
 ```{r cluster map , echo=FALSE, warning = FALSE, message = FALSE}
 # * Map clusters ----
 
+# create palette for the clusters
+plas3 <- plasma(3)
+plas3rv <- c("#F79044FF","#CC4678FF", "#5901A5FF")
 
 cluster_map_data <- ecoregion_map_renamed %>%
   merge(data.hcpc2[c("ecoregion_id", "cluster")], 
         by = "ecoregion_id", all = TRUE)
 
+clus1_data <- cluster_map_data %>% 
+              filter(cluster == 1)
+
+hawaii <- clus1_data  %>%  filter(str_detect(ECO_NAME, "Hawai'i"))
+marianas <- clus1_data  %>%  filter(str_detect(ECO_NAME, "Marianas"))
+
+clus1_split <- split(clus1_data, clus1_data$REALM)
+
+clus1_names <- c("Afrotropic","Australasia", "Neotropic", "Palearctic",
+                 "Hawaii", "Northern Marianas")
+
+clus1_split <- list(clus1_split[[1]], clus1_split[[2]],
+                    clus1_split[[3]], clus1_split[[4]],
+                    hawaii, marianas)
+
+names(clus1_split) <- clus1_names
+
 st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
 
 test_data <- cluster_map_data[1:50,]
 
+# https://upgo.lab.mcgill.ca/2019/12/13/making-beautiful-maps/#making_the_map
 
-cluster_map <-  ggplot(test_data) +
+library(cowplot)
+
+cluster_map <-  ggplot(cluster_map_data) +
   geom_sf(aes(fill = cluster), colour = "black", 
-          size = 0.05, show.legend = 'fill') +
-  scale_fill_viridis_d(option = "plasma",
-                       alpha = .8,
-                       trans = "sqrt",
-                       na.value = "grey70") +
-  theme_bw() +
+          size = 0.05, show.legend = 'fill', alpha = 0.8) +
+  scale_fill_manual(values = plas3rv,
+                    na.value = "grey70") +
   labs(fill = "Cluster") +
   xlab("Longitude") + 
   ylab("Latitude") +
-  theme(legend.position = "right",
-        panel.background = "light blue") +
-  annotation_scale(location = "bl", width_hint = 0.5) +
-  annotation_north_arrow(location = "bl", which_north = "true", 
-        pad_x = unit(0.75, "in"), pad_y = unit(0.5, "in"),
-        style = north_arrow_fancy_orienteering) 
+  theme(legend.position = "right") +
+  coord_sf()
 
+ggsave(file.path(main_outputs,
+                 "cluster_map.png"), 
+       cluster_map,  device = "png")
+
+cluster_1_maps <- list()
+
+for (i in seq_along(clus1_split)) {
+
+map <- cluster_map +
+  coord_sf(
+    xlim = sf::st_bbox(clus1_split[[i]])[c(1,3)],
+    ylim = sf::st_bbox(clus1_split[[i]])[c(2,4)],
+    expand = FALSE
+    )
+
+realm <- names(clus1_split)[[i]]
+
+ggsave(file.path(main_outputs, paste(realm,
+                 "cluster1_map.png", sep = "_")), 
+       map,  device = "png")
+
+cluster_1_maps[[i]] <- map
+
+}
+
+ggdraw(cluster_map) +
+  draw_plot(
+    {
+      cluster_map + 
+      coord_sf(
+    xlim = sf::st_bbox(afrotropic)[c(1,3)],
+    ylim = sf::st_bbox(afrotropic)[c(2,4)],
+    expand = FALSE
+    )
+      },
+    # The distance along a (0,1) x-axis to draw the left edge of the plot
+    x = 0.58, 
+    # The distance along a (0,1) y-axis to draw the bottom edge of the plot
+    y = 0,
+    # The width and height of the plot expressed as proportion of the entire ggdraw object
+    width = 0.46, 
+    height = 0.46)
+
+# https://ecodiv.earth/post/creating-a-map-with-inset-using-tmap/
 
 tmap_mode("view")
 
-tm_basemap("Stamen.Watercolor") +
+
+tm_basemap("categorical") +
 tm_shape(test_data) +
       tm_polygons(col = "cluster",
                   border.col = "black",
+                  border.alpha = 0.5,
                   style = "fixed",
-                  pal = "plasma") +
+                  pal = plas3rv) +
+      tm_graticules(lines = FALSE)+
       tm_layout(legend.outside = TRUE,
-                legend.outside.position = "right") +
-tm_tiles("Stamen.TonerLabels")
+                legend.outside.position = "right",
+                bg.color = "light blue",
+                saturation = 1,
+                compass.type = "4star",
+                frame = TRUE) 
+
+
+xy <- st_bbox(afrotropic)
+asp2 <- (xy$xmax - xy$xmin)/(xy$ymax - xy$ymin)
+
+insetmap = tm_shape(afrotropic) + tm_fill(col="lightgrey") +
+  m_borders(lwd = 1, col="grey") +
+  tm_shape(sg) + tm_borders(lw=2, col="red") +
+  tm_layout(inner.margins = c(0.04,0.04,0.04,0.04), outer.margins=c(0,0,0,0))
+
+# Create viewport
+w <- 0.25
+h <- asp2 * w
+vp <- viewport(x=0.985, y=0.585, width = w, height=h, just=c("right", "top"))
+
+
+
+cluster_1_map <- function(data) {
+  
+tm_basemap("categorical") +
+tm_shape(data) +
+      tm_polygons(col = "cluster",
+                  border.col = "black",
+                  border.alpha = 0.5,
+                  style = "fixed",
+                  pal = "#F0F921FF") +
+      tm_graticules(lines = FALSE)+
+      tm_layout(legend.outside = TRUE,
+                legend.outside.position = "right",
+                bg.color = "light blue",
+                saturation = 1,
+                compass.type = "4star",
+                frame = TRUE)
+  
+}
+
+
+cluster_1_map(clus1_split[[1]])
+              
     
 
 ggsave(file.path(main_outputs,
@@ -692,6 +801,11 @@ cluster_data <- cluster_map_data %>%
   
 write.csv(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.csv"))
 saveRDS(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.rds"))
+```
+
+# PCA biplot with clusters
+
+```{r cluster biplot , echo=FALSE, warning = FALSE, message = FALSE}
 
 # Cluster biplot data
 
@@ -705,13 +819,14 @@ pca_cluster_plot <- fviz_pca_biplot(res.pca24, geom.ind = "point",
                                     pointshape = 21, 
                                     pointsize = 2, 
                                     #col.ind = "black", 
-                                    palette = mag3,
-                                    alpha = 0.2,
-                                    addEllipses = FALSE,
+                                    palette = plas3rv,
+                                    alpha = 0.4,
+                                    addEllipses = TRUE,
                                     label = "var",
                                     col.var = "black",
                                     repel = TRUE,
                                     fill.ind = as.factor(cluster_biplot_data$cluster),
+                                    col.ind = as.factor(cluster_biplot_data$cluster),
                                     legend.title = "Cluster") +
   theme(plot.title = element_blank(),
         legend.position = "right") +
@@ -722,6 +837,8 @@ ggsave(file.path(main_outputs, "cluster_biplot.png"),
        pca_cluster_plot,  device = "png") 
 
 rm(cluster_map)
+
+
 
 ```
 

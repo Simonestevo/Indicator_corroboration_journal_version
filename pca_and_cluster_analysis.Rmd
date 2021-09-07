@@ -666,6 +666,16 @@ clus1_split <- list(clus1_split[[1]], clus1_split[[2]],
 
 names(clus1_split) <- clus1_names
 
+for (i in seq_along(clus1_split)) {
+  
+  clus1_realm_name <- paste(names(clus1_split)[i], "cluster1_map_data.shp", sep = "_")
+  
+  num <- i
+  
+  st_write(clus1_split[[i]], 
+           file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
+}
+
 st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
 
 test_data <- cluster_map_data[1:50,]

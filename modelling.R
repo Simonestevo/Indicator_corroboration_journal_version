@@ -22,28 +22,14 @@ rm(list = ls()) # clear memory
 
 # TODO ----
 
-#' TODO: Prepare stats summary for indicators and variables (or can use 
-#' boxplots? add jitter?)
-#' TODO: Split input prep from data visualisation
-#' TODO: Remove superfluous steps
-#' TODO: Make another folder called something like MS figures? for stuff that's
-#' definitely going in
-#' TODO: Fix ecoregion lookup function
-#' TODO: Figure out cluster on princomp pl.pca object
-#' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
-#' caterpillar plots
-#' TODO: Rename grouping variables to categorical variables
-#' TODO: Note the categorical independence matrices contain NAs because the combinations
-#' are in the wrong order - not sure how to fix?
-
 # PCA, Clustering, Models
-library(factoextra)
-library(FactoMineR)
+
 library(corrplot)
 library(ape)
-#library(MASS)
+library(MASS)
 library(ggpubr)
 library(betareg)
+library(performance)
 
 # Data handling and table reshaping
 library(tidyverse)
@@ -56,6 +42,7 @@ library(e1071)
 library(psych)
 library(arules)
 library(ppsr)
+library(broom)
 
 # Plotting
 library(ggplot2)
@@ -185,6 +172,17 @@ grouping_variables <- grouping_variables[!str_detect(grouping_variables, "ecoreg
 numeric_variables <- names(ecoregions_numeric_raw)
 numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion_id")]
 
+# Make correlation matrix of numeric predictors
+
+ecoregions_numeric_raw <- ecoregions_numeric_raw[complete.cases(
+                          ecoregions_numeric_raw),]
+
+numeric_cor_inputs <- as.matrix(ecoregions_numeric_raw %>% 
+                      dplyr::select(all_of(numeric_variables)))
+
+numeric_cor <- cor(numeric_cor_inputs, method = "spearman")
+
+View(numeric_cor)
 
 # Prepare model data ----
 
@@ -201,6 +199,8 @@ model_input_data <- indicators_raw_no_lpi %>%
   dplyr::select(-included_in_hfp)
 
 head(model_input_data)
+
+write.csv(model_input_data, "9_model_input_data.csv")
 
 
 model_input_data$BHI_plants_2005 <- scale(model_input_data$BHI_plants_2005,
@@ -229,15 +229,12 @@ model_input_data$scaled_threat_count <- scale(model_input_data$scaled_threat_cou
 
 boxplot(RLI_2008 ~ area_factor, data = model_input_data) 
 
-# Try a glm - not correct family, gives odd qqplots etc
-mod_out_bhi <- glm(RLI_2008 ~ BHI_plants_2005 * rli_records, 
-                   family = "gaussian", data = model_input_data)
 
-mod_out_scaled_rli <- glm(RLI_2008 ~ BHI_plants_2005 * rli_records * ecoregion_area_km_sq, 
-                          family = "gaussian", data = model_input_data)
-
-# Try beta regression
+# Beta regression ----
 # https://stats.stackexchange.com/questions/233366/how-to-fit-a-mixed-model-with-response-variable-between-0-and-1
+
+test <- glmmadmb(RLI_2008 ~ BHI_plants_2005 + (1|ecoregion_area_km_sq), 
+         model_input_data, family="beta")
 
 bhi_mod <- betareg(RLI_2008 ~ BHI_plants_2005, data = model_input_data)
 summary(bhi_mod)
@@ -309,32 +306,126 @@ qqnorm(resid(bii_threat_area_mod))
 qqline(resid(bii_threat_area_mod))
 
 bii_data_mod <- betareg(RLI_2008 ~ BIIab_2005 + rli_records, data = model_input_data)
+
 summary(bii_threat_area_mod)
 qqnorm(resid(bii_threat_area_mod))
 qqline(resid(bii_threat_area_mod))
 
 hfp_mod <- betareg(RLI_2008 ~ HFP_2005, 
                    data = model_input_data)
-summary(test_mod)
-qqnorm(resid(test_mod))
-qqline(resid(test_mod))
+
+summary(hfp_mod)
+qqnorm(resid(hfp_mod))
+qqline(resid(hfp_mod))
 
 null_mod <- betareg(RLI_2008 ~ 1 | 1, data = model_input_data)
 summary(null_mod)
 qqnorm(resid(null_mod))
 qqline(resid(null_mod))
 
+
+test_mod <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count|scaled_threat_count, link = "cloglog", data = model_input_data)
+
+test_mod2 <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count|scaled_threat_count + island_status, link = "cloglog", data = model_input_data)
+
+
+test_mod3 <- betareg(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count|scaled_threat_count + island_status, link = "loglog", data = model_input_data)
+
+
+
 beta_AIC <- as.data.frame(AIC(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
                               bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
-                              hfp_mod, bhi_threat_type_mod, bhi_island_threats_mod))
+                              hfp_mod, bhi_threat_type_mod, bhi_island_threats_mod, test_mod, test_mod2, test_mod3))
 
 beta_AIC <- beta_AIC %>% 
   arrange(AIC)
 
 beta_AIC
 
+best_model <- test_mod3
+
+comp <- compare_performance(bii_threat_mod, bhi_threat_mod, bii_threat_area_mod, null_mod, 
+                            bhi_mod, bhi_rli_mod, bii_mod, bii_threat_area_data_mod, bii_data_mod,
+                            hfp_mod, bhi_threat_type_mod, bhi_island_threats_mod, test_mod, test_mod3, test_mod2)
+
+comp
+
 write.csv(beta_AIC, file.path(main_outputs, "draft_model_AIC.csv"))
 
-modsum <- tidy(bhi_island_threats_mod)
+# Try a dredge
+
+install.packages("MuMIn")
+library(MuMIn)
+
+options(na.action = "na.fail")
+
+dredge_input <- model_input_data %>% 
+                dplyr::select(BHI_plants_2005, RLI_2008, BIIab_2005, HFP_2005, biome, disturbance_year, island_status, predominant_threat_type, land_use, realm,
+                              ecoregion_area_km_sq, high_beta_area, rli_records, lpi_records, scaled_threat_count)
+
+gm <- betareg(RLI_2008 ~ ., link = "loglog", data = dredge_input)
+
+dredge_models <- dredge(gm)
+
+subset(dredge_models, delta < 4)
+# Visualize the model selection table:
+par(mar = c(3,5,6,4))
+plot(dredge_models, labAsExpr = TRUE)
+
+par(mar = c(3,5,6,4))
+plot(dd, labAsExpr = TRUE)
+# Model average models with delta AICc < 4
+model.avg(dd, subset = delta < 4)
+
+# https://www.stata.com/manuals/rbetareg.pdf
+
+modsum <- tidy(best_model)
+
+binned_residuals(best_model)
+plot(best_model, which = 1:4, type = "pearson")
+plot(best_model,  which = 5, type = "deviance", sub.caption = "")
+plot(best_model,  which = 1, type = "deviance", sub.caption = "")
+coef(best_model, model = "precision")
+library(lmtest)
+coeftest(best_model)
+lrtest(best_model)
+
+unique(fitted(best_model))
+
+plot(fitted(best_model),
+     residuals(best_model))
+
+x <- cbind(model_input_data$RLI_2008,fitted(best_model))
+
+par(mar=c(5,5,1,1))
+cex.lab <- cex.axis <- 2
+plot(model_input_data$RLI_2008 ~ model_input_data$BHI_plants_2005, xlab="BHI", ylab="RLI")
+axis(1, at=c(1,2,3), cex.axis=cex.axis)
+points(fitted(best_model), model_input_data$BHI_plants_2005, col="red", pch=0, cex=2)
 
 write.csv(modsum, file.path(main_outputs, "draft_model_summary.csv"))
+
+# Model type comparisons
+
+# GLM guassian
+
+glmtestg <- glm(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count, 
+               family = "gaussian", data = model_input_data)
+
+# GLM bernoulli
+
+test <- model_input_data %>% 
+        mutate(success = round(RLI_2008 * 100),
+               fail = 100 - success)
+
+glmtestb <- glm(cbind(success, fail) ~ BHI_plants_2005 * island_status * scaled_threat_count, 
+                family = "binomial", data = test)
+
+# GAM betareg
+
+library(mgvc)
+
+gambr <- gam(RLI_2008 ~ BHI_plants_2005 * island_status * scaled_threat_count, 
+                        family = betar(), data = model_input_data)
+
+compare_performance(best_model, glmtestb, glmtestg)

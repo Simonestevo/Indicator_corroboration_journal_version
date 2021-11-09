@@ -42,7 +42,7 @@ library(devtools)
 library(data.table)
 library(rlist)
 # library(e1071)
-# library(psych)
+library(psych)
 # library(arules)
 
 
@@ -2148,7 +2148,7 @@ ggsave(file.path(main_outputs, "cluster_heatmaps.png"),
 
 ```
 
-# Cluster scatterplots
+# Cluster scatterplots - absolute indicator score
 
 ```{r Cluster heatmaps, include = FALSE, echo=FALSE, warning = FALSE, message = FALSE}
 
@@ -2191,12 +2191,65 @@ cluster_scatterplots <- ggplot(data = rli_bhi_scatterplot_data,
               axis.text.y = element_text(size=14),
               strip.text.x = element_text(size = 18),
               strip.background = element_blank()) +
-        facet_wrap(~ cluster_label, nrow = 1, scales = "free") +
+        facet_wrap(~ cluster_label, nrow = 1) +
+        #facet_wrap(~ cluster_label, nrow = 1, scales = "free") +
         scale_x_continuous(limits=c(0.3, 1)) + 
-        scale_y_continuous(limits=c(0.75,1))
+        scale_y_continuous(limits=c(0.3,1))
   
 ggsave(file.path(main_outputs, "cluster_scatterplots.png"),
        cluster_scatterplots, width = 12, height = 6, units = "in",
+       device = "png")
+```
+
+# Cluster scatterplots - rank order
+
+```{r rank scatterplot, include = FALSE, echo=FALSE, warning = FALSE, message = FALSE}
+
+input_data <- indicators_raw_no_lpi %>%
+                          merge(ecoregion_clusters[c("ecoregion_id",
+                                                     "cluster")],
+                                by = "ecoregion_id") %>% 
+                          merge(ecoregions_categorical,
+                                by = "ecoregion_id") %>% 
+                          dplyr::select(-included_in_hfp)
+
+rank_rli_bhi_scatterplot_data <- input_data %>% 
+                            dplyr::select(ecoregion_id,
+                                          BHI_plants_2005,
+                                          RLI_2008,
+                                          cluster) %>% 
+                            mutate(cluster_label = ifelse(
+                              cluster == 1, "Cluster one",
+                              ifelse(
+                              cluster == 2, "Cluster two",
+                              ifelse(
+                              cluster == 3, "Cluster three",NA)))) %>% 
+                            mutate(cluster_label = factor(cluster_label, 
+                               levels = c("Cluster one","Cluster two",
+                                          "Cluster three"))) %>% 
+                            mutate(BHI_rank_order = rank(BHI_plants_2005, "last"),
+                                   RLI_rank_order = rank(RLI_2008))
+
+rank_cluster_scatterplots <- ggplot(data = rank_rli_bhi_scatterplot_data,
+               aes(x = BHI_rank_order,
+                   y = RLI_rank_order)) +
+        geom_point(shape = 16) +
+        stat_cor(method = "spearman", label.x = 0.65, label.y = 0.79) +
+        coord_cartesian(xlim = c(0, 750), ylim = c(0, 750)) +
+        theme(panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x = element_text(size=18),
+              axis.title.y = element_text(size=18),
+              axis.text.x = element_text(size=14),
+              axis.text.y = element_text(size=14),
+              strip.text.x = element_text(size = 18),
+              strip.background = element_blank()) +
+        facet_wrap(~ cluster_label, nrow = 1)
+  
+ggsave(file.path(main_outputs, "rank_cluster_scatterplots.png"),
+       rank_cluster_scatterplots, width = 12, height = 6, units = "in",
        device = "png")
 ```
 

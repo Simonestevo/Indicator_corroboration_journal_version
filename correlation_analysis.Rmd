@@ -69,6 +69,10 @@ library(leaflet)
 
 # Set input and output locations ----
 
+output_date <- Sys.Date()
+ms_version <- "MS_v6" #Version of MS outputs are for
+section <- "correlations"
+
 analysis_date <- "2021-05-15"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
@@ -140,25 +144,74 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
+# Folder where current data stored
+
+data_inputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs\\2021-11-10\\MS_v6_data_outputs"
+
 # Folder for final manuscript figures
 
 manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
 
-dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
 
-dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), 
-                  full.names = TRUE,
-                  recursive = FALSE)
+if( !dir.exists( file.path(manuscript_outputs) ) ) {
+  dir.create( file.path(manuscript_outputs), recursive = TRUE )
+  
+}
 
-main_outputs <- dirs[str_detect(dirs, "main")]
+todays_outputs <- file.path(manuscript_outputs, output_date)
+
+if( !dir.exists( file.path(todays_outputs) ) ) {
+  dir.create( file.path(todays_outputs), recursive = TRUE )
+  
+}
+
+main_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_main_manuscript_outputs",sep=""), section)
+
+if( !dir.exists( file.path(main_outputs) ) ) {
+  dir.create( file.path(main_outputs), recursive = TRUE )
+  
+}
 
 # Folder for supporting info figures
 
-supp_outputs <- dirs[str_detect(dirs, "supporting")]
+supp_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_supporting_info_outputs",sep=""), section)
+  
 
-# Folder with indicator data
+if( !dir.exists( file.path(supp_outputs) ) ) {
+  dir.create( file.path(supp_outputs), recursive = TRUE )
+  
+}
 
-data_outputs <- dirs[str_detect(dirs, "data")]
+# Folder for clean data
+
+data_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_data_outputs",sep=""), section)
+  
+if( !dir.exists( file.path(data_outputs) ) ) {
+  dir.create( file.path(data_outputs), recursive = TRUE )
+  
+}
+
+
+# manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+# 
+# dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
+# 
+# dirs <- list.dirs(file.path(manuscript_outputs, analysis_date), 
+#                   full.names = TRUE,
+#                   recursive = FALSE)
+# 
+# main_outputs <- dirs[str_detect(dirs, "main")]
+# 
+# # Folder for supporting info figures
+# 
+# supp_outputs <- dirs[str_detect(dirs, "supporting")]
+# 
+# # Folder with indicator data
+# 
+# data_outputs <- dirs[str_detect(dirs, "data")]
 
 # Load functions ----
 
@@ -311,7 +364,7 @@ plotly_scatterplot <- function(data, col1, col2) {
 
 # Get data ----
 
-files_paths <- list.files(data_outputs, full.names = TRUE)
+files_paths <- list.files(data_inputs, full.names = TRUE)
 
 indicators_all_timepoints <- readRDS(files_paths[str_detect(files_paths, 
                                                             "0_indicators_all_timepoints.rds")])
@@ -1800,20 +1853,24 @@ correlations_edited <- all_correlations %>%
                                                   coefficient > 0, "weak",
                                            ifelse(coefficient > 0.3 &
                                                   coefficient < 0.7,
-                                                  "complementary",
-                                           ifelse(coefficient > 0.7 |
-                                                  coefficient < -0.7,
-                                                  "proxy-redundant",
+                                                  "moderate",
+                                           ifelse(coefficient > 0.7 & coefficient < 1|
+                                                  coefficient < -0.7 & coefficient > -1,
+                                                  "strong",
                                            ifelse(coefficient < -0.3 &
                                                   coefficient > -0.7,
-                                                  "complementary",
+                                                  "moderate",
                                            ifelse(coefficient == 0,
                                                   "no-relationship",
-                                                  "NA"))))))) %>% 
-                       mutate(corr_level = factor(corr_level, levels = c("proxy-redundant",
-                                                                         "complementary",
+                                           ifelse(coefficient == 1|
+                                                  coefficient == -1,
+                                                  "self-comparison",
+                                                  "NA")))))))) %>% 
+                       mutate(corr_level = factor(corr_level, levels = c("strong",
+                                                                         "moderate",
                                                                          "weak",
-                                                                         "no-relationship"))) %>%
+                                                                         "no-relationship",
+                                                                         "self-comparison"))) %>%
                        mutate(coeff_ch = as.character(coefficient)) %>% 
                        mutate(coeff_ch = ifelse(coeff_ch == "0", "0.00",
                                               ifelse(coeff_ch == "0.8", "0.80",
@@ -1841,7 +1898,7 @@ Ind1 <- unique(temp_corr$Ind1)
 Ind2 <- Ind1
 coefficient <- rep(1, times = length(Ind1))
 red <- unique(temp_corr$corr_level)[3]
-corr_level <- rep(red, times = length(Ind1))
+corr_level <- rep("self-comparison", times = length(Ind1))
 coeff_label <- rep("1.00",
                    times = length(Ind1))
 
@@ -1862,7 +1919,7 @@ global_heatmap_no_lpi_data <- rbind(temp_corr, self_corr) %>%
                                                              "HFP"))) 
 
 heatmap_pal_gradient <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
-heatmap_pal_vir <- viridis(4)
+heatmap_pal_vir <- c(viridis(4), "grey80")
 
 global_heatmap_no_lpi <- ggplot(global_heatmap_no_lpi_data, aes(x = Ind1, 
                                                                 y = Ind2, 
@@ -1911,18 +1968,18 @@ correlations_edited <- all_correlations %>%
                                                   coefficient > 0, "weak",
                                            ifelse(coefficient > 0.3 &
                                                   coefficient < 0.7,
-                                                  "complementary",
+                                                  "moderate",
                                            ifelse(coefficient > 0.7 |
                                                   coefficient < -0.7,
-                                                  "proxy-redundant",
+                                                  "strong",
                                            ifelse(coefficient < -0.3 &
                                                   coefficient > -0.7,
-                                                  "complementary",
+                                                  "moderate",
                                            ifelse(coefficient == 0,
                                                   "no-relationship",
                                                   "NA"))))))) %>% 
-                       mutate(corr_level = factor(corr_level, levels = c("proxy-redundant",
-                                                                         "complementary",
+                       mutate(corr_level = factor(corr_level, levels = c("strong",
+                                                                         "moderate",
                                                                          "weak",
                                                                          "no-relationship"))) %>% 
                        mutate(coeff_ch = as.character(coefficient)) %>% 
@@ -1952,7 +2009,7 @@ Ind1 <- unique(temp_corr$Ind1)
 Ind2 <- Ind1
 coefficient <- rep(1, times = length(Ind1))
 red <- unique(temp_corr$corr_level)[3]
-corr_level <- rep(red, times = length(Ind1))
+corr_level <- rep("self-comparison", times = length(Ind1))
 coeff_label <- rep("1.00",
                    times = length(Ind1))
 
@@ -1976,7 +2033,7 @@ global_heatmap_lpi_data <- rbind(temp_corr, self_corr) %>%
                                                              "HFP"))) 
 
 heatmap_pal <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
-heatmap_pal_vir <- viridis(4)
+heatmap_pal_vir <- c(viridis(4), "grey80")
 
 global_heatmap_lpi <- ggplot(global_heatmap_lpi_data, 
                              aes(x = Ind1, y = Ind2, 
@@ -2024,19 +2081,19 @@ correlations_clusters <- all_correlations %>%
                                                   coefficient > 0, "weak",
                                            ifelse(coefficient >= 0.3 &
                                                   coefficient < 0.7,
-                                                  "complementary",
+                                                  "moderate",
                                            ifelse(coefficient >= 0.7 |
                                                   coefficient <= -0.7|
                                                   coefficient == 1,
-                                                  "proxy-redundant",
+                                                  "strong",
                                            ifelse(coefficient <= -0.3 &
                                                   coefficient >= -0.7,
-                                                  "complementary",
+                                                  "moderate",
                                            ifelse(coefficient == 0,
                                                   "no-relationship",
                                                   "NA"))))))) %>% 
-                       mutate(corr_level = factor(corr_level, levels = c("proxy-redundant",
-                                                                         "complementary",
+                       mutate(corr_level = factor(corr_level, levels = c("strong",
+                                                                         "moderate",
                                                                          "weak",
                                                                          "no-relationship"))) %>% 
                        mutate(coeff_ch = as.character(coefficient)) %>% 
@@ -2071,7 +2128,7 @@ temp_corr <- rbind(newdata, flipped_correlations) %>%
 Ind1 <- unique(temp_corr$Ind1)
 Ind2 <- Ind1
 coefficient <- rep(1.00, times = length(Ind1))
-corr_level <- rep("proxy-redundant", times = length(Ind1))
+corr_level <- rep("self-comparison", times = length(Ind1))
 coeff_label <- rep("1.00",
                    times = length(Ind1))
 subgroup <- rep(sub_name,
@@ -2113,7 +2170,7 @@ cluster_heatmap_data <- rbind(clus1, clus2, clus3) %>%
                                                     coeff_label))
 
 heatmap_pal <- scales::seq_gradient_pal("gray30", "white", "Lab")(seq(0,1,length.out=4))
-heatmap_pal_vir <- viridis(4)
+heatmap_pal_vir <- c(viridis(4), "grey80")
 
 cluster_heatmap <- ggplot(cluster_heatmap_data, 
                              aes(x = Ind1, y = Ind2, 

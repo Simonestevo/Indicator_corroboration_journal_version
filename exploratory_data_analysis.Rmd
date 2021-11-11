@@ -79,6 +79,10 @@ library(ggthemes)
 
 # Set input and output locations ----
 
+output_date <- Sys.Date()
+ms_version <- "MS_v6" #Version of MS outputs are for
+section <- "exploratory"
+
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
@@ -150,32 +154,58 @@ if( (length(analysis_outputs)) == 0 ) {
 # Folder for final manuscript figures
 
 manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+
+
+if( !dir.exists( file.path(manuscript_outputs) ) ) {
+  dir.create( file.path(manuscript_outputs), recursive = TRUE )
   
-dir.create(manuscript_outputs, recursive = TRUE ) # create a new directory for today's outputs
+}
 
-todays_outputs <- file.path(manuscript_outputs, date)
+todays_outputs <- file.path(manuscript_outputs, output_date)
 
-dir.create(todays_outputs)
-
-main_outputs <- file.path(todays_outputs, paste(date,
-                                 "_main_manuscript_outputs",sep="") )
+if( !dir.exists( file.path(todays_outputs) ) ) {
+  dir.create( file.path(todays_outputs), recursive = TRUE )
   
-dir.create(main_outputs, recursive = TRUE )
+}
+
+main_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_main_manuscript_outputs",sep=""), section)
+
+if( !dir.exists( file.path(main_outputs) ) ) {
+  dir.create( file.path(main_outputs), recursive = TRUE )
+  
+}
 
 # Folder for supporting info figures
 
-supp_outputs <- file.path(todays_outputs, paste(date,
-                                 "_supporting_info_outputs",sep="") )
+supp_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_supporting_info_outputs",sep=""), section)
   
-dir.create(supp_outputs, recursive = TRUE )
 
-# Folder for clean data
-
-data_outputs <- file.path(todays_outputs, paste(date,
-                                 "_data_outputs",sep="") )
+if( !dir.exists( file.path(supp_outputs) ) ) {
+  dir.create( file.path(supp_outputs), recursive = TRUE )
   
-dir.create(data_outputs, recursive = TRUE )
+}
 
+# Folder for exploratory specific data
+
+data_outputs <- file.path(todays_outputs, paste(ms_version,
+                                 "_data_outputs",sep=""), section)
+  
+if( !dir.exists( file.path(data_outputs) ) ) {
+  dir.create( file.path(data_outputs), recursive = TRUE )
+  
+}
+
+# Folder for clean data that acts as inputs to all subsequent steps
+
+clean_data <- file.path(todays_outputs, paste(ms_version,
+                                 "_cleaned_data",sep=""))
+  
+if( !dir.exists( file.path(clean_data) ) ) {
+  dir.create( file.path(clean_data), recursive = TRUE )
+  
+}
 
 # Load functions ----
 
@@ -594,8 +624,8 @@ min(indicators_wide$extinct_2008, na.rm = TRUE)
 
 # * Remove unwanted indicators ----
 
-saveRDS(indicators_wide_2, file.path(data_outputs, "0_indicators_all_timepoints.rds"))
-write.csv(indicators_wide_2, file.path(data_outputs, "0_indicators_all_timepoints.csv"))
+saveRDS(indicators_wide_2, file.path(clean_data, "0_indicators_all_timepoints.rds"))
+write.csv(indicators_wide_2, file.path(clean_data, "0_indicators_all_timepoints.csv"))
 
 indicators_cleaned <- indicators_wide_2 %>%
   dplyr::select(-number_extinct_2008, -number_extinct_2016,
@@ -616,8 +646,8 @@ indicators_cleaned_2005_lpi <- indicators_cleaned %>%
 indicators_correlation_input_lpi <- indicators_cleaned_2005_lpi[complete.cases(
   indicators_cleaned_2005_lpi),]
 
-saveRDS(indicators_correlation_input_lpi, file.path(data_outputs, "1_indicators_cleaned_lpi.rds"))
-write.csv(indicators_correlation_input_lpi, file.path(data_outputs, "1_indicators_cleaned_lpi.csv"))
+saveRDS(indicators_correlation_input_lpi, file.path(clean_data, "1_indicators_cleaned_lpi.rds"))
+write.csv(indicators_correlation_input_lpi, file.path(clean_data, "1_indicators_cleaned_lpi.csv"))
 
 indicator_correlation_matrix_lpi <- cor(indicators_correlation_input_lpi, 
                                      method = "spearman")
@@ -642,8 +672,8 @@ indicators_cleaned_2005 <- indicators_cleaned %>%
 indicators_correlation_input <- indicators_cleaned_2005[complete.cases(
   indicators_cleaned_2005),]
 
-saveRDS(indicators_correlation_input, file.path(data_outputs, "2_indicators_cleaned_no_lpi.rds"))
-write.csv(indicators_correlation_input, file.path(data_outputs, "2_indicators_cleaned_no_lpi.csv"))
+saveRDS(indicators_correlation_input, file.path(clean_data, "2_indicators_cleaned_no_lpi.rds"))
+write.csv(indicators_correlation_input, file.path(clean_data, "2_indicators_cleaned_no_lpi.csv"))
 
 
 # Make and save the summary table
@@ -680,10 +710,10 @@ write.csv(indicator_correlation_matrix,
 # ## Save the cleaned indicator data
 # 
 # saveRDS(indicators_cleaned,
-#         file.path(data_outputs, "indicators_cleaned.RDS"))
+#         file.path(clean_data, "indicators_cleaned.RDS"))
 # 
 # write.csv(indicators_cleaned,
-#           file.path(data_outputs, "indicators_cleaned.csv"))
+#           file.path(clean_data, "indicators_cleaned.csv"))
 
 # ggplot(indicators_cleaned, aes(x = BHI_plants_2005, 
 #                                y = RLI_2008)) +
@@ -730,22 +760,22 @@ summary(indicators_wide_standardised)
 indicator_boxplot_data_wide <- indicators_wide_standardised %>%
   dplyr::select(all_of(c("ecoregion_id", final_indicators)))
 
-saveRDS(indicator_boxplot_data_wide, file.path(data_outputs, "3_indicators_cleaned_standardised_no_lpi.rds"))
-write.csv(indicator_boxplot_data_wide, file.path(data_outputs, "3_indicators_cleaned_standardised_no_lpi.csv"))
+saveRDS(indicator_boxplot_data_wide, file.path(clean_data, "3_indicators_cleaned_standardised_no_lpi.rds"))
+write.csv(indicator_boxplot_data_wide, file.path(clean_data, "3_indicators_cleaned_standardised_no_lpi.csv"))
 
 indicator_boxplot_data_wide_lpi <- indicators_wide_standardised %>%
   dplyr::select(all_of(c("ecoregion_id", final_indicators, "LPI_2005")))
 
-saveRDS(indicator_boxplot_data_wide_lpi, file.path(data_outputs, "4_indicators_cleaned_standardised_lpi.rds"))
-write.csv(indicator_boxplot_data_wide_lpi, file.path(data_outputs, "4_indicators_cleaned_standardised_lpi.csv"))
+saveRDS(indicator_boxplot_data_wide_lpi, file.path(clean_data, "4_indicators_cleaned_standardised_lpi.rds"))
+write.csv(indicator_boxplot_data_wide_lpi, file.path(clean_data, "4_indicators_cleaned_standardised_lpi.csv"))
 
 
 # Convert back into long format
 indicator_boxplot_data <- reshape2::melt(indicator_boxplot_data_wide, 
                                          id.vars = 'ecoregion_id')
 
-# saveRDS(indicator_boxplot_data, file.path(data_outputs, "indicator_boxplot_data.rds"))
-# write.csv(indicator_boxplot_data, file.path(data_outputs, "indicator_boxplot_data.csv"))
+# saveRDS(indicator_boxplot_data, file.path(clean_data, "indicator_boxplot_data.rds"))
+# write.csv(indicator_boxplot_data, file.path(clean_data, "indicator_boxplot_data.csv"))
 
 boxplots <- ggplot(indicator_boxplot_data,aes(x = variable, y = value)) +
   geom_boxplot() +
@@ -778,8 +808,8 @@ rm(indicator_boxplot_data)
 ```{r eco boxplots, echo=FALSE, warning = FALSE, message = FALSE}
 ecoregions_numeric <- ecoregions_wide[,c("ecoregion_id", numeric_variables)]
 
-saveRDS(ecoregions_numeric, file.path(data_outputs, "5_ecoregions_numeric.rds"))
-write.csv(ecoregions_numeric, file.path(data_outputs, "5_ecoregions_numeric.csv"))
+saveRDS(ecoregions_numeric, file.path(clean_data, "5_ecoregions_numeric.rds"))
+write.csv(ecoregions_numeric, file.path(clean_data, "5_ecoregions_numeric.csv"))
 
 ecoregions_numeric_long <- ecoregions_numeric %>% 
                            pivot_longer(numeric_variables)
@@ -798,8 +828,8 @@ write.csv(ecoregions_summary,
 
 ecoregions_categorical <- ecoregions_wide[,c("ecoregion_id", grouping_variables)]
 
-saveRDS(ecoregions_categorical, file.path(data_outputs, "7_ecoregions_categorical.rds"))
-write.csv(ecoregions_categorical, file.path(data_outputs, "7_ecoregions_categorical.csv"))
+saveRDS(ecoregions_categorical, file.path(clean_data, "7_ecoregions_categorical.rds"))
+write.csv(ecoregions_categorical, file.path(clean_data, "7_ecoregions_categorical.csv"))
 
 
 categorical_tables <- apply(ecoregions_categorical, 2, table)
@@ -812,8 +842,8 @@ ecoregions_numeric_standardized <- ecoregions_numeric %>%
   mutate_at(c(2:ncol(ecoregions_numeric)), 
             funs(c(scale(.)))) 
 
-saveRDS(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.rds"))
-write.csv(ecoregions_numeric_standardized, file.path(data_outputs, "6_ecoregions_numeric_standardized.csv"))
+saveRDS(ecoregions_numeric_standardized, file.path(clean_data, "6_ecoregions_numeric_standardized.rds"))
+write.csv(ecoregions_numeric_standardized, file.path(clean_data, "6_ecoregions_numeric_standardized.csv"))
 
 eco_temp <- ecoregions_numeric_standardized %>% 
             dplyr::select(-scaled_lpi_records, - scaled_endemics)

@@ -72,6 +72,7 @@ library(leaflet)
 output_date <- Sys.Date()
 ms_version <- "MS_v6" #Version of MS outputs are for
 section <- "correlations"
+input_date <- "2021-11-10" # Date of clean data production we want to use
 
 analysis_date <- "2021-05-15"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
@@ -144,14 +145,19 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
-# Folder where current data stored
-
-data_inputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs\\2021-11-10\\MS_v6_data_outputs"
-
-# Folder for final manuscript figures
-
 manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
 
+# Folder for clean data that acts as inputs to all subsequent steps
+
+clean_data <- file.path(manuscript_outputs, input_date, paste(ms_version,
+                                 "_cleaned_data",sep=""))
+  
+if( !dir.exists( file.path(clean_data) ) ) {
+  dir.create( file.path(clean_data), recursive = TRUE )
+  
+}
+
+# Folders for outputs
 
 if( !dir.exists( file.path(manuscript_outputs) ) ) {
   dir.create( file.path(manuscript_outputs), recursive = TRUE )
@@ -184,7 +190,7 @@ if( !dir.exists( file.path(supp_outputs) ) ) {
   
 }
 
-# Folder for clean data
+# Folder for exploratory specific data
 
 data_outputs <- file.path(todays_outputs, paste(ms_version,
                                  "_data_outputs",sep=""), section)
@@ -193,6 +199,52 @@ if( !dir.exists( file.path(data_outputs) ) ) {
   dir.create( file.path(data_outputs), recursive = TRUE )
   
 }
+
+# # Folder for final manuscript figures
+# 
+# manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+# 
+# 
+# if( !dir.exists( file.path(manuscript_outputs) ) ) {
+#   dir.create( file.path(manuscript_outputs), recursive = TRUE )
+#   
+# }
+# 
+# todays_outputs <- file.path(manuscript_outputs, output_date)
+# 
+# if( !dir.exists( file.path(todays_outputs) ) ) {
+#   dir.create( file.path(todays_outputs), recursive = TRUE )
+#   
+# }
+# 
+# main_outputs <- file.path(todays_outputs, paste(ms_version,
+#                                  "_main_manuscript_outputs",sep=""), section)
+# 
+# if( !dir.exists( file.path(main_outputs) ) ) {
+#   dir.create( file.path(main_outputs), recursive = TRUE )
+#   
+# }
+# 
+# # Folder for supporting info figures
+# 
+# supp_outputs <- file.path(todays_outputs, paste(ms_version,
+#                                  "_supporting_info_outputs",sep=""), section)
+#   
+# 
+# if( !dir.exists( file.path(supp_outputs) ) ) {
+#   dir.create( file.path(supp_outputs), recursive = TRUE )
+#   
+# }
+# 
+# # Folder for clean data
+# 
+# data_outputs <- file.path(todays_outputs, paste(ms_version,
+#                                  "_data_outputs",sep=""), section)
+#   
+# if( !dir.exists( file.path(data_outputs) ) ) {
+#   dir.create( file.path(data_outputs), recursive = TRUE )
+#   
+# }
 
 
 # manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
@@ -364,7 +416,7 @@ plotly_scatterplot <- function(data, col1, col2) {
 
 # Get data ----
 
-files_paths <- list.files(data_inputs, full.names = TRUE)
+files_paths <- list.files(clean_data, full.names = TRUE)
 
 indicators_all_timepoints <- readRDS(files_paths[str_detect(files_paths, 
                                                             "0_indicators_all_timepoints.rds")])
@@ -2198,7 +2250,6 @@ cluster_heatmap <- ggplot(cluster_heatmap_data,
           strip.background = element_blank()) +
           facet_wrap(~ subgroup, nrow = 1)
 
-
 ggsave(file.path(main_outputs, "cluster_heatmaps.png"),
        cluster_heatmap, width = 12, height = 6, units = "in",
        device = "png")
@@ -2219,7 +2270,7 @@ correlation_input_data <- indicators_raw_no_lpi %>%
 
 rli_bhi_scatterplot_data <- correlation_input_data %>% 
                             dplyr::select(ecoregion_id,
-                                          BHI_plants_2005,
+                                          BIIri_2005,
                                           RLI_2008,
                                           cluster) %>% 
                             mutate(cluster_label = ifelse(
@@ -2233,7 +2284,7 @@ rli_bhi_scatterplot_data <- correlation_input_data %>%
                                           "Cluster three")))
 
 cluster_scatterplots <- ggplot(data = rli_bhi_scatterplot_data,
-               aes(x = BHI_plants_2005,
+               aes(x = BIIri_2005,
                    y = RLI_2008)) +
         geom_point(shape = 16) +
         stat_cor(method = "spearman", label.x = 0.65, label.y = 0.79) +
@@ -2251,7 +2302,9 @@ cluster_scatterplots <- ggplot(data = rli_bhi_scatterplot_data,
         facet_wrap(~ cluster_label, nrow = 1) +
         #facet_wrap(~ cluster_label, nrow = 1, scales = "free") +
         scale_x_continuous(limits=c(0.3, 1)) + 
-        scale_y_continuous(limits=c(0.3,1))
+        scale_y_continuous(limits=c(0.3,1)) +
+        labs(x = "Biodiversity Intactness Index (richness)",
+             y = "Red List Index")
   
 ggsave(file.path(main_outputs, "cluster_scatterplots.png"),
        cluster_scatterplots, width = 12, height = 6, units = "in",
@@ -2272,7 +2325,7 @@ input_data <- indicators_raw_no_lpi %>%
 
 rank_rli_bhi_scatterplot_data <- input_data %>% 
                             dplyr::select(ecoregion_id,
-                                          BHI_plants_2005,
+                                          BIIri_2005,
                                           RLI_2008,
                                           cluster) %>% 
                             mutate(cluster_label = ifelse(
@@ -2284,7 +2337,7 @@ rank_rli_bhi_scatterplot_data <- input_data %>%
                             mutate(cluster_label = factor(cluster_label, 
                                levels = c("Cluster one","Cluster two",
                                           "Cluster three"))) %>% 
-                            mutate(BHI_rank_order = rank(BHI_plants_2005, "last"),
+                            mutate(BHI_rank_order = rank(BIIri_2005, "last"),
                                    RLI_rank_order = rank(RLI_2008))
 
 rank_cluster_scatterplots <- ggplot(data = rank_rli_bhi_scatterplot_data,
@@ -2303,7 +2356,9 @@ rank_cluster_scatterplots <- ggplot(data = rank_rli_bhi_scatterplot_data,
               axis.text.y = element_text(size=14),
               strip.text.x = element_text(size = 18),
               strip.background = element_blank()) +
-        facet_wrap(~ cluster_label, nrow = 1)
+        facet_wrap(~ cluster_label, nrow = 1)+
+        labs(x = "Biodiversity Intactness Index (richness) rank order",
+             y = "Red List Index rank order")
   
 ggsave(file.path(main_outputs, "rank_cluster_scatterplots.png"),
        rank_cluster_scatterplots, width = 12, height = 6, units = "in",

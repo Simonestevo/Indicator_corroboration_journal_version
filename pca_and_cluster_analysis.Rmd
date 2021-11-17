@@ -775,19 +775,19 @@ names(clus1_split) <- clus1_names
 
 # Save the little cluster 1 sections
 
-for (i in seq_along(clus1_split)) {
-  
-  clus1_realm_name <- paste(names(clus1_split)[i], "cluster1_map_data.shp", sep = "_")
-  
-  num <- i
-  
-  st_write(clus1_split[[i]], 
-           file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
-}
+# for (i in seq_along(clus1_split)) {
+#   
+#   clus1_realm_name <- paste(names(clus1_split)[i], "cluster1_map_data.shp", sep = "_")
+#   
+#   num <- i
+#   
+#   st_write(clus1_split[[i]], 
+#            file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
+# }
 
 # Save the full cluster data
 
-st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
+# st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
 
 test_data <- cluster_map_data[1:200,]
 
@@ -873,8 +873,8 @@ cluster_data <- cluster_map_data %>%
                 st_drop_geometry(.)
   
   
-write.csv(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.csv"))
-saveRDS(cluster_data, file.path(data_outputs, "8_ecoregion_clusters.rds"))
+write.csv(cluster_data, file.path(clean_data, "8_ecoregion_clusters.csv"))
+saveRDS(cluster_data, file.path(clean_data, "8_ecoregion_clusters.rds"))
 
 
 ```
@@ -1057,10 +1057,13 @@ for (i in seq_along(grouping_variables)) {
     
     dev.off()
     
-    tiff(file = file.path(main_outputs, 
+    tiff(file = file.path(supp_outputs, 
                           paste(grouping_variables[i], "cluster_residuals.tiff",
                                 sep = "_")), 
          units = "in", width=5, height=5, res = 300)
+    
+    # Positive residuals are in blue. Positive values in cells specify an attraction (positive          association) between the corresponding row and column variables.
+    # Negative residuals are in red. This implies a repulsion (negative association) between the        corresponding row and column variables
     
     residual_plot <- corrplot(chi_result$residuals, is.cor = FALSE, tl.cex = 0.7)
     
@@ -1079,6 +1082,10 @@ for (i in seq_along(grouping_variables)) {
 
 cluster_categorical_results <- do.call(rbind, cluster_chisq_results)
 cluster_categorical_results
+
+chi_results_df <- do.call(rbind, cluster_chisq_results)
+
+write.csv(chi_results_df, file.path(supp_outputs, "chisq_results.csv"))
 
 ```
 

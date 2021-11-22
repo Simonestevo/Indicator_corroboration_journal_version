@@ -7,7 +7,8 @@ output:
     pdf_document: default
 ---
 
-# Set up
+
+This code should be run after exploratory data analysis but before correlation analysis code.
 
 ```{r setup, include=FALSE}
 
@@ -18,22 +19,6 @@ output:
 # rm(list = ls()) # clear memory
 
 # Load packages ----
-
-# TODO ----
-
-#' TODO: Prepare stats summary for indicators and variables (or can use 
-#' boxplots? add jitter?)
-#' TODO: Split input prep from data visualisation
-#' TODO: Remove superfluous steps
-#' TODO: Make another folder called something like MS figures? for stuff that's
-#' definitely going in
-#' TODO: Fix ecoregion lookup function
-#' TODO: Figure out cluster on princomp pl.pca object
-#' TODO: Remove non-significant correlaitons (the ones whose CI pass zero) from
-#' caterpillar plots
-#' TODO: Rename grouping variables to categorical variables
-#' TODO: Note the categorical independence matrices contain NAs because the combinations
-#' are in the wrong order - not sure how to fix?
 
 # PCA, Clustering, Models
 library(factoextra)
@@ -62,6 +47,7 @@ library(RColorBrewer)
 library(plot3D)
 library(plotly)
 library(viridis)
+library(viridisLite)
 library(png)
 library(gridExtra)
 library(GGally)
@@ -77,13 +63,34 @@ library(sf)
 library(leaflet)
 library(ggspatial)
 
+```
 
+```{r colour palettes}
+
+show_col(viridis_pal()(20))
+show_col(viridis_pal(option = "plasma")(20))
+show_col(viridis_pal(option = "magma")(20))
+show_col(viridis_pal(option = "inferno")(20))
+show_col(viridis_pal(option = "mako")(20))
+show_col(viridis_pal(option = "cividis")(20))
+show_col(viridis_pal(option = "rocket")(20))
+show_col(viridis_pal(option = "turbo")(20))
+
+# create palette for the clusters
+plas3 <- plasma(3)
+show_col(plas3)
+plas3rv <- c("#F79044FF","#CC4678FF", "#5901A5FF")
+show_col(plas3rv)
+
+```
+
+```{inputs and outputs}
 # Set input and output locations ----
 
-output_date <- Sys.Date()
-ms_version <- "MS_v6" #Version of MS outputs are for
+output_date <- Sys.Date() # Current date for outputs
+ms_version <- "MS_v7" #Version of MS outputs are for
 section <- "pca_clusters"
-input_date <- "2021-11-10"
+input_date <- "2021-11-10" # Date of indicator data output we are using
 
 
 analysis_date <- "2021-05-15"
@@ -161,7 +168,7 @@ manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\output
 
 # Folder for clean data that acts as inputs to all subsequent steps
 
-clean_data <- file.path(manuscript_outputs, input_date, paste(ms_version,
+clean_data <- file.path(manuscript_outputs, output_date, paste(ms_version,
                                  "_cleaned_data",sep=""))
   
 if( !dir.exists( file.path(clean_data) ) ) {
@@ -748,10 +755,6 @@ dend
 ```{r cluster map , echo=FALSE, warning = FALSE, message = FALSE}
 # * Map clusters ----
 
-# create palette for the clusters
-plas3 <- plasma(3)
-plas3rv <- c("#F79044FF","#CC4678FF", "#5901A5FF")
-
 cluster_map_data <- ecoregion_map_renamed %>%
   merge(data.hcpc2[c("ecoregion_id", "cluster")], 
         by = "ecoregion_id", all = TRUE)
@@ -764,32 +767,35 @@ marianas <- clus1_data  %>%  filter(str_detect(ECO_NAME, "Marianas"))
 
 clus1_split <- split(clus1_data, clus1_data$REALM)
 
-clus1_names <- c("Afrotropic","Australasia", "Neotropic", "Palearctic",
-                 "Hawaii", "Northern Marianas")
+clus1_names <- c("Afrotropic","Australasia", "Neotropic",
+                 "Hawaii", "Northern Marianas", "Palearctic")
 
 clus1_split <- list(clus1_split[[1]], clus1_split[[2]],
-                    clus1_split[[3]], clus1_split[[4]],
-                    hawaii, marianas)
+                    clus1_split[[3]],hawaii, marianas, clus1_split[[5]])
 
 names(clus1_split) <- clus1_names
 
+
+plot(st_geometry(y))
+
 # Save the little cluster 1 sections
 
-# for (i in seq_along(clus1_split)) {
-#   
-#   clus1_realm_name <- paste(names(clus1_split)[i], "cluster1_map_data.shp", sep = "_")
-#   
-#   num <- i
-#   
-#   st_write(clus1_split[[i]], 
-#            file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
-# }
+for (i in seq_along(clus1_split)) {
+
+  clus1_realm_name <- paste(names(clus1_split)[i], "cluster1_map_data.shp", sep = "_")
+
+  num <- i
+  
+  x <- st_bbox(clus1_split[[i]])
+  cropped_cluster <- st_crop(cluster_map_data, x)
+
+  st_write(cropped_cluster,
+           file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
+}
 
 # Save the full cluster data
 
-# st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
-
-test_data <- cluster_map_data[1:200,]
+st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
 
 # https://upgo.lab.mcgill.ca/2019/12/13/making-beautiful-maps/#making_the_map
 
@@ -798,7 +804,7 @@ library(cowplot)
 cluster_map <-  ggplot(cluster_map_data) +
   geom_sf(aes(fill = cluster), color = NA, 
           show.legend = 'fill', alpha = 0.7) +
-  scale_fill_manual(values = plas3rv,
+  scale_fill_manual(values = plas3,
                     na.value = 'grey80') +
   labs(fill = "Cluster") +
   xlab("Longitude") + 
@@ -834,37 +840,44 @@ map <- cluster_map +
 realm <- names(clus1_split)[[i]]
 
 ggsave(file.path(main_outputs, paste(realm,
-                 "cluster1_map.png", sep = "_")), 
+                 "cluster1_map.png", sep = "_")),
        map,  device = "png")
 
 cluster_1_maps[[i]] <- map
 
 }
 
-ggdraw(cluster_map) +
-  draw_plot(
-    {
-      cluster_map + 
-      coord_sf(
-    xlim = sf::st_bbox(afrotropic)[c(1,3)],
-    ylim = sf::st_bbox(afrotropic)[c(2,4)],
-    expand = FALSE
-    ) +
-        theme(legend.position = "none")
-      },
-    # The distance along a (0,1) x-axis to draw the left edge of the plot
-    x = 0.58, 
-    # The distance along a (0,1) y-axis to draw the bottom edge of the plot
-    y = 0,
-    # The width and height of the plot expressed as proportion of the entire ggdraw object
-    width = 0.46, 
-    height = 0.46)
+# plot_grid(test_gam_plots[[1]],
+#           test_gam_plots[[2]],
+#           test_gam_plots[[3]],
+#           nrow = 2, align = "v")
 
-test_map <- ggdraw() +
-  draw_plot(cluster_map) +
-  draw_plot(cluster_map[[1]], x = 0, y = -0.25, width = 0.4, height = 0.2)
 
-test_map
+
+# ggdraw(cluster_map) +
+#   draw_plot(
+#     {
+#       cluster_map + 
+#       coord_sf(
+#     xlim = sf::st_bbox(cluster_1_maps[[1]])[c(1,3)],
+#     ylim = sf::st_bbox(cluster_1_maps[[1]])[c(2,4)],
+#     expand = FALSE
+#     ) +
+#         theme(legend.position = "none")
+#       },
+#     # The distance along a (0,1) x-axis to draw the left edge of the plot
+#     x = 0.58, 
+#     # The distance along a (0,1) y-axis to draw the bottom edge of the plot
+#     y = 0,
+#     # The width and height of the plot expressed as proportion of the entire ggdraw object
+#     width = 0.46, 
+#     height = 0.46)
+# 
+# test_map <- ggdraw() +
+#   draw_plot(cluster_map) +
+#   draw_plot(cluster_1_maps[[1]], x = 0, y = -0.25, width = 0.4, height = 0.2)
+# 
+# test_map
 
 # Add clusters to our data
 
@@ -895,7 +908,7 @@ pca_cluster_plot <- fviz_pca_biplot(singular_PCA, geom.ind = "point",
                                     pointshape = 21, 
                                     pointsize = 2, 
                                     #col.ind = "black", 
-                                    palette = plas3rv,
+                                    palette = plas3,
                                     alpha = 0.4,
                                     addEllipses = TRUE,
                                     label = "var",
@@ -904,7 +917,10 @@ pca_cluster_plot <- fviz_pca_biplot(singular_PCA, geom.ind = "point",
                                     fill.ind = as.factor(cluster_biplot_data$cluster),
                                     col.ind = as.factor(cluster_biplot_data$cluster),
                                     legend.title = "Cluster") +
-  theme(plot.title = element_blank(),
+  theme(panel.background = element_rect(fill='grey75'),
+          panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+        plot.title = element_blank(),
         legend.position = "right") +
   theme(legend.text=element_text(size = 7)) +
   guides(fill=guide_legend(nrow=6,byrow=TRUE))

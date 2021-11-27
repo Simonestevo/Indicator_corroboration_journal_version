@@ -84,10 +84,10 @@ show_col(plas3rv)
 
 ```
 
-```{inputs and outputs}
+```{r inputs and outputs}
 # Set input and output locations ----
 
-output_date <- Sys.Date() # Current date for outputs
+output_date <- "2021-11-22" # Current date for outputs
 ms_version <- "MS_v7" #Version of MS outputs are for
 section <- "pca_clusters"
 input_date <- "2021-11-10" # Date of indicator data output we are using
@@ -95,7 +95,7 @@ input_date <- "2021-11-10" # Date of indicator data output we are using
 
 analysis_date <- "2021-05-15"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
-date <- Sys.Date()
+date <- "2021-11-22"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
@@ -757,7 +757,8 @@ dend
 
 cluster_map_data <- ecoregion_map_renamed %>%
   merge(data.hcpc2[c("ecoregion_id", "cluster")], 
-        by = "ecoregion_id", all = TRUE)
+        by = "ecoregion_id", all = TRUE) %>% 
+  mutate(cluster = ifelse(is.na(cluster), "Incomplete data", cluster))
 
 clus1_data <- cluster_map_data %>% 
               filter(cluster == 1)
@@ -775,8 +776,6 @@ clus1_split <- list(clus1_split[[1]], clus1_split[[2]],
 
 names(clus1_split) <- clus1_names
 
-
-plot(st_geometry(y))
 
 # Save the little cluster 1 sections
 
@@ -804,8 +803,8 @@ library(cowplot)
 cluster_map <-  ggplot(cluster_map_data) +
   geom_sf(aes(fill = cluster), color = NA, 
           show.legend = 'fill', alpha = 0.7) +
-  scale_fill_manual(values = plas3,
-                    na.value = 'grey80') +
+  scale_fill_manual(values = c(plas3, "grey80"),
+                    na.value = 'grey70') +
   labs(fill = "Cluster") +
   xlab("Longitude") + 
   ylab("Latitude") +
@@ -847,10 +846,9 @@ cluster_1_maps[[i]] <- map
 
 }
 
-# plot_grid(test_gam_plots[[1]],
-#           test_gam_plots[[2]],
-#           test_gam_plots[[3]],
-#           nrow = 2, align = "v")
+oceania <- plot_grid(cluster_1_maps[[2]],
+          cluster_1_maps[[5]],
+          nrow = 2, align = "v")
 
 
 
@@ -889,7 +887,6 @@ cluster_data <- cluster_map_data %>%
 write.csv(cluster_data, file.path(clean_data, "8_ecoregion_clusters.csv"))
 saveRDS(cluster_data, file.path(clean_data, "8_ecoregion_clusters.rds"))
 
-
 ```
 
 # PCA biplot with clusters
@@ -917,7 +914,7 @@ pca_cluster_plot <- fviz_pca_biplot(singular_PCA, geom.ind = "point",
                                     fill.ind = as.factor(cluster_biplot_data$cluster),
                                     col.ind = as.factor(cluster_biplot_data$cluster),
                                     legend.title = "Cluster") +
-  theme(panel.background = element_rect(fill='grey75'),
+  theme(panel.background = element_rect(fill='grey85'),
           panel.grid.major = element_blank(),
               panel.grid.minor = element_blank(),
         plot.title = element_blank(),
@@ -926,7 +923,11 @@ pca_cluster_plot <- fviz_pca_biplot(singular_PCA, geom.ind = "point",
   guides(fill=guide_legend(nrow=6,byrow=TRUE))
 
 ggsave(file.path(main_outputs, "cluster_biplot.png"), 
-       pca_cluster_plot,  device = "png") 
+       pca_cluster_plot,   
+       width = 16,
+       height = 9,
+       units = "cm",
+       device = "png") 
 
 rm(cluster_map)
 

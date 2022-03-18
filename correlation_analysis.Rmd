@@ -2496,8 +2496,8 @@ input_data <- indicators_raw_no_lpi %>%
 
 rank_rli_bhi_scatterplot_data <- input_data %>% 
                             dplyr::select(ecoregion_id,
-                                          BIIri_2005,
-                                          RLI_2008,
+                                          BIIri,
+                                          RLI,
                                           cluster) %>% 
                             mutate(cluster_label = ifelse(
                               cluster == 1, "Cluster one",
@@ -2508,8 +2508,8 @@ rank_rli_bhi_scatterplot_data <- input_data %>%
                             mutate(cluster_label = factor(cluster_label, 
                                levels = c("Cluster one","Cluster two",
                                           "Cluster three"))) %>% 
-                            mutate(BHI_rank_order = rank(BIIri_2005, "last"),
-                                   RLI_rank_order = rank(RLI_2008))
+                            mutate(BHI_rank_order = rank(BIIri, "last"),
+                                   RLI_rank_order = rank(RLI))
 
 rank_cluster_scatterplots <- ggplot(data = rank_rli_bhi_scatterplot_data,
                aes(x = BHI_rank_order,
@@ -2535,6 +2535,96 @@ ggsave(file.path(main_outputs, "rank_cluster_scatterplots.png"),
        rank_cluster_scatterplots, width = 12, height = 6, units = "in",
        device = "png")
 ```
+
+
+```{r rank priority ecoregions, echo=FALSE, warning = FALSE, message = FALSE}
+
+top <- -10
+
+bii_priorities <- indicators_raw_no_lpi %>% 
+                     merge(ecoregion_clusters[c("ecoregion_id", 
+                                                "ECO_NAME",
+                                                "cluster")],
+                           by = "ecoregion_id") %>% 
+                     group_by(cluster) %>% 
+                     top_n(top, BIIri) %>% 
+                     dplyr::select(ECO_NAME, cluster, BIIri) %>% 
+                     ungroup(.) %>% 
+                     arrange(cluster)
+                      
+kable(bii_priorities)
+
+rli_priorities <- indicators_raw_no_lpi %>% 
+                     merge(ecoregion_clusters[c("ecoregion_id", 
+                                                "ECO_NAME",
+                                                "cluster")],
+                           by = "ecoregion_id") %>% 
+                     group_by(cluster) %>% 
+                     top_n(top, RLI) %>% 
+                     dplyr::select(ECO_NAME, cluster, RLI) %>% 
+                     ungroup(.) %>% 
+                     arrange(cluster)
+                      
+kable(rli_priorities)
+
+```
+
+```{r quantiles}
+
+# This plot aims to show how many ecoregions are in different quantiles based
+# on different indicators (e.g if an ecoregion is in the same quantile for both 
+# indicators you might consider there to be consensus, but if they're at extreme
+# ends of the quantile it indicates contradiction between indicator scores)
+
+quantile_df <- indicators_raw_no_lpi %>% 
+  merge(ecoregion_clusters[c("ecoregion_id", 
+                                                "ECO_NAME",
+                                                "cluster")],
+                           by = "ecoregion_id") %>% 
+                     group_by(cluster) %>%
+     mutate(rli_quantile = ntile(RLI, 4),
+            bii_quantile = ntile(BIIri, 4)) %>% 
+   mutate(group = paste(rli_quantile, bii_quantile),
+          cluster_n = n()) %>% 
+   ungroup(.) %>% 
+   group_by(cluster, group) %>% 
+   mutate(membership_n = n(),
+             prop = membership_n/cluster_n) %>% 
+   distinct(.) %>% 
+   arrange(desc(cluster)) %>% 
+   arrange(desc(prop))
+
+quantile_plot <- ggplot(data = quantile_df,
+               aes(x = bii_quantile,
+                   y = rli_quantile)) +
+         geom_tile(aes(x = bii_quantile,
+                      y = rli_quantile,
+                      fill = prop),
+                    alpha = 0.8) +
+        scale_fill_gradient2(low="blue", mid="white", high="red", 
+                       midpoint= 0)+
+        geom_jitter(shape = 16, alpha = 0.5) +
+        theme(panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x = element_text(size=18),
+              axis.title.y = element_text(size=18),
+              axis.text.x = element_text(size=14),
+              axis.text.y = element_text(size=14),
+              strip.text.x = element_text(size = 18),
+              strip.background = element_blank()) +
+        facet_wrap(~ cluster, nrow = 1)+
+        labs(x = "Biodiversity Intactness Index (richness) quantiles",
+             y = "Red List Index quantiles")
+
+quantile_plot
+
+ggsave(file.path(supp_outputs, "quantile_plot.png"),
+         quantile_plot, device = "png")
+
+```
+
 
 # LPI Scatterplots 
 

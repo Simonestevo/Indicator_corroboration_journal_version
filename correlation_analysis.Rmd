@@ -72,12 +72,12 @@ library(leaflet)
 
 # Set input and output locations ----
 
-output_date <- "2021-11-22"
-ms_version <- "MS_v7" #Version of MS outputs are for
+output_date <- "2022-03-18"
+ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "correlations"
-input_date <- "2021-11-10" # Date of clean data production we want to use
+input_date <- "2022-03-18" # Date of clean data production we want to use
 
-analysis_date <- "2021-05-15"
+analysis_date <- "2022-03-18"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
@@ -414,6 +414,7 @@ make_subgroup_scatterplot <- function(df, group, subgroup, group_directory, lpi)
 # }
 
 ```
+
 ```{r colour palettes, eval=FALSE}
 
 library(scales)

@@ -87,13 +87,13 @@ show_col(plas3rv)
 ```{r inputs and outputs}
 # Set input and output locations ----
 
-output_date <- "2021-11-22" # Current date for outputs
-ms_version <- "MS_v7" #Version of MS outputs are for
+output_date <- "2022-03-18" # Current date for outputs
+ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "pca_clusters"
-input_date <- "2021-11-10" # Date of indicator data output we are using
+input_date <- "2022-03-18" # Date of indicator data output we are using
 
 
-analysis_date <- "2021-05-15"
+analysis_date <- "2022-03-18"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- "2021-11-22"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA

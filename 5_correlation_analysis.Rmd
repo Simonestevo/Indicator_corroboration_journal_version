@@ -72,7 +72,8 @@ library(leaflet)
 
 # Set input and output locations ----
 
-output_date <- "2022-03-18"
+sig_threshold <- 0.01 # Make it 0.01 to correct for multiple comparisons
+output_date <- "2022-11-24"
 ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "correlations"
 input_date <- "2022-03-18" # Date of clean data production we want to use
@@ -1174,7 +1175,7 @@ pairwise_correlations_no_lpi <- pairwise_correlations_cf %>%
         by.y = c("pair", "subgroup")) %>% 
   dplyr::select(group, subgroup, combination, coefficient, rs,
                 lower_ci, upper_ci, pvalue, signif, input_relationship) %>% 
-  mutate(signif_2 = ifelse((pvalue > 0.05 | lower_ci < 0 & upper_ci > 0),
+  mutate(signif_2 = ifelse((pvalue > sig_threshold | lower_ci < 0 & upper_ci > 0),
                            0, 1))
 
 saveRDS(pairwise_correlations_no_lpi, file.path(data_outputs, "11_correlation_dataframe.rds"))
@@ -1863,7 +1864,7 @@ pairwise_correlations_lpi <- pairwise_correlations_cf %>%
         by.y = c("pair", "subgroup")) %>% 
   dplyr::select(group, subgroup, combination, coefficient, rs,
                 lower_ci, upper_ci, pvalue, signif, input_relationship) %>% 
-  mutate(signif_2 = ifelse((pvalue > 0.05 | lower_ci < 0 & upper_ci > 0),
+  mutate(signif_2 = ifelse((pvalue > sig_threshold | lower_ci < 0 & upper_ci > 0),
                            0, 1))
 
 
@@ -1917,7 +1918,9 @@ head(all_correlations)
 
 correlations_edited <- all_correlations %>% 
                        filter(subgroup == "all.cluster") %>% # Get just global coeffs
-                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
+                       #Switch non-significant(pval < threshold AND 95% CI do not cross 0) coefficients to 0
+                       mutate(coefficient = ifelse(signif_2 == 1, coefficient, 0)) %>%
+                        mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
                                                   coefficient < 0, "weak",
                                            ifelse(coefficient < 0.3 & # assign the rankings
                                                   coefficient > 0, "weak",
@@ -2044,8 +2047,8 @@ p_mat <- cor_pmat(cor_inputs_lpi)
 
 global_heatmap_lpi <- ggcorrplot(cor_outputs_lpi,
                                   colors = c("#481568FF","white", "#20A386FF"),
-                                    #sig.level = 0.05,
-                                    #insig = "blank",
+                                  sig.level = sig_threshold,
+                                  #insig = "blank",
                                     #hc.order = TRUE,
                                     p.mat = p_mat,
                                     lab = TRUE,
@@ -2103,7 +2106,8 @@ head(all_correlations)
 
 correlations_edited <- all_correlations %>% 
                        filter(subgroup == "all.cluster") %>% # Get just global coeffs
-                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
+                         #Switch non-significant(pval < threshold AND 95% CI do not cross 0) coefficients to 0
+                       mutate(coefficient = ifelse(signif_2 == 1, coefficient, 0)) %>%                        mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
                                                   coefficient < 0, "weak",
                                            ifelse(coefficient < 0.3 & # assign the rankings
                                                   coefficient > 0, "weak",
@@ -2298,7 +2302,8 @@ all_correlations <- readRDS(file.path(data_outputs,
 correlations_clusters <- all_correlations %>% 
                        filter(group == "cluster") %>% # Get all cluster subgroup coeffs
                        filter(subgroup != "all.cluster") %>% # Get all cluster subgroup coeffs
-                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
+    #Switch non-significant(pval < threshold AND 95% CI do not cross 0) coefficients to 0
+                       mutate(coefficient = ifelse(signif_2 == 1, coefficient, 0)) %>%                       mutate(corr_level = ifelse(coefficient > -0.3 & # assign the rankings
                                                   coefficient < 0, "weak",
                                            ifelse(coefficient < 0.3 & # assign the rankings
                                                   coefficient > 0, "weak",

@@ -1,10 +1,11 @@
 ---
-title: "exploratory_data_analysis"
+title: "PCA and cluster analysis"
 author: "Simone Stevenson"
 date: "05/05/2021"
 output:
     html_document: default
     pdf_document: default
+objective: This code runs a PCA on the clean indicator data and does a cluster analysis
 ---
 
 
@@ -87,13 +88,13 @@ show_col(plas3rv)
 ```{r inputs and outputs}
 # Set input and output locations ----
 
-output_date <- "2022-03-18" # Current date for outputs
+output_date <- "2022-11-24" # Current date for outputs
 ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "pca_clusters"
-input_date <- "2022-03-18" # Date of indicator data output we are using
+input_date <- "2022-11-24" # Date of indicator data output we are using
 
 
-analysis_date <- "2022-03-18"
+analysis_date <- "2022-11-24"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- "2021-11-22"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
@@ -541,6 +542,25 @@ write.csv(pca_loadings, file.path(main_outputs,
 
 ```
 
+```{r PCA w explanatory variables as well}
+
+# # Scale the data to a mean of 0 and sd of 1
+# mixData <- scale(pca_data_5[,2:8])
+# 
+# mixData <- cbind(ecoregion_id = pca_data_5[,1],mixData, pca_data_5[,10:ncol(pca_data_5)])
+# 
+# summary(mixData)
+# 
+# test <- FAMD(mixData,
+#                   graph=TRUE)
+# 
+# fviz_famd_ind(test,col.ind = "cos2",
+#              gradient.cols = c("blue", "orange", "red"),
+#              repel = TRUE)
+
+```
+
+
 ```{r pca scree plot, echo=FALSE, warning = FALSE, message = FALSE,  fig.cap = "Table X.1: Scree plot of amount of variance explained by each principal component"}
 # Print out eigenvalues
 # singular_princomp$sd^2
@@ -789,12 +809,15 @@ for (i in seq_along(clus1_split)) {
   cropped_cluster <- st_crop(cluster_map_data, x)
 
   st_write(cropped_cluster,
-           file.path(data_outputs, paste("10.", i, "_", clus1_realm_name, sep = "")))
+           file.path(data_outputs, paste("10.", i, "_", 
+                                         clus1_realm_name, sep = "")), 
+           append = FALSE)
 }
 
 # Save the full cluster data
 
-st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"))
+st_write(cluster_map_data, file.path(data_outputs, "10_cluster_map_data.shp"),
+         append = FALSE)
 
 # https://upgo.lab.mcgill.ca/2019/12/13/making-beautiful-maps/#making_the_map
 
@@ -983,7 +1006,7 @@ for(i in seq_along(numeric_variables)) {
   means[[i]] <- data %>%
     group_by(cluster) %>% 
     summarise(
-      count = n(),
+      count = dplyr::n(),
       mean = mean(variable, na.rm = TRUE),
       sd = sd(variable, na.rm = TRUE)
     ) %>% 
@@ -1181,7 +1204,7 @@ cluster_barplot_data <- cluster_barplot_data %>%
   rename(group = variable,
          subgroup = value) %>%
   group_by(cluster, group, subgroup) %>%
-  summarise(ecoregion_count = n_distinct(ecoregion_id)) %>%
+  summarise(ecoregion_count = dplyr::n_distinct(ecoregion_id)) %>%
   ungroup()
 
 cluster_barplot_data <- as.data.frame(cluster_barplot_data)
@@ -1260,3 +1283,101 @@ gridfour <- plot_grid(barplots[[10]], barplots[[11]],
                       nrow = 2,
                       ncol = 1)
 ```
+
+# Classification tree
+
+```{r classification tree}
+
+library(rpart)
+
+df <- cluster_biplot_data %>% 
+      dplyr::select(-LPI_2005, - geometry, -ECO_NAME, -OBJECTID) %>% 
+      mutate(biome = abbreviate(biome, minlength = 6),
+             predominant_threat_type = abbreviate(predominant_threat_type, minlength = 6))
+
+set.seed(100)  # setting seed to reproduce results of random sampling
+TrainingRowIndex <- sample(1:nrow(df), 0.8*nrow(df))  # row indices for training data
+TrainingData <- df[TrainingRowIndex, ]  # Take 80% of the data to fit the models
+TestData  <- df[-TrainingRowIndex, ]   # Keep 20% to test how accurate the selected model is
+
+
+mod <- rpart(cluster ~ disturbance_year + high_beta_area_factor +
+               island_status + predominant_threat_type +
+               lpi_records_factor + rli_records_factor, data = TrainingData, 
+             method = "class", control = rpart.control(cp = 0))
+
+library(rpart.plot)
+
+modp <- rpart.plot(mod,type = 3, fallen.leaves = TRUE)
+
+
+# Make predictions on the test dataset
+TestData$pred <- predict(mod, TestData, type = "class")
+
+# Examine the confusion matrix
+table(TestData$pred , TestData$cluster )
+
+# Compute the accuracy on the test dataset
+mean(TestData$pred == TestData$cluster)
+
+# Examine the complexity plot
+plotcp(mod)
+
+# Prune the tree
+mod_pruned <- prune(mod, cp = 0.093)
+plotcp(mod_pruned)
+
+# Compute the accuracy of the pruned tree
+TestData$pred <- predict(mod_pruned, TestData, type = "class")
+mean(TestData$pred == TestData$cluster)
+
+# Tidy models way
+library(tidymodels)
+
+# Create the split
+df_split <- initial_split(df, prop = 0.75, strata = cluster)
+
+# Extract the training and test set
+df_train <- training(df_split)
+df_test  <- testing(df_split)
+
+# Create the specification
+tree_spec <- decision_tree() %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+# Train the model
+mod <- tree_spec %>% 
+  fit(formula = cluster ~ .,   data = df_train)
+
+# Print the model
+mod
+
+
+# Generate predictions
+predictions <- predict(mod,
+                   df_test)
+
+# Add the true outcomes
+predictions_combined <- predictions %>% 
+  mutate(true_class = df_test$cluster)
+
+# Print the first lines of the result
+head(predictions_combined)
+
+# The confusion matrix
+df_matrix <- conf_mat(data = predictions_combined,
+                            estimate = .pred_class,
+                            truth = true_class)
+
+# Print the matrix
+df_matrix
+
+# The accuracy calculated by a function
+acc_auto <- accuracy(predictions_combined,
+                estimate = .pred_class, 
+                truth = true_class)
+acc_auto$.estimate
+
+```
+

@@ -26,9 +26,7 @@ library(factoextra)
 library(FactoMineR)
 library(corrplot)
 library(ape)
-#library(MASS)
-library(ggpubr)
-library(betareg)
+
 
 # Data handling and table reshaping
 library(tidyverse)
@@ -56,12 +54,10 @@ library(GGally)
 library(visdat)
 library(cowplot)
 library(knitr)
-library(ggpubr)
 library(scales)
 
 # Maps
 library(sf)
-library(leaflet)
 library(ggspatial)
 
 ```
@@ -1288,12 +1284,15 @@ gridfour <- plot_grid(barplots[[10]], barplots[[11]],
 
 ```{r classification tree}
 
+# Following datacamp tutorial https://campus.datacamp.com/courses/supervised-learning-in-r-classification/classification-trees-4?ex=2
+
 library(rpart)
 
 df <- cluster_biplot_data %>% 
       dplyr::select(-LPI_2005, - geometry, -ECO_NAME, -OBJECTID) %>% 
       mutate(biome = abbreviate(biome, minlength = 6),
-             predominant_threat_type = abbreviate(predominant_threat_type, minlength = 6))
+             predominant_threat_type = abbreviate(predominant_threat_type, 
+                                                  minlength = 6))
 
 set.seed(100)  # setting seed to reproduce results of random sampling
 TrainingRowIndex <- sample(1:nrow(df), 0.8*nrow(df))  # row indices for training data
@@ -1306,10 +1305,12 @@ mod <- rpart(cluster ~ disturbance_year + high_beta_area_factor +
                lpi_records_factor + rli_records_factor, data = TrainingData, 
              method = "class", control = rpart.control(cp = 0))
 
+# Plot the output
+
 library(rpart.plot)
 
 modp <- rpart.plot(mod,type = 3, fallen.leaves = TRUE)
-
+modp
 
 # Make predictions on the test dataset
 TestData$pred <- predict(mod, TestData, type = "class")
@@ -1331,20 +1332,20 @@ plotcp(mod_pruned)
 TestData$pred <- predict(mod_pruned, TestData, type = "class")
 mean(TestData$pred == TestData$cluster)
 
-# Tidy models way
-library(tidymodels)
-
-# Create the split
-df_split <- initial_split(df, prop = 0.75, strata = cluster)
-
-# Extract the training and test set
-df_train <- training(df_split)
-df_test  <- testing(df_split)
-
-# Create the specification
-tree_spec <- decision_tree() %>% 
-  set_engine("rpart") %>% 
-  set_mode("classification")
+# # Tidy models way
+# library(tidymodels)
+# 
+# # Create the split
+# df_split <- initial_split(df, prop = 0.75, strata = cluster)
+# 
+# # Extract the training and test set
+# df_train <- training(df_split)
+# df_test  <- testing(df_split)
+# 
+# # Create the specification
+# tree_spec <- decision_tree() %>% 
+#   set_engine("rpart") %>% 
+#   set_mode("classification")
 
 # Train the model
 mod <- tree_spec %>% 

@@ -478,6 +478,13 @@ numeric_variables <- numeric_variables[!str_detect(numeric_variables,
 
 # Ancillary data
 
+ecoregion_map_all <- readRDS(paste(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",  "ecoregions_2017"),"Ecoregions2017valid.rds"))
+
+ecoregion_geometry <- ecoregion_map_all %>%  
+                      dplyr::select(OBJECTID, ECO_NAME, geometry)
+
+rm(ecoregion_map_all)
+
 threat_scheme <- read.csv(file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs/iucn_threats\\iucn_threat_classification_scheme.csv"))
 
 headline_threats <- threat_scheme %>%
@@ -752,6 +759,7 @@ for (i in seq_along(new_grouping_variables)) {
       rs <- cor(group_matrix, method = "spearman")
       
       rs_ci <- cor.ci(group_matrix, n.iter = 2000, # n iterations taken from Ruscio et al 2008
+                      p = sig_threshold, # 0.01 not 0.05 bc correcting for multiple comparisons as in Sievers et al
                       method = "spearman", plot = FALSE)
       
       # saveRDS(rs_ci, file.path(group_directory, paste(name,
@@ -762,7 +770,7 @@ for (i in seq_along(new_grouping_variables)) {
       
       subgroup_coefficients[[j]] <- rs
       
-      p.mat <- cor_pmat(group_matrix)
+      p.mat <- cor_pmat(group_matrix, sig.level = sig_threshold)
       
       # Make a correlation heatmap for the individual sub group
       
@@ -1425,7 +1433,9 @@ for (i in seq_along(new_grouping_variables)) {
       
       rs <- cor(group_matrix, method = "spearman")
       
+      # Get the confidence intervals
       rs_ci <- cor.ci(group_matrix, n.iter = 2000, # n iterations taken from Ruscio et al 2008
+                      p = sig_threshold, # 0.01 not 0.05 bc correcting for multiple comparisons as in Sievers et al,
                       method = "spearman", plot = FALSE)
       
       # saveRDS(rs_ci, file.path(group_directory, paste(name,
@@ -1889,7 +1899,7 @@ cor_inputs_no_lpi <- indicators_raw_no_lpi %>%
               as.matrix(.)
 
 cor_outputs_no_lpi <- cor(cor_inputs_no_lpi, method = "spearman")
-p_mat = cor_pmat(cor_inputs_no_lpi)
+p_mat = cor_pmat(cor_inputs_no_lpi, sig.level = 0.01)
 
 global_heatmap_no_lpi_1 <- ggcorrplot(cor_outputs_no_lpi,
                                     colors = c("#481568FF","white", "#20A386FF"),
@@ -2043,7 +2053,7 @@ cor_inputs_lpi <- indicators_raw_lpi %>%
               as.matrix(.)
 
 cor_outputs_lpi <- cor(cor_inputs_lpi, method = "spearman")
-p_mat <- cor_pmat(cor_inputs_lpi)
+p_mat <- cor_pmat(cor_inputs_lpi, sig.level = sig_threshold)
 
 global_heatmap_lpi <- ggcorrplot(cor_outputs_lpi,
                                   colors = c("#481568FF","white", "#20A386FF"),
@@ -2075,7 +2085,7 @@ cor_inputs_lpi_20 <- indicators_raw_lpi %>%
               as.matrix(.)
 
 cor_outputs_lpi_20 <- cor(cor_inputs_lpi_20, method = "spearman")
-p_mat <- cor_pmat(cor_inputs_lpi_20)
+p_mat <- cor_pmat(cor_inputs_lpi_20, sig.level = sig_threshold)
 
 global_heatmap_lpi_20 <- ggcorrplot(cor_outputs_lpi_20,
                                    colors = c("#481568FF","white", "#20A386FF"),
@@ -2236,7 +2246,7 @@ for ( i in seq_along(cor_inputs_cluster_list)) {
 
 cor_outputs <- cor(inputs, method = "spearman")
 
-p_mat = cor_pmat(inputs)
+p_mat = cor_pmat(inputs, sig.level = sig_threshold)
 
 if (clus == "1") {
   
@@ -2574,6 +2584,8 @@ kable(rli_priorities)
 
 ```
 
+# Quantiles
+
 ```{r quantiles}
 
 # This plot aims to show how many ecoregions are in different quantiles based
@@ -2581,11 +2593,14 @@ kable(rli_priorities)
 # indicators you might consider there to be consensus, but if they're at extreme
 # ends of the quantile it indicates contradiction between indicator scores)
 
-quantile_df <- indicators_raw_no_lpi %>% 
+quantile_sf <- indicators_raw_no_lpi %>% 
   merge(ecoregion_clusters[c("ecoregion_id", 
                                                 "ECO_NAME",
                                                 "cluster")],
                            by = "ecoregion_id") %>% 
+  # Make sf so we can map it later
+  merge(ecoregion_geometry[c("ECO_NAME","geometry")],
+                           by = "ECO_NAME") %>% 
                      group_by(cluster) %>%
      mutate(rli_quantile = ntile(RLI, 4),
             bii_quantile = ntile(BIIri, 4)) %>% 
@@ -2628,8 +2643,15 @@ quantile_plot
 ggsave(file.path(supp_outputs, "quantile_plot.png"),
          quantile_plot, device = "png")
 
+st_write(quantile_sf, file.path(clean_data, "9_indicator_quartile_rankings.shp"))
+
 ```
 
+```{r quantile maps}
+
+
+
+```
 
 # LPI Scatterplots 
 

@@ -5,6 +5,7 @@ date: "05/05/2021"
 output:
   html_document: default
   pdf_document: default
+objective: This outputs clean indicator and ecoregion data - creates factors where needed, changes valances, tests for collinearity and looks at distributions.
 ---
 # Setup
 ## TODO: Give plots captions

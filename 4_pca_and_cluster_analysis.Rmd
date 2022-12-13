@@ -55,6 +55,7 @@ library(visdat)
 library(cowplot)
 library(knitr)
 library(scales)
+library(ggpubr)
 
 # Maps
 library(sf)
@@ -84,7 +85,7 @@ show_col(plas3rv)
 ```{r inputs and outputs}
 # Set input and output locations ----
 
-output_date <- "2022-11-24" # Current date for outputs
+output_date <- "2022-11-24" # Current date for analysis outputs
 ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "pca_clusters"
 input_date <- "2022-11-24" # Date of indicator data output we are using
@@ -94,10 +95,10 @@ analysis_date <- "2022-11-24"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- "2021-11-22"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
-analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+analysis_inputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs/version_3/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
 eco_version <- "ecoregions_2017"
-parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
+parent_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs"
 #eco_version <- "official_teow_wwf"
 indicator_columns <- c("indicator", "year", "ecoregion_id", "raw_indicator_value")
 timepoints <- c("2005", "2008")
@@ -161,7 +162,7 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
-manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+manuscript_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs/version_3/2021-05-04_manuscript_outputs"
 
 # Folder for clean data that acts as inputs to all subsequent steps
 
@@ -271,9 +272,8 @@ numeric_variables <- numeric_variables[!str_detect(numeric_variables, "ecoregion
 if(load_map == TRUE) {
   
   ecoregion_map_all <- readRDS(paste(
-    file.path("N:/Quantitative-Ecology/Simone/extinction_test/inputs",
-              "ecoregions_2017"),
-    "Ecoregions2017valid.rds"))
+    file.path("N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/inputs",
+    "Ecoregions2017valid.rds")))
   
   ecoregion_map <- ecoregion_map_all %>%
     dplyr::select(ECO_ID, ECO_NAME, OBJECTID, REALM, geometry)
@@ -1287,52 +1287,63 @@ gridfour <- plot_grid(barplots[[10]], barplots[[11]],
 # Following datacamp tutorial https://campus.datacamp.com/courses/supervised-learning-in-r-classification/classification-trees-4?ex=2
 
 library(rpart)
+library(tidymodels)
 
-df <- cluster_biplot_data %>% 
-      dplyr::select(-LPI_2005, - geometry, -ECO_NAME, -OBJECTID) %>% 
+df <- ecoregions_categorical %>% 
+      merge(cluster_biplot_data[c("ecoregion_id", "cluster")],
+            by = "ecoregion_id") %>% 
       mutate(biome = abbreviate(biome, minlength = 6),
              predominant_threat_type = abbreviate(predominant_threat_type, 
-                                                  minlength = 6))
+                                                  minlength = 6),
+             cluster = as.factor(cluster),
+             disturbance_yearCh = as.character(disturbance_year),
+             disturbed = factor(ifelse(disturbance_yearCh == "undisturbed",
+                                       "undisturbed", "disturbed"),
+                                levels = c("disturbed", "undisturbed")))
 
 set.seed(100)  # setting seed to reproduce results of random sampling
-TrainingRowIndex <- sample(1:nrow(df), 0.8*nrow(df))  # row indices for training data
-TrainingData <- df[TrainingRowIndex, ]  # Take 80% of the data to fit the models
-TestData  <- df[-TrainingRowIndex, ]   # Keep 20% to test how accurate the selected model is
 
+# Create the split
+df_split <- initial_split(df, prop = 0.8, strata = cluster)
 
-mod <- rpart(cluster ~ disturbance_year + high_beta_area_factor +
-               island_status + predominant_threat_type +
-               lpi_records_factor + rli_records_factor, data = TrainingData, 
+# Extract the training and test set
+df_train <- training(df_split)
+df_test  <- testing(df_split)
+
+mod <- rpart(cluster ~ biome + disturbance_year + area_factor + 
+             island_status + land_use +
+             lpi_records_factor + rli_records_factor, data = df_train, 
              method = "class", control = rpart.control(cp = 0))
 
 # Plot the output
 
 library(rpart.plot)
 
-modp <- rpart.plot(mod,type = 3, fallen.leaves = TRUE)
-modp
+rpart.plot(mod,type = 3, fallen.leaves = TRUE)
 
 # Make predictions on the test dataset
-TestData$pred <- predict(mod, TestData, type = "class")
+df_test$pred <- predict(mod, df_test, type = "class")
 
 # Examine the confusion matrix
-table(TestData$pred , TestData$cluster )
+table(df_test$pred , df_test$cluster)
 
 # Compute the accuracy on the test dataset
-mean(TestData$pred == TestData$cluster)
+mean(df_test$pred == df_test$cluster)
 
 # Examine the complexity plot
 plotcp(mod)
+mod[["cptable"]]
 
 # Prune the tree
-mod_pruned <- prune(mod, cp = 0.093)
+mod_pruned <- prune.rpart(mod,cp = 0.092)
 plotcp(mod_pruned)
+rpart.plot(mod_pruned,type = 5, fallen.leaves = TRUE)
 
 # Compute the accuracy of the pruned tree
-TestData$pred <- predict(mod_pruned, TestData, type = "class")
-mean(TestData$pred == TestData$cluster)
+df_test$pred <- predict(mod_pruned, df_test, type = "class")
+mean(df_test$pred == df_test$cluster)
 
-# # Tidy models way
+# # # Tidy models way
 # library(tidymodels)
 # 
 # # Create the split
@@ -1343,42 +1354,42 @@ mean(TestData$pred == TestData$cluster)
 # df_test  <- testing(df_split)
 # 
 # # Create the specification
-# tree_spec <- decision_tree() %>% 
-#   set_engine("rpart") %>% 
+# tree_spec <- decision_tree() %>%
+#   set_engine("rpart") %>%
 #   set_mode("classification")
-
-# Train the model
-mod <- tree_spec %>% 
-  fit(formula = cluster ~ .,   data = df_train)
-
-# Print the model
-mod
-
-
-# Generate predictions
-predictions <- predict(mod,
-                   df_test)
-
-# Add the true outcomes
-predictions_combined <- predictions %>% 
-  mutate(true_class = df_test$cluster)
-
-# Print the first lines of the result
-head(predictions_combined)
-
-# The confusion matrix
-df_matrix <- conf_mat(data = predictions_combined,
-                            estimate = .pred_class,
-                            truth = true_class)
-
-# Print the matrix
-df_matrix
-
-# The accuracy calculated by a function
-acc_auto <- accuracy(predictions_combined,
-                estimate = .pred_class, 
-                truth = true_class)
-acc_auto$.estimate
+# 
+# # Train the model
+# mod <- tree_spec %>% 
+#   fit(formula = cluster ~ .,   data = df_train)
+# 
+# # Print the model
+# mod
+# 
+# 
+# # Generate predictions
+# predictions <- predict(mod,
+#                    df_test)
+# 
+# # Add the true outcomes
+# predictions_combined <- predictions %>% 
+#   mutate(true_class = df_test$cluster)
+# 
+# # Print the first lines of the result
+# head(predictions_combined)
+# 
+# # The confusion matrix
+# df_matrix <- conf_mat(data = predictions_combined,
+#                             estimate = .pred_class,
+#                             truth = true_class)
+# 
+# # Print the matrix
+# df_matrix
+# 
+# # The accuracy calculated by a function
+# acc_auto <- accuracy(predictions_combined,
+#                 estimate = .pred_class, 
+#                 truth = true_class)
+# acc_auto$.estimate
 
 ```
 

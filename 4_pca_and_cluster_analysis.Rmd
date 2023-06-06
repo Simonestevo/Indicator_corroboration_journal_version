@@ -85,18 +85,18 @@ show_col(plas3rv)
 ```{r inputs and outputs}
 # Set input and output locations ----
 
-output_date <- "2022-11-24" # Current date for analysis outputs
-ms_version <- "MS_v8" #Version of MS outputs are for
+output_date <- "2023-06-02" # Current date for analysis outputs
+ms_version <- "MS_v9" #Version of MS outputs are for
 section <- "pca_clusters"
 input_date <- "2022-11-24" # Date of indicator data output we are using
 
 
-analysis_date <- "2022-11-24"
+analysis_date <- "2023-06-02"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
-date <- "2021-11-22"
+date <- "2023-06-02"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
-analysis_inputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs/version_3/2020-08-25_indicator_output_files"
-save_outputs <- "yes" #only applies to maps, other things will always save
+analysis_inputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/2020-08-25_indicator_output_files"
+save_outputs <- "no" #only applies to maps, other things will always save
 eco_version <- "ecoregions_2017"
 parent_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs"
 #eco_version <- "official_teow_wwf"
@@ -162,11 +162,11 @@ if( (length(analysis_outputs)) == 0 ) {
   
 }
 
-manuscript_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/outputs/version_3/2021-05-04_manuscript_outputs"
+manuscript_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/2021-05-04_manuscript_outputs"
 
 # Folder for clean data that acts as inputs to all subsequent steps
 
-clean_data <- file.path(manuscript_outputs, output_date, paste(ms_version,
+clean_data <- file.path(manuscript_outputs, input_date, paste("MS_v8",
                                  "_cleaned_data",sep=""))
   
 if( !dir.exists( file.path(clean_data) ) ) {

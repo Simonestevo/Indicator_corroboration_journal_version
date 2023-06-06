@@ -73,15 +73,15 @@ library(leaflet)
 # Set input and output locations ----
 
 sig_threshold <- 0.01 # Make it 0.01 to correct for multiple comparisons
-output_date <- "2022-11-24" # Current date for analysis outputs
+output_date <- "2023-06-02" # Current date for analysis outputs
 ms_version <- "MS_v8" #Version of MS outputs are for
 section <- "correlation"
 input_date <- "2022-11-24" # Date of indicator data output we are using
 
 
-analysis_date <- "2022-11-24"
+analysis_date <- "2023-06-02"
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
-date <- "2021-11-22"
+date <- "2023-06-02"
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
 analysis_inputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
@@ -154,7 +154,7 @@ manuscript_outputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ec
 
 # Folder for clean data that acts as inputs to all subsequent steps
 
-clean_data <- file.path(manuscript_outputs, output_date, paste(ms_version,
+clean_data <- file.path(manuscript_outputs, input_date, paste(ms_version,
                                  "_cleaned_data",sep=""))
   
 if( !dir.exists( file.path(clean_data) ) ) {
@@ -2020,17 +2020,18 @@ global_heatmap_no_lpi_triangle <- ggplot(tri_data, aes(x = Ind1, y = Ind2,
   scale_fill_manual(values = pal2) +
   labs(x = "Indicator 1",
        y = "Indicator 2") +
-    guides(fill = guide_legend(title = "Correlation\nstrength")) +
+    guides(fill = guide_legend(title = "Correlation\nstrength",
+           nrow = 2)) +
    theme(panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
           panel.background = element_rect(fill = "grey97"),
           legend.position = "bottom",
          legend.title=element_text(size=20), 
-         legend.text=element_text(size=18),
+         legend.text=element_text(size=20),
           axis.title.x = element_text(size=20),
           axis.title.y = element_text(size=20),
-          axis.text.x = element_text(size=18, angle = 45, hjust = 1),,
-          axis.text.y = element_text(size=18),
+          axis.text.x = element_text(size=20, angle = 45, hjust = 1),,
+          axis.text.y = element_text(size=20),
           axis.ticks.x = element_blank(), 
           axis.ticks.y = element_blank())
 
@@ -2536,18 +2537,19 @@ cluster_triangles <- ggplot(cluster_heatmap_data, aes(x = Ind1, y = Ind2,
        y = "Indicator 2") +
     guides(fill = guide_legend(title = "Correlation\nstrength")) +
    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.background = element_rect(fill = "grey97"),
-          legend.position = "bottom",
+         panel.grid.minor = element_blank(),
+         panel.background = element_rect(fill = "grey97"),
+         legend.position = "bottom",
          legend.title=element_text(size=20), 
          legend.text=element_text(size=18),
-          axis.title.x = element_text(size=20),
-          axis.title.y = element_text(size=20),
-          axis.text.x = element_text(size=18, angle = 45, hjust = 1),
-          axis.text.y = element_text(size=18),
-          axis.ticks.x = element_blank(), 
-          axis.ticks.y = element_blank())+
-          facet_wrap(~ subgroup, nrow = 1)
+         axis.title.x = element_text(size=20),
+         axis.title.y = element_text(size=20),
+         axis.text.x = element_text(size=18, angle = 45, hjust = 1),
+         axis.text.y = element_text(size=18),
+         axis.ticks.x = element_blank(), 
+         axis.ticks.y = element_blank(),
+         strip.text.x = element_text(size = 20))+
+         facet_wrap(~ subgroup, nrow = 1)
 
 
 ggsave(file.path(main_outputs, "cluster_heatmap_triangle.png"),

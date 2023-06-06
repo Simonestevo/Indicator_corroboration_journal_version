@@ -83,13 +83,13 @@ library(ggthemes)
 # Set input and output locations ----
 
 output_date <- Sys.Date()
-ms_version <- "MS_v8" #Version of MS outputs are for
+ms_version <- "MS_v9" #Version of MS outputs are for
 section <- "exploratory"
 
 create_new_database_version <- FALSE # Only set to true if you want to create an entirely new version from scratch
 date <- Sys.Date()
 country <- NA #"Australia" # If not subsetting, set as NA, e.g. country <- NA
-analysis_inputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs/version_3/2020-08-25_indicator_output_files"
+analysis_inputs <- "N:/LES/Burwood/Quantitative-Ecology/Indicators-Project/ecoregions/2020-08-25_indicator_output_files"
 save_outputs <- "yes" #only applies to maps, other things will always save
 eco_version <- "ecoregions_2017"
 parent_outputs <- "N:/Quantitative-Ecology/Simone/extinction_test/outputs"
@@ -156,7 +156,7 @@ if( (length(analysis_outputs)) == 0 ) {
 
 # Folder for final manuscript figures
 
-manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\version_3\\2021-05-04_manuscript_outputs"
+manuscript_outputs <- "N:\\Quantitative-Ecology\\Simone\\extinction_test\\outputs\\2021-05-04_manuscript_outputs"
 
 
 if( !dir.exists( file.path(manuscript_outputs) ) ) {

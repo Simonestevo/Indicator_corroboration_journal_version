@@ -532,6 +532,8 @@ indicators <- c(indicators_05, indicators_08)
 #                                          "2020-08-10_database_output_files",
 #                                          "ecoregion_country_data.rds"))
 
+
+
 # Indicator data cleaning ----
 
 # * Invert ----
